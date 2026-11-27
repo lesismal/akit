@@ -14,7 +14,7 @@ akit 配置的每个字段：配置的每一部分是做什么的、一个示例
 akit 与 fit 不同之处，在表格中以 **akit：** 标出。
 
 <!-- BEGIN GENERATED: summary -->
-fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **1118** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 173 个对象，下文各有一张表。
+fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **1136** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 175 个对象，下文各有一张表。
 <!-- END GENERATED -->
 
 字段说明来自 fit 代码中的 `doc` 标签，是英文的，所以每个字段的完整说明在[英文版](config.md)的同一张表中；本页的表格给出每个字段的
@@ -57,6 +57,7 @@ fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../co
 - [WebRTC](#webrtc)：[`webrtc.turn`](#cfg-webrtc-turn)、[`webrtc.media`](#cfg-webrtc-media)、[`webrtc.proxy`](#cfg-webrtc-proxy)
 - [媒体鉴权](#媒体鉴权)：[`media_auth[]`](#cfg-media-auth)
 - [流媒体](#流媒体)：[`streaming`](#cfg-streaming)、[`rtmp`](#cfg-streaming-rtmp)、[`rtsp`](#cfg-streaming-rtsp)、[`srt`](#cfg-streaming-srt)、[`webrtc`](#cfg-streaming-webrtc)
+- [处理器](#处理器)：[`respond`](#respond)、[`static`](#static)、[`proxy`](#proxy)、[`fastcgi`](#fastcgi)、[`forward_proxy`](#forward_proxy)、[`whip`](#whip)、[`whep`](#whep)、[`webrtc_proxy`](#webrtc_proxy)、[`httpflv`](#httpflv)、[`hls`](#hls)
 - [BitTorrent](#bittorrent)：[`bittorrent.client`](#cfg-bittorrent-client)、[`bittorrent.tracker`](#cfg-bittorrent-tracker)
 - [处理器](#处理器)：[`respond`](#respond)、[`static`](#static)、[`proxy`](#proxy)、[`bt_tracker`](#bt_tracker)、[`fastcgi`](#fastcgi)、[`forward_proxy`](#forward_proxy)、[`whip`](#whip)、[`whep`](#whep)、[`webrtc_proxy`](#webrtc_proxy)
 - [中间件](#中间件)：[`basic_auth`](#basic_auth)、[`body_limit`](#body_limit)、[`cache`](#cache)、[`circuit_breaker`](#circuit_breaker)、[`client_cert`](#client_cert)、[`compress`](#compress)、[`concurrency_limit`](#concurrency_limit)、[`forward_auth`](#forward_auth)、[`headers`](#headers)、[`jwt`](#jwt)、[`rate_limit`](#rate_limit)、[`redirect`](#redirect)、[`rewrite`](#rewrite)、[`wasm`](#wasm)
@@ -3259,8 +3260,8 @@ bittorrent {
 | `bt_tracker` | 已支持：[参数](#cfg-routes-handler-bt-tracker-params) |
 | `fastcgi` | 已支持：[参数](#cfg-routes-handler-fastcgi-params) |
 | `forward_proxy` | 已支持：[参数](#cfg-routes-handler-forward-proxy-params) |
-| `hls` | **尚不支持**：按名称拒绝 |
-| `httpflv` | **尚不支持**：按名称拒绝 |
+| `hls` | 已支持：[参数](#cfg-routes-handler-hls-params) |
+| `httpflv` | 已支持：[参数](#cfg-routes-handler-httpflv-params) |
 | `media_pages` | **尚不支持**：按名称拒绝 |
 | `media_tokens` | **尚不支持**：按名称拒绝 |
 | `proxy` | 已支持：[参数](#cfg-routes-handler-proxy-params) |
@@ -3574,6 +3575,56 @@ route {
 | `max_sdp_bytes` | 整数，≥ 0 | `32768` |  |
 | `media_addrs` | 值为字符串的映射 |  |  |
 | `timeout` | 时长 | `"10s"` |  |
+<!-- END GENERATED -->
+
+### `httpflv`
+
+以 HTTP-FLV 播放流媒体角色的流，收到 WebSocket 升级时以 WebSocket-FLV 播放：`/live/cam.flv` 播放 `live/cam`。播放器的凭据
+（bearer token、Basic、`?token=` 或 cookie `akit_media_token`）由 `auth` 检查；角色未运行时答复 503（I123）。
+
+```fit
+route flv { match { path /live/* }; handler httpflv { auth live; cors * } }
+```
+
+<!-- BEGIN GENERATED: routes[].handler<httpflv>.params -->
+<a id="cfg-routes-handler-httpflv-params"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-routes-handler-httpflv-params)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `auth` | 字符串 |  |  |
+| `cors` | 字符串 |  |  |
+| `prefix` | 字符串 |  | **akit：**akio-media 的服务从请求路径中读取流：前缀不是 `/` 时，akit 把去掉前缀的路径交给它，访问日志随后写的也是这个路径（akio A266）。 |
+| `wait` | 时长 |  |  |
+<!-- END GENERATED -->
+
+### `hls`
+
+通过 HLS 播放流媒体角色的流：配合 `prefix /hls/` 时为 `/hls/live/cam/index.m3u8`，fMP4 或 MPEG-TS 分片（`format`，另一种用
+`?format=`），配合 `part_duration` 为低延迟 HLS。带 `?token=` 获取的播放列表也会给其中列出的每一项带上 token（I123）。
+
+```fit
+route hls { match { path /hls/* }; handler hls { prefix /hls/; auth live } }
+```
+
+<!-- BEGIN GENERATED: routes[].handler<hls>.params -->
+<a id="cfg-routes-handler-hls-params"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-routes-handler-hls-params)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `auth` | 字符串 |  |  |
+| `cors` | 字符串 |  |  |
+| `format` | 字符串：`fmp4`、`ts` |  | **akit：**两个 akio-media `Hls` 服务各管一种格式，共用处理器分片的上限（akio A266：一个 `Hls` 同时提供两种格式）。 |
+| `idle_timeout` | 时长 | `"30s"` |  |
+| `max_bytes` | 整数，≥ 0 | `33554432` |  |
+| `part_duration` | 时长 |  |  |
+| `play_wait` | 时长 |  |  |
+| `playlist_size` | 整数，0 到 100 | `6` |  |
+| `prefix` | 字符串 |  | **akit：**akio-media 的服务从请求路径中读取流：前缀不是 `/` 时，akit 把去掉前缀的路径交给它，访问日志随后写的也是这个路径（akio A266）。 |
+| `target_duration` | 时长 | `"2s"` |  |
 <!-- END GENERATED -->
 
 ## 中间件

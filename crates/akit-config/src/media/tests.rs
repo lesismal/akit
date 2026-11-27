@@ -287,3 +287,57 @@ fn ice_urls() {
     }
     assert!(valid_user_name("alice") && !valid_user_name("") && !valid_user_name("a\tb"));
 }
+
+/// The `httpflv` and `hls` handlers' params (I123): fit's checks of `prefix`, `part_duration` and
+/// `format`, and the policy their `auth` names, handed to them.
+#[test]
+fn handlers() {
+    let doc = |module: &str, params: &str| {
+        format!(
+            r#"{{"listeners": [{{"name": "w", "address": ":8080"}}], "media_auth": [{{"name": "live", "public": ["play"]}}],
+              "routes": [{{"handler": {{"module": "{module}", "params": {params}}}}}]}}"#
+        )
+    };
+    let c = loads(&doc(
+        "hls",
+        r#"{"prefix": "/hls", "auth": "live", "format": "ts"}"#,
+    ));
+    let crate::Handler::Hls(h) = &c.routes[0].handler else {
+        panic!("{:?}", c.routes[0].handler)
+    };
+    assert_eq!(h.prefix, "/hls/");
+    assert_eq!(h.format, HlsFormat::Ts);
+    assert_eq!(h.policy.as_ref().map(|p| p.name.as_str()), Some("live"));
+    assert_eq!(h.target(), DEFAULT_HLS_TARGET_DURATION);
+    assert_eq!(h.playlist(), DEFAULT_HLS_PLAYLIST_SIZE);
+    assert_eq!(h.bytes(), DEFAULT_HLS_MAX_BYTES);
+    assert_eq!(h.idle(), DEFAULT_HLS_IDLE_TIMEOUT);
+    let c = loads(&doc("httpflv", "{}"));
+    let crate::Handler::HttpFlv(f) = &c.routes[0].handler else {
+        panic!()
+    };
+    assert_eq!((f.prefix.as_str(), f.policy.is_none()), ("/", true));
+    for (module, params, want) in [
+        (
+            "httpflv",
+            r#"{"auth": "nope"}"#,
+            r#"no media_auth policy named "nope""#,
+        ),
+        (
+            "hls",
+            r#"{"auth": "nope"}"#,
+            r#"no media_auth policy named "nope""#,
+        ),
+        ("httpflv", r#"{"prefix": "flv/"}"#, "does not start with /"),
+        (
+            "hls",
+            r#"{"part_duration": "50ms"}"#,
+            "between 100ms and 5s",
+        ),
+        ("hls", r#"{"format": "mp4"}"#, "mp4"),
+        ("hls", r#"{"playlist_size": 101}"#, "100"),
+        ("hls", r#"{"segments": 3}"#, "unknown field"),
+    ] {
+        refused(&doc(module, params), want);
+    }
+}

@@ -17,7 +17,7 @@ so in a note marked **akit:**; nine defaults that name the gateway are akit's, `
 say `fit` ([decision 037](../decisions/037-akit-names.md)).
 
 <!-- BEGIN GENERATED: summary -->
-akit reads **1118** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 173 objects akit reads, each has its table below.
+akit reads **1136** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 175 objects akit reads, each has its table below.
 <!-- END GENERATED -->
 
 How to read the tables:
@@ -63,6 +63,7 @@ is not there, a plugin that does not compile are errors.
 - [WebRTC](#webrtc): [`webrtc.turn`](#cfg-webrtc-turn), [`webrtc.media`](#cfg-webrtc-media), [`webrtc.proxy`](#cfg-webrtc-proxy)
 - [Media auth](#media-auth): [`media_auth[]`](#cfg-media-auth)
 - [Streaming](#streaming): [`streaming`](#cfg-streaming), [`rtmp`](#cfg-streaming-rtmp), [`rtsp`](#cfg-streaming-rtsp), [`srt`](#cfg-streaming-srt), [`webrtc`](#cfg-streaming-webrtc)
+- [Handlers](#handlers): [`respond`](#respond), [`static`](#static), [`proxy`](#proxy), [`fastcgi`](#fastcgi), [`forward_proxy`](#forward_proxy), [`whip`](#whip), [`whep`](#whep), [`webrtc_proxy`](#webrtc_proxy), [`httpflv`](#httpflv), [`hls`](#hls)
 - [BitTorrent](#bittorrent): [`bittorrent.client`](#cfg-bittorrent-client), [`bittorrent.tracker`](#cfg-bittorrent-tracker)
 - [Handlers](#handlers): [`respond`](#respond), [`static`](#static), [`proxy`](#proxy), [`bt_tracker`](#bt_tracker), [`fastcgi`](#fastcgi), [`forward_proxy`](#forward_proxy), [`whip`](#whip), [`whep`](#whep), [`webrtc_proxy`](#webrtc_proxy)
 - [Middleware](#middleware): [`basic_auth`](#basic_auth), [`body_limit`](#body_limit), [`cache`](#cache), [`circuit_breaker`](#circuit_breaker), [`client_cert`](#client_cert), [`compress`](#compress), [`concurrency_limit`](#concurrency_limit), [`forward_auth`](#forward_auth), [`headers`](#headers), [`jwt`](#jwt), [`rate_limit`](#rate_limit), [`redirect`](#redirect), [`rewrite`](#rewrite), [`wasm`](#wasm)
@@ -3085,8 +3086,8 @@ the same way, its params checked by the module.
 | `bt_tracker` | supported: [params](#cfg-routes-handler-bt-tracker-params) |
 | `fastcgi` | supported: [params](#cfg-routes-handler-fastcgi-params) |
 | `forward_proxy` | supported: [params](#cfg-routes-handler-forward-proxy-params) |
-| `hls` | **not supported yet**: refused by name |
-| `httpflv` | **not supported yet**: refused by name |
+| `hls` | supported: [params](#cfg-routes-handler-hls-params) |
+| `httpflv` | supported: [params](#cfg-routes-handler-httpflv-params) |
 | `media_pages` | **not supported yet**: refused by name |
 | `media_tokens` | **not supported yet**: refused by name |
 | `proxy` | supported: [params](#cfg-routes-handler-proxy-params) |
@@ -3392,6 +3393,54 @@ Passes WHIP and WHEP to the media servers of an upstream, and relays their peers
 | `max_sdp_bytes` | integer, 0 or more | `32768` | The largest request and answer passed on, an offer and an answer among them; a larger request is answered 413, and a larger answer 502. 32 KiB when left out or 0. |
 | `media_addrs` | map of string |  | The address akit relays a media server's peers to, by the media server's address in the upstream, as {"10.0.0.2:8080": "10.0.0.2:8189"}, or an IP alone, which takes the port of its answer's candidate. When left out, the answer's first host candidate, or server-reflexive one, IPv4 first. |
 | `timeout` | duration | `"10s"` | The most a request may take, from its last byte to the media server's answer read whole; past it, it is answered 504. 10s when left out. |
+<!-- END GENERATED -->
+
+### `httpflv`
+
+Plays the streaming role's streams as HTTP-FLV, and as WebSocket-FLV to a WebSocket upgrade:
+`/live/cam.flv` plays `live/cam`. A player's credentials (a bearer token, Basic, `?token=` or the
+`akit_media_token` cookie) are checked by `auth`; without the role running, 503 (I123).
+
+```fit
+route flv { match { path /live/* }; handler httpflv { auth live; cors * } }
+```
+
+<!-- BEGIN GENERATED: routes[].handler<httpflv>.params -->
+<a id="cfg-routes-handler-httpflv-params"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `auth` | string |  | The media_auth policy a player must satisfy, play on the stream's path: a bearer token, Basic, the token query parameter (/live/cam.flv?token=T) or the fit_media_token cookie. 401 with a Bearer challenge without credentials, 403 when they do not allow it. With the policy's url_signing, a signed URL of the stream plays too. Everyone may play when left out, as the route's middleware allow. |
+| `cors` | string |  | Sent as Access-Control-Allow-Origin, which a web player on another origin (flv.js, mpegts.js) needs, as "*". None when left out. |
+| `prefix` | string |  | The part of the path before the stream's: with /flv/, /flv/live/cam.flv plays live/cam. / when left out: /live/cam.flv plays live/cam, the stream rtmp://host/live/cam publishes. **akit:** akio-media's service reads the stream from the request's path: with a prefix other than `/`, akit hands it the path without the prefix, which the access log then writes (akio A266). |
+| `wait` | duration |  | How long a player may wait for a stream with no publisher yet, or for the next one after its publisher leaves. 404 at once for a stream without a publisher when left out. |
+<!-- END GENERATED -->
+
+### `hls`
+
+Plays the streaming role's streams over HLS: `/hls/live/cam/index.m3u8` with `prefix /hls/`,
+fMP4 segments or MPEG-TS ones (`format`, the other with `?format=`), Low-Latency HLS with
+`part_duration`. A playlist fetched with `?token=` names what it lists with the token too (I123).
+
+```fit
+route hls { match { path /hls/* }; handler hls { prefix /hls/; auth live } }
+```
+
+<!-- BEGIN GENERATED: routes[].handler<hls>.params -->
+<a id="cfg-routes-handler-hls-params"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `auth` | string |  | The media_auth policy every request, playlist and segment, must satisfy, play on the stream's path: a bearer token, Basic, the token query parameter or the fit_media_token cookie. A playlist fetched with a token in its query names its playlists, segments and parts with the token too, so that a player that sends no header (Safari, ffmpeg) plays on. With the policy's url_signing, a signed URL of the stream plays too, and its playlists hand what they name a grant of their own. Everyone may play when left out. |
+| `cors` | string |  | Sent as Access-Control-Allow-Origin, as "*", for players on other origins. None when left out. |
+| `format` | string: `fmp4`, `ts` |  | The segment format of a playlist's URL without a format query parameter: fmp4, fragmented MP4 for H.264, H.265, AV1, AAC and Opus, or ts, MPEG-TS for H.264, H.265, AAC and Opus. The other is played with ?format=ts or ?format=fmp4. fmp4 when left out. **akit:** Two akio-media `Hls` services, one a format, share the handler's segments' bounds (akio A266: one `Hls` serving both). |
+| `idle_timeout` | duration | `"30s"` | How long a stream's segmenting runs without a request before it stops. 30s when left out. |
+| `max_bytes` | integer, 0 or more | `33554432` | The bytes of segments one stream and format holds; the oldest go first. 32 MiB when left out or 0. |
+| `part_duration` | duration |  | Turns on Low-Latency HLS with parts this long, 200ms to 1s being usual: blocking playlist reloads, EXT-X-PART and preload hints. Off when left out. |
+| `play_wait` | duration |  | How long a playlist request may wait for a stream with no publisher yet. 404 at once when left out. |
+| `playlist_size` | integer, 0 to 100 | `6` | How many segments a playlist lists. 6 when left out or 0. |
+| `prefix` | string |  | The part of the path before the stream's: with /hls/, /hls/live/cam/index.m3u8 is the playlist of live/cam. / when left out. **akit:** akio-media's service reads the stream from the request's path: with a prefix other than `/`, akit hands it the path without the prefix, which the access log then writes (akio A266). |
+| `target_duration` | duration | `"2s"` | How long segments are: a stream with video is cut at the first key frame after it. Set it to the key frame interval. 2s when left out. |
 <!-- END GENERATED -->
 
 ## Middleware

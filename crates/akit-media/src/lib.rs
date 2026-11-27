@@ -8,8 +8,11 @@
 //! decision 040.
 
 pub mod auth;
+pub mod handlers;
 pub mod http;
 mod pool;
 pub mod role;
 pub mod streaming;
 mod swap;
+
+pub use handlers::MODULES;

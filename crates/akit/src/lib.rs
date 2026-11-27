@@ -27,6 +27,7 @@ pub use cli::main;
 pub use akit_bittorrent;
 pub use akit_cache;
 pub use akit_handler;
+pub use akit_media;
 pub use akit_middleware;
 pub use akit_plugin;
 pub use akit_proxy;
@@ -51,6 +52,8 @@ pub const STANDARD: &[&[Info<HandlerParams>]] = &[
     akit_webrtc::MODULES,
     // I151: bt_tracker.
     akit_bittorrent::MODULES,
+    // I123: the streaming role's handlers.
+    akit_media::MODULES,
 ];
 
 /// The roles of fit's config that akit runs (I100: the host; the tunnel's and the LLM feature's

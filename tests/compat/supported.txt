@@ -1385,3 +1385,22 @@ streaming.webrtc.max_offer_bytes
 streaming.webrtc.max_sessions
 streaming.webrtc.play_wait
 streaming.webrtc.public_ips
+# I123: the streaming role's httpflv and hls handlers (akit-media's handlers).
+routes[].handler<hls>
+routes[].handler<hls>.params
+routes[].handler<hls>.params.auth
+routes[].handler<hls>.params.cors
+routes[].handler<hls>.params.format
+routes[].handler<hls>.params.idle_timeout
+routes[].handler<hls>.params.max_bytes
+routes[].handler<hls>.params.part_duration
+routes[].handler<hls>.params.play_wait
+routes[].handler<hls>.params.playlist_size
+routes[].handler<hls>.params.prefix
+routes[].handler<hls>.params.target_duration
+routes[].handler<httpflv>
+routes[].handler<httpflv>.params
+routes[].handler<httpflv>.params.auth
+routes[].handler<httpflv>.params.cors
+routes[].handler<httpflv>.params.prefix
+routes[].handler<httpflv>.params.wait

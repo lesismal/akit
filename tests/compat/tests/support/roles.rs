@@ -1288,6 +1288,65 @@ fn media(out: &mut Vec<(String, String, Read)>) {
     );
 }
 
+/// The `httpflv` and `hls` handlers' params (I123).
+fn media_handlers(out: &mut Vec<(String, String, Read)>) {
+    const P: &str = r#"{"name": "p", "public": ["play"]}"#;
+    for (module, fields) in [
+        (
+            "httpflv",
+            vec![
+                f("prefix", q("/a/"), q("/b/")),
+                f("auth", q("p"), q("")),
+                f("wait", q("1s"), q("2s")),
+                f("cors", q("*"), q("https://a")),
+            ],
+        ),
+        (
+            "hls",
+            vec![
+                f("prefix", q("/a/"), q("/b/")),
+                f("auth", q("p"), q("")),
+                f("format", q("ts"), q("fmp4")),
+                f("target_duration", q("1s"), q("2s")),
+                f("part_duration", q("200ms"), q("300ms")),
+                f("playlist_size", "3", "4"),
+                f("max_bytes", "1", "2"),
+                f("play_wait", q("1s"), q("2s")),
+                f("idle_timeout", q("1s"), q("2s")),
+                f("cors", q("*"), q("https://a")),
+            ],
+        ),
+    ] {
+        let w = |m: &str| {
+            format!(
+                r#"{{"listeners": [{{"name": "web", "address": ":8080"}}], "media_auth": [{P}], "routes": [{{"handler": {{"module": "{module}", "params": {m}}}}}]}}"#
+            )
+        };
+        let wm = |m: &str| {
+            format!(
+                r#"{{"listeners": [{{"name": "web", "address": ":8080"}}], "routes": [{{"handler": {m}}}]}}"#
+            )
+        };
+        out.push((
+            format!("routes[].handler<{module}>"),
+            wm(&format!(r#"{{"module": "{module}"}}"#)),
+            Read::Differs(wm(r#"{"module": "respond"}"#)),
+        ));
+        out.push((
+            format!("routes[].handler<{module}>.params"),
+            w("{}"),
+            Read::Differs(w(r#"{"prefix": "/x/"}"#)),
+        ));
+        emit(
+            out,
+            &format!("routes[].handler<{module}>.params"),
+            &w,
+            &[],
+            fields,
+        );
+    }
+}
+
 /// Every sample of the roles' fields.
 pub(crate) fn samples() -> Vec<(String, String, Read)> {
     let mut out = Vec::new();
@@ -1296,5 +1355,6 @@ pub(crate) fn samples() -> Vec<(String, String, Read)> {
     webrtc(&mut out);
     bittorrent(&mut out);
     media(&mut out);
+    media_handlers(&mut out);
     out
 }

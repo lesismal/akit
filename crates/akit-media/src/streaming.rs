@@ -152,7 +152,13 @@ impl Shared {
 pub struct Current {
     /// The hub.
     pub hub: Hub,
+    /// Which hub it is: another number for each hub the role makes, so that what a handler made
+    /// for one hub is made again for the next.
+    pub hub_no: u64,
 }
+
+/// The numbers of the hubs ([`Current::hub_no`]).
+static HUB_NOS: AtomicU64 = AtomicU64::new(1);
 
 /// The role of each engine, by [`registry::key`]: what the handlers find it by, and its
 /// counters.
@@ -291,6 +297,7 @@ pub struct Server {
     slot: Arc<Slot>,
     shared: Arc<Shared>,
     hub: Option<Hub>,
+    hub_no: u64,
     hub_key: String,
     access: Option<Arc<akit_access::Policy>>,
     rtmp: Option<Bound<StreamRtmp>>,
@@ -393,6 +400,7 @@ impl Server {
             shared: Arc::clone(&slot.shared),
             slot,
             hub: None,
+            hub_no: 0,
             hub_key: String::new(),
             access: None,
             rtmp: None,
@@ -665,6 +673,7 @@ impl Role for Server {
             None => {
                 let h = self.make_hub(cfg);
                 self.hub = Some(h.clone());
+                self.hub_no = HUB_NOS.fetch_add(1, SeqCst);
                 self.hub_key = hub_key;
                 h
             }
@@ -712,7 +721,10 @@ impl Role for Server {
         );
         self.srt = srt;
         errs.extend(e.map(|e| format!("srt: {e}")));
-        self.slot.cur.set(Some(Arc::new(Current { hub })));
+        self.slot.cur.set(Some(Arc::new(Current {
+            hub,
+            hub_no: self.hub_no,
+        })));
         if errs.is_empty() {
             Ok(())
         } else {

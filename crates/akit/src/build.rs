@@ -41,6 +41,7 @@ pub const STANDARD: &[&str] = &[
     "akit-proxy",
     "akit-webrtc",
     "akit-bittorrent",
+    "akit-media",
 ];
 
 /// The name of the package a build generates, and of its binary.
@@ -672,6 +673,7 @@ mod tests {
                 "akit-proxy",
                 "akit-webrtc",
                 "akit-bittorrent",
+                "akit-media",
                 "akit-a"
             ]
         );

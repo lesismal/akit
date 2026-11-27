@@ -242,12 +242,15 @@ fn ffmpeg_publishes_and_plays() {
     }
     for (name, bin) in servers {
         let d = dir(&format!("ffmpeg-{name}"));
-        let (rtmp, rtsp, srtp) = (free_tcp(), free_tcp(), free_udp());
+        let (rtmp, rtsp, srtp, web) = (free_tcp(), free_tcp(), free_udp(), free_tcp());
         let cfg = d.join("akit.json");
         std::fs::write(
             &cfg,
             format!(
-                r#"{{"media_auth": [{{"name": "live", "public": ["play"],
+                r#"{{"listeners": [{{"name": "web", "address": "127.0.0.1:{web}"}}],
+                  "routes": [{{"match": {{"path": ["/hls/*"]}}, "handler": {{"module": "hls", "params": {{"prefix": "/hls/", "auth": "live", "target_duration": "1s"}}}}}},
+                             {{"match": {{"path": ["/live/*"]}}, "handler": {{"module": "httpflv", "params": {{"auth": "live"}}}}}}],
+                  "media_auth": [{{"name": "live", "public": ["play"],
                   "tokens": [{{"name": "studio", "token": "0123456789abcdef-publish", "publish": ["live/*"]}}]}}],
                   "streaming": {{"rtmp": {{"listen": "127.0.0.1:{rtmp}", "auth": "live"}},
                                  "rtsp": {{"listen": "127.0.0.1:{rtsp}", "auth": "live"}},
@@ -286,6 +289,14 @@ fn ffmpeg_publishes_and_plays() {
             ),
             "{name}: rtsp play of an rtmp stream"
         );
+        // HTTP-FLV and HLS (fMP4, and MPEG-TS) of it.
+        for url in [
+            format!("http://127.0.0.1:{web}/live/a.flv"),
+            format!("http://127.0.0.1:{web}/hls/live/a/index.m3u8"),
+            format!("http://127.0.0.1:{web}/hls/live/a/index.m3u8?format=ts"),
+        ] {
+            assert!(plays(&url, &[], Duration::from_secs(20)), "{name}: {url}");
+        }
         let _ = good.kill();
         let _ = good.wait();
         // RTSP: the token in the URL's query. ffmpeg's SETUP after ANNOUNCE names the track

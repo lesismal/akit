@@ -247,7 +247,7 @@ Tunnel and LLM track; I110–I114 are the WebRTC track, and I115–I119 are rese
 | I120 | Streaming and media auth I: `media_auth` and `streaming` in the config | I79 | done |
 | I121 | Media auth II: the policies, the checks of HTTP requests, `akit media-token` | I120 | done |
 | I122 | Streaming I: the role's hub and its RTMP, RTSP and SRT listeners | I121, I100 | done |
-| I123 | Streaming II: `httpflv` and `hls` | I122 | todo |
+| I123 | Streaming II: `httpflv` and `hls` | I122 | done |
 | I124 | Streaming III: `streaming.webrtc`, `stream_whip` and `stream_whep` | I123 | todo |
 | I125 | The media pages: `media_pages`, its login and room API | I121, the WebRTC track's `whip` and `whep` | todo |
 | I126 | Media auth on `whip`, `whep` and `webrtc_proxy` | I121, the WebRTC track's handlers | todo |
@@ -2108,7 +2108,8 @@ the Media library and channels track's, refused as not supported yet until then.
   but for `stream_whip` and `stream_whep`.
 - **Touches**: `akit-media` (`handlers`), `akit-config`, `akit`, `tests/compat`, `docs/reference`.
 - **fit**: `streaming/handlers.go`; I116.
-- **Status**: todo.
+- **Status**: done (2026-11-27), the prefix and the second format on stopgaps (akio A266). See
+  the progress log.
 
 ### I124 Streaming III: `streaming.webrtc`, `stream_whip` and `stream_whep`
 

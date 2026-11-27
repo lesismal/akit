@@ -324,7 +324,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 1118 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 1136 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
@@ -340,8 +340,8 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`http.handlers/bt_tracker`](#fields-http-handlers-bt-tracker) | 2 | 2 | 0 |
 | [`http.handlers/fastcgi`](#fields-http-handlers-fastcgi) | 18 | 18 | 0 |
 | [`http.handlers/forward_proxy`](#fields-http-handlers-forward-proxy) | 8 | 8 | 0 |
-| [`http.handlers/hls`](#fields-http-handlers-hls) | 12 | 0 | 12 |
-| [`http.handlers/httpflv`](#fields-http-handlers-httpflv) | 6 | 0 | 6 |
+| [`http.handlers/hls`](#fields-http-handlers-hls) | 12 | 12 | 0 |
+| [`http.handlers/httpflv`](#fields-http-handlers-httpflv) | 6 | 6 | 0 |
 | [`http.handlers/media_pages`](#fields-http-handlers-media-pages) | 29 | 0 | 29 |
 | [`http.handlers/media_tokens`](#fields-http-handlers-media-tokens) | 11 | 0 | 11 |
 | [`http.handlers/proxy`](#fields-http-handlers-proxy) | 20 | 19 | 1 |
@@ -449,7 +449,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`tunnel`](#fields-tunnel) | 164 | 161 | 3 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 76 | 0 |
-| **合计** | 3821 | 1118 | 2703 |
+| **合计** | 3821 | 1136 | 2685 |
 
 <a id="fields-access"></a>
 
@@ -929,18 +929,18 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 | 字段 | 类型 | 状态 |
 | --- | --- | --- |
-| `routes[].handler<hls>` | `module` | 尚不支持（not supported yet） |
-| `routes[].handler<hls>.params` | `object` | 尚不支持（not supported yet） |
-| `routes[].handler<hls>.params.auth` | `string` | 尚不支持（not supported yet） |
-| `routes[].handler<hls>.params.cors` | `string` | 尚不支持（not supported yet） |
-| `routes[].handler<hls>.params.format` | `enum(fmp4\|ts)` | 尚不支持（not supported yet） |
-| `routes[].handler<hls>.params.idle_timeout` | `duration` | 尚不支持（not supported yet） |
-| `routes[].handler<hls>.params.max_bytes` | `integer` | 尚不支持（not supported yet） |
-| `routes[].handler<hls>.params.part_duration` | `duration` | 尚不支持（not supported yet） |
-| `routes[].handler<hls>.params.play_wait` | `duration` | 尚不支持（not supported yet） |
-| `routes[].handler<hls>.params.playlist_size` | `integer` | 尚不支持（not supported yet） |
-| `routes[].handler<hls>.params.prefix` | `string` | 尚不支持（not supported yet） |
-| `routes[].handler<hls>.params.target_duration` | `duration` | 尚不支持（not supported yet） |
+| `routes[].handler<hls>` | `module` | 已支持 |
+| `routes[].handler<hls>.params` | `object` | 已支持 |
+| `routes[].handler<hls>.params.auth` | `string` | 已支持 |
+| `routes[].handler<hls>.params.cors` | `string` | 已支持 |
+| `routes[].handler<hls>.params.format` | `enum(fmp4\|ts)` | 已支持 |
+| `routes[].handler<hls>.params.idle_timeout` | `duration` | 已支持 |
+| `routes[].handler<hls>.params.max_bytes` | `integer` | 已支持 |
+| `routes[].handler<hls>.params.part_duration` | `duration` | 已支持 |
+| `routes[].handler<hls>.params.play_wait` | `duration` | 已支持 |
+| `routes[].handler<hls>.params.playlist_size` | `integer` | 已支持 |
+| `routes[].handler<hls>.params.prefix` | `string` | 已支持 |
+| `routes[].handler<hls>.params.target_duration` | `duration` | 已支持 |
 
 <a id="fields-http-handlers-httpflv"></a>
 
@@ -948,12 +948,12 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 | 字段 | 类型 | 状态 |
 | --- | --- | --- |
-| `routes[].handler<httpflv>` | `module` | 尚不支持（not supported yet） |
-| `routes[].handler<httpflv>.params` | `object` | 尚不支持（not supported yet） |
-| `routes[].handler<httpflv>.params.auth` | `string` | 尚不支持（not supported yet） |
-| `routes[].handler<httpflv>.params.cors` | `string` | 尚不支持（not supported yet） |
-| `routes[].handler<httpflv>.params.prefix` | `string` | 尚不支持（not supported yet） |
-| `routes[].handler<httpflv>.params.wait` | `duration` | 尚不支持（not supported yet） |
+| `routes[].handler<httpflv>` | `module` | 已支持 |
+| `routes[].handler<httpflv>.params` | `object` | 已支持 |
+| `routes[].handler<httpflv>.params.auth` | `string` | 已支持 |
+| `routes[].handler<httpflv>.params.cors` | `string` | 已支持 |
+| `routes[].handler<httpflv>.params.prefix` | `string` | 已支持 |
+| `routes[].handler<httpflv>.params.wait` | `duration` | 已支持 |
 
 <a id="fields-http-handlers-media-pages"></a>
 

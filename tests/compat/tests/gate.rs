@@ -3718,6 +3718,9 @@ fn akit_config_lists_match_the_inventory() {
             None,
         ),
         ("streaming.access", "ACCESS_FIELDS", None),
+        // I123: the streaming role's handlers.
+        ("routes[].handler<httpflv>.params", "HTTPFLV_FIELDS", None),
+        ("routes[].handler<hls>.params", "HLS_FIELDS", None),
     ];
     let mapped: BTreeSet<&str> = objects
         .iter()
@@ -3806,6 +3809,8 @@ fn akit_config_lists_match_the_inventory() {
         "whep",
         "webrtc_proxy",
         "bt_tracker",
+        "httpflv",
+        "hls",
     ] {
         assert!(handlers.insert(h.to_owned()), "FIT_HANDLERS lists {h}");
     }
@@ -3828,8 +3833,8 @@ fn akit_config_lists_match_the_inventory() {
     read.insert("routes[].handler<fastcgi>.params".to_owned());
     read.insert("routes[].handler<forward_proxy>".to_owned());
     read.insert("routes[].handler<forward_proxy>.params".to_owned());
-    // I110: the WebRTC handlers.
-    for h in ["whip", "whep", "webrtc_proxy"] {
+    // I110: the WebRTC handlers; I123: the streaming role's.
+    for h in ["whip", "whep", "webrtc_proxy", "httpflv", "hls"] {
         read.insert(format!("routes[].handler<{h}>"));
         read.insert(format!("routes[].handler<{h}>.params"));
     }
@@ -3983,7 +3988,7 @@ fn inventory_paths_for_akit_config_paths() {
 fn findings_from_akit_config_errors() {
     let errs = akit_config::from_json(
         r#"{"listeners": [{"name": "w", "address": ":1", "mptcp": true}],
-            "routes": [{"handler": {"module": "hls"}}], "engine": {"loop_wait": "1ms"}}"#,
+            "routes": [{"handler": {"module": "vod"}}], "engine": {"loop_wait": "1ms"}}"#,
         None,
     )
     .unwrap_err();
@@ -3994,7 +3999,7 @@ fn findings_from_akit_config_errors() {
         .collect();
     let want: BTreeSet<String> = [
         "listeners[0].mptcp",
-        "routes[0].handler<hls>",
+        "routes[0].handler<vod>",
         "engine.loop_wait",
     ]
     .iter()

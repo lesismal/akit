@@ -394,7 +394,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 1118 supported.
+3821 fields in 121 sections, at fit `7daee573`; 1136 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -410,8 +410,8 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`http.handlers/bt_tracker`](#fields-http-handlers-bt-tracker) | 2 | 2 | 0 |
 | [`http.handlers/fastcgi`](#fields-http-handlers-fastcgi) | 18 | 18 | 0 |
 | [`http.handlers/forward_proxy`](#fields-http-handlers-forward-proxy) | 8 | 8 | 0 |
-| [`http.handlers/hls`](#fields-http-handlers-hls) | 12 | 0 | 12 |
-| [`http.handlers/httpflv`](#fields-http-handlers-httpflv) | 6 | 0 | 6 |
+| [`http.handlers/hls`](#fields-http-handlers-hls) | 12 | 12 | 0 |
+| [`http.handlers/httpflv`](#fields-http-handlers-httpflv) | 6 | 6 | 0 |
 | [`http.handlers/media_pages`](#fields-http-handlers-media-pages) | 29 | 0 | 29 |
 | [`http.handlers/media_tokens`](#fields-http-handlers-media-tokens) | 11 | 0 | 11 |
 | [`http.handlers/proxy`](#fields-http-handlers-proxy) | 20 | 19 | 1 |
@@ -519,7 +519,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 161 | 3 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 76 | 0 |
-| **Total** | 3821 | 1118 | 2703 |
+| **Total** | 3821 | 1136 | 2685 |
 
 <a id="fields-access"></a>
 
@@ -999,18 +999,18 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 | Field | Type | Status |
 | --- | --- | --- |
-| `routes[].handler<hls>` | `module` | not supported yet |
-| `routes[].handler<hls>.params` | `object` | not supported yet |
-| `routes[].handler<hls>.params.auth` | `string` | not supported yet |
-| `routes[].handler<hls>.params.cors` | `string` | not supported yet |
-| `routes[].handler<hls>.params.format` | `enum(fmp4\|ts)` | not supported yet |
-| `routes[].handler<hls>.params.idle_timeout` | `duration` | not supported yet |
-| `routes[].handler<hls>.params.max_bytes` | `integer` | not supported yet |
-| `routes[].handler<hls>.params.part_duration` | `duration` | not supported yet |
-| `routes[].handler<hls>.params.play_wait` | `duration` | not supported yet |
-| `routes[].handler<hls>.params.playlist_size` | `integer` | not supported yet |
-| `routes[].handler<hls>.params.prefix` | `string` | not supported yet |
-| `routes[].handler<hls>.params.target_duration` | `duration` | not supported yet |
+| `routes[].handler<hls>` | `module` | supported |
+| `routes[].handler<hls>.params` | `object` | supported |
+| `routes[].handler<hls>.params.auth` | `string` | supported |
+| `routes[].handler<hls>.params.cors` | `string` | supported |
+| `routes[].handler<hls>.params.format` | `enum(fmp4\|ts)` | supported |
+| `routes[].handler<hls>.params.idle_timeout` | `duration` | supported |
+| `routes[].handler<hls>.params.max_bytes` | `integer` | supported |
+| `routes[].handler<hls>.params.part_duration` | `duration` | supported |
+| `routes[].handler<hls>.params.play_wait` | `duration` | supported |
+| `routes[].handler<hls>.params.playlist_size` | `integer` | supported |
+| `routes[].handler<hls>.params.prefix` | `string` | supported |
+| `routes[].handler<hls>.params.target_duration` | `duration` | supported |
 
 <a id="fields-http-handlers-httpflv"></a>
 
@@ -1018,12 +1018,12 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 | Field | Type | Status |
 | --- | --- | --- |
-| `routes[].handler<httpflv>` | `module` | not supported yet |
-| `routes[].handler<httpflv>.params` | `object` | not supported yet |
-| `routes[].handler<httpflv>.params.auth` | `string` | not supported yet |
-| `routes[].handler<httpflv>.params.cors` | `string` | not supported yet |
-| `routes[].handler<httpflv>.params.prefix` | `string` | not supported yet |
-| `routes[].handler<httpflv>.params.wait` | `duration` | not supported yet |
+| `routes[].handler<httpflv>` | `module` | supported |
+| `routes[].handler<httpflv>.params` | `object` | supported |
+| `routes[].handler<httpflv>.params.auth` | `string` | supported |
+| `routes[].handler<httpflv>.params.cors` | `string` | supported |
+| `routes[].handler<httpflv>.params.prefix` | `string` | supported |
+| `routes[].handler<httpflv>.params.wait` | `duration` | supported |
 
 <a id="fields-http-handlers-media-pages"></a>
 

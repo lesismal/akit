@@ -119,6 +119,7 @@
 | A263 | akio-media 的 RTMP 服务器：按服务器设置的消息上限，按 fit 的方式告知拒绝（`NetStream.Publish.Unauthorized`、`NetStream.Play.Failed`、重试），订阅成功之后才发播放的状态，从接受连接到推流或播放的期限 | 由 I120 提出 | 4, 11, 19 | I122 |
 | A264 | akio-media 的 RTSP 服务器：每个请求（其方法、URL、`Authorization` 和连接的会话）上的钩子，可以答复该请求；DESCRIBE 经过 hub 的播放钩子；为各轨道保留 URL 的查询参数（`Content-Base`），并接受写在轨道控制之前的查询参数（`.../cam?token=T/streamid=0`）；无会话连接的空闲期限 | 由 I120 提出 | 4, 19 | I122 |
 | A265 | akio-media 的 SRT 服务器：把访问控制语法的 stream ID 中资源的查询参数（`#!::r=live/cam?token=T,m=publish`）与流的路径分开，与普通 stream ID 相同 | 由 I122 提出 | 19 | I122 |
+| A266 | akio-media 的 `HttpFlv` 和 `Hls` 在路径前缀下工作，请求路径保持原样；一个 `Hls` 同时提供两种分片格式（`?format=`） | 由 I123 提出 | 13, 19 | I123 |
 | A264 | akio-media 的 RTSP 服务器：每个请求（其方法、URL、`Authorization` 和连接的会话）上的钩子，可以答复该请求；DESCRIBE 经过 hub 的播放钩子；无会话连接的空闲期限 | 由 I120 提出 | 4, 19 | I122 |
 | A283 | 运行在调用者引擎上的 BitTorrent 客户端（fit 向 fib 提出的 A79） | 已提出；临时做法：客户端使用它自己的引擎 | 16 | I152 |
 | A284 | BitTorrent 客户端按地址拒绝 peer、限制其连接数和同时拨号数、在运行时修改其限制（fib 的 A77、A78） | 已提出；在此之前客户端的 `access`、`max_conns`、`max_half_open` 和 `disk_queue_bytes` 以"尚不支持"拒绝 | 11 | I152, I154 |
@@ -2243,6 +2244,23 @@ URL 的查询参数，因此客户端随后发送的 SETUP 和 PLAY 不带凭据
 
 **akit 如何使用。** `akit_media::streaming` 的 SRT 连接钩子像读取普通 stream ID 那样读取查询参数中的 token 或用户和密码，并不再
 拒绝这样的 stream ID。
+
+## A266 akio-media 的 HTTP-FLV 和 HLS 在路径前缀下工作，以及同时提供两种格式的 HLS
+
+**状态。** 由 I123 提出（2026-11-27）。没有工作等它：akit 的 `httpflv` 和 `hls` 在 `prefix` 不是 `/` 时，调用 akio-media 之前把
+请求路径设为去掉前缀的路径，`hls` 每种格式各用一个 `Hls`（临时做法记录在[进度](progress.zh-CN.md)中）。
+
+**问题。** fit 的处理器在路由的前缀下提供其流（`/hls/live/cam/index.m3u8` 播放 `live/cam`），并由同一个处理器提供任一种分片
+格式，另一种用 `?format=`。akio-media 的 `HttpFlv` 和 `Hls` 从整个路径取流，且一个 `Hls` 只有一种格式。为适配它们而修改路径会
+改变访问日志写的内容，两个 `Hls` 则在两个 `max_bytes` 下保存两套分片。
+
+**证据。** 在 akio `8a9601b9` 中，`akio-media/src/httpflv.rs`：`path_of(ctx.path(), ".flv")`；`hls.rs`：`HlsConfig::format`，
+一个 `SegmentFormat`，播放列表的路径从 `ctx.path()` 解析。
+
+**建议的 API。** `HttpFlvConfig::prefix` 和 `HlsConfig::prefix`（路径中流之前的部分），以及 `HlsConfig::formats`（同一个 `Hls`
+提供的更多格式，播放列表按 `?format=` 选择，分片按扩展名选择），与 fib 的 `HandlerConfig.Prefix` 和 `Formats` 相同。
+
+**akit 如何使用。** `akit_media::handlers` 把前缀和两种格式交给各自的一个服务，不再改写请求路径。
 ## A283 运行在调用者引擎上的 BitTorrent 客户端
 
 **状态。** 由 I150 为 I152 提出（2026-11-27）。临时做法：客户端角色在 `Client::new` 为它建立的引擎上运行

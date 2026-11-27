@@ -23,5 +23,9 @@ akit-observe = { workspace = true }
 akit-roles = { workspace = true }
 akit-runtime = { workspace = true }
 
+[dev-dependencies]
+# The handlers through akit's listener (tests/handlers.rs).
+akit-listener = { workspace = true }
+
 [lints]
 workspace = true

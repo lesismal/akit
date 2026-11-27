@@ -922,5 +922,202 @@ pub(crate) fn check_refs(d: &mut Decoder<'_>, refs: &[AuthRef], policies: &[Medi
     }
 }
 
+// I123: the handlers that play the streaming role's streams over HTTP.
+
+/// fit's default `hls` `target_duration`.
+pub const DEFAULT_HLS_TARGET_DURATION: Duration = Duration::from_secs(2);
+/// fit's default `hls` `playlist_size`.
+pub const DEFAULT_HLS_PLAYLIST_SIZE: usize = 6;
+/// fit's most `hls` `playlist_size`.
+pub const MAX_HLS_PLAYLIST_SIZE: usize = 100;
+/// fit's default `hls` `max_bytes`.
+pub const DEFAULT_HLS_MAX_BYTES: u64 = 32 << 20;
+/// fit's default `hls` `idle_timeout`.
+pub const DEFAULT_HLS_IDLE_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// The `httpflv` handler's params, as fit's `streaming.HTTPFLV`: the role's streams played as
+/// HTTP-FLV, and as WebSocket-FLV to an upgrade.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct HttpFlv {
+    /// `prefix`: the part of the path before the stream's; `/` when left out.
+    pub prefix: String,
+    /// `auth`: the `media_auth` policy a player must satisfy; empty for none.
+    pub auth: String,
+    /// `wait`: how long a player may wait for a publisher; none when 0.
+    pub wait: Duration,
+    /// `cors`: sent as `Access-Control-Allow-Origin`; none when empty.
+    pub cors: String,
+    /// The policy `auth` names, from the config, for the handler to compile when the role
+    /// `media_auth` has not applied it yet.
+    pub policy: Option<MediaAuth>,
+}
+
+/// The segment format of an `hls` playlist (`format`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum HlsFormat {
+    /// `fmp4`, fragmented MP4 (the default).
+    #[default]
+    Fmp4,
+    /// `ts`, MPEG-TS.
+    Ts,
+}
+
+/// The `hls` handler's params, as fit's `streaming.HLS`.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Hls {
+    /// `prefix`: the part of the path before the stream's; `/` when left out.
+    pub prefix: String,
+    /// `auth`: the `media_auth` policy every request must satisfy; empty for none.
+    pub auth: String,
+    /// `format`: the segment format of a playlist's URL without `?format=`.
+    pub format: HlsFormat,
+    /// `target_duration`: [`DEFAULT_HLS_TARGET_DURATION`] when 0.
+    pub target_duration: Duration,
+    /// `part_duration`: Low-Latency HLS's parts; off when 0.
+    pub part_duration: Duration,
+    /// `playlist_size`: [`DEFAULT_HLS_PLAYLIST_SIZE`] when 0.
+    pub playlist_size: usize,
+    /// `max_bytes`: [`DEFAULT_HLS_MAX_BYTES`] when 0.
+    pub max_bytes: u64,
+    /// `play_wait`: how long a playlist request may wait for a publisher; none when 0.
+    pub play_wait: Duration,
+    /// `idle_timeout`: [`DEFAULT_HLS_IDLE_TIMEOUT`] when 0.
+    pub idle_timeout: Duration,
+    /// `cors`: sent as `Access-Control-Allow-Origin`; none when empty.
+    pub cors: String,
+    /// The policy `auth` names, from the config ([`HttpFlv::policy`]).
+    pub policy: Option<MediaAuth>,
+}
+
+impl Hls {
+    /// `target_duration`, or its default.
+    #[must_use]
+    pub fn target(&self) -> Duration {
+        or(self.target_duration, DEFAULT_HLS_TARGET_DURATION)
+    }
+
+    /// `playlist_size`, or its default.
+    #[must_use]
+    pub fn playlist(&self) -> usize {
+        or_count(self.playlist_size, DEFAULT_HLS_PLAYLIST_SIZE)
+    }
+
+    /// `max_bytes`, or its default.
+    #[must_use]
+    pub fn bytes(&self) -> u64 {
+        if self.max_bytes == 0 {
+            DEFAULT_HLS_MAX_BYTES
+        } else {
+            self.max_bytes
+        }
+    }
+
+    /// `idle_timeout`, or its default.
+    #[must_use]
+    pub fn idle(&self) -> Duration {
+        or(self.idle_timeout, DEFAULT_HLS_IDLE_TIMEOUT)
+    }
+}
+
+const HTTPFLV_FIELDS: &[&str] = &["prefix", "auth", "wait", "cors"];
+const HLS_FIELDS: &[&str] = &[
+    "prefix",
+    "auth",
+    "format",
+    "target_duration",
+    "part_duration",
+    "playlist_size",
+    "max_bytes",
+    "play_wait",
+    "idle_timeout",
+    "cors",
+];
+
+/// A handler's `prefix`: it starts with `/`, and ends with one once read (fit's `provision`).
+fn prefix(d: &mut Decoder<'_>, o: &mut Obj<'_>) -> String {
+    match text_at(d, o, "prefix") {
+        Some((p, off)) if !p.is_empty() => {
+            if !p.starts_with('/') {
+                d.error(off, &o.at("prefix"), format!("{p:?} does not start with /"));
+            }
+            if p.ends_with('/') { p } else { format!("{p}/") }
+        }
+        _ => "/".to_owned(),
+    }
+}
+
+/// Decodes the `httpflv` handler's params; none is every default.
+pub(crate) fn httpflv(d: &mut Decoder<'_>, params: Option<&Node>, path: &str) -> Option<HttpFlv> {
+    let Some(n) = params else {
+        return Some(HttpFlv {
+            prefix: "/".into(),
+            ..HttpFlv::default()
+        });
+    };
+    let mut o = d.object(n, path)?;
+    let h = HttpFlv {
+        prefix: prefix(d, &mut o),
+        auth: text(d, &mut o, "auth"),
+        wait: duration(d, &mut o, "wait"),
+        cors: text(d, &mut o, "cors"),
+        policy: None,
+    };
+    o.finish(d, HTTPFLV_FIELDS, &[]);
+    Some(h)
+}
+
+/// Decodes the `hls` handler's params; none is every default.
+pub(crate) fn hls(d: &mut Decoder<'_>, params: Option<&Node>, path: &str) -> Option<Hls> {
+    let Some(n) = params else {
+        return Some(Hls {
+            prefix: "/".into(),
+            ..Hls::default()
+        });
+    };
+    let mut o = d.object(n, path)?;
+    let mut h = Hls {
+        prefix: prefix(d, &mut o),
+        auth: text(d, &mut o, "auth"),
+        ..Hls::default()
+    };
+    if let Some((f, off)) = text_at(d, &mut o, "format") {
+        match f.as_str() {
+            "" | "fmp4" => {}
+            "ts" => h.format = HlsFormat::Ts,
+            _ => d.error(
+                off,
+                &o.at("format"),
+                format!("{f:?} is not one of \"fmp4\", \"ts\""),
+            ),
+        }
+    }
+    h.target_duration = duration(d, &mut o, "target_duration");
+    if let Some(v) = o.take("part_duration") {
+        let p = o.at("part_duration");
+        if let Some(t) = d.duration(v, &p) {
+            if !t.is_zero() && !(Duration::from_millis(100)..=Duration::from_secs(5)).contains(&t) {
+                d.error(
+                    v.off,
+                    &p,
+                    format!("{} is not between 100ms and 5s", crate::duration::format(t)),
+                );
+            }
+            h.part_duration = t;
+        }
+    }
+    let max = i64::try_from(MAX_HLS_PLAYLIST_SIZE).unwrap_or(i64::MAX);
+    h.playlist_size = count(d, &mut o, "playlist_size", max);
+    h.max_bytes = o
+        .take("max_bytes")
+        .and_then(|v| d.int(v, &o.at("max_bytes"), 0, i64::MAX))
+        .and_then(|n| u64::try_from(n).ok())
+        .unwrap_or(0);
+    h.play_wait = duration(d, &mut o, "play_wait");
+    h.idle_timeout = duration(d, &mut o, "idle_timeout");
+    h.cors = text(d, &mut o, "cors");
+    o.finish(d, HLS_FIELDS, &[]);
+    Some(h)
+}
+
 #[cfg(test)]
 mod tests;

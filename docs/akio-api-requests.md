@@ -120,6 +120,7 @@ first; its status here records the branch, then the akio commit akit pins.
 | A263 | akio-media's RTMP server: a message bound set per server, a refusal told as fit's (`NetStream.Publish.Unauthorized`, `NetStream.Play.Failed`, a retry), the play's statuses after its subscription, a deadline from accept to publish or play | requested by I120 | 4, 11, 19 | I122 |
 | A264 | akio-media's RTSP server: a hook on each request (its method, URL, `Authorization` and the connection's session) that may answer it; DESCRIBE asked of the hub's play hook; a URL's query kept for the tracks (`Content-Base`) and taken before a track's control (`.../cam?token=T/streamid=0`); an idle deadline for a connection without a session | requested by I120 | 4, 19 | I122 |
 | A265 | akio-media's SRT server: the query of an access control stream ID's resource (`#!::r=live/cam?token=T,m=publish`) split from the stream's path, as of a plain one | requested by I122 | 19 | I122 |
+| A266 | akio-media's `HttpFlv` and `Hls` under a path prefix, the request's path left as it came; one `Hls` serving both segment formats (`?format=`) | requested by I123 | 13, 19 | I123 |
 | A264 | akio-media's RTSP server: a hook on each request (its method, URL, `Authorization` and the connection's session) that may answer it; DESCRIBE asked of the hub's play hook; an idle deadline for a connection without a session | requested by I120 | 4, 19 | I122 |
 | A283 | The BitTorrent client on the caller's engine (fit's fib A79) | requested; stopgap: the client on an engine of its own | 16 | I152 |
 | A284 | The BitTorrent client's peers refused by address, its connections and dials bounded, its limits changed at run time (fib's A77, A78) | requested; until then the client's `access`, `max_conns`, `max_half_open` and `disk_queue_bytes` are refused as not supported yet | 11 | I152, I154 |
@@ -2797,6 +2798,29 @@ query refused), as fit's; or a parse hook in `SrtConfig`.
 **How akit would use it.** `akit_media::streaming`'s SRT connect hook reads the query's token, or
 user and pass, as it does a plain stream ID's, and stops refusing such stream IDs.
 
+## A266 akio-media's HTTP-FLV and HLS under a path prefix, and HLS of both formats
+
+**Status.** Requested by I123 (2026-11-27). Nothing waits for it: akit's `httpflv` and `hls` with a
+`prefix` other than `/` set the request's path without it before calling akio-media, and `hls`
+keeps one `Hls` a format (a stopgap recorded in [progress](progress.md)).
+
+**Problem.** fit's handlers serve their streams under a route's prefix (`/hls/live/cam/index.m3u8`
+plays `live/cam`) and play either segment format from one handler, the other with `?format=`.
+akio-media's `HttpFlv` and `Hls` take the stream from the whole path, and an `Hls` has one format.
+Setting the path to fit them changes what the access log writes, and two `Hls` keep two sets of
+segments under two `max_bytes`.
+
+**Evidence.** At akio `8a9601b9`, `akio-media/src/httpflv.rs`: `path_of(ctx.path(), ".flv")`;
+`hls.rs`: `HlsConfig::format`, one `SegmentFormat`, and the playlist's path parsed from
+`ctx.path()`.
+
+**Suggested API.** `HttpFlvConfig::prefix` and `HlsConfig::prefix` (the part of the path before the
+stream's), and `HlsConfig::formats` (more formats served by the same `Hls`, chosen by `?format=`
+for a playlist and by the extension for a segment), as fib's `HandlerConfig.Prefix` and
+`Formats`.
+
+**How akit would use it.** `akit_media::handlers` hands the prefix and both formats to one service
+each and stops rewriting the request's path.
 ## A283 The BitTorrent client on the caller's engine
 
 **Status.** Requested by I150 (2026-11-27) for I152. Stopgap: the client role runs

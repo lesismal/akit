@@ -1407,6 +1407,10 @@ pub enum Handler {
     /// The `wasm` middleware: a WebAssembly plugin of akit's ABI run for each request, on a pool
     /// of its own (I71).
     Wasm(crate::wasm::Wasm),
+    /// The `httpflv` handler: the streaming role's streams as HTTP-FLV and WebSocket-FLV (I123).
+    HttpFlv(crate::media::HttpFlv),
+    /// The `hls` handler: the streaming role's streams over HLS (I123).
+    Hls(crate::media::Hls),
     /// A module akit's config model does not know: one built in with `akit build` (I70), its
     /// params kept as written for the module to decode. Whether the binary has it is the
     /// registry's to say, when the config is compiled, as fit's `module.Load` says.
@@ -1435,6 +1439,8 @@ impl Handler {
             Handler::Static(_) => "static",
             Handler::Proxy(_) => "proxy",
             Handler::FastCgi(_) => "fastcgi",
+            Handler::HttpFlv(_) => "httpflv",
+            Handler::Hls(_) => "hls",
             Handler::ForwardProxy(_) => "forward_proxy",
             Handler::Whip(_) => "whip",
             Handler::Whep(_) => "whep",
@@ -2458,8 +2464,6 @@ const MODULE_FIELDS: &[&str] = &["module", "params"];
 const FIT_HANDLERS: &[&str] = &[
     "bt_publish",
     "bt_stream",
-    "hls",
-    "httpflv",
     "media_pages",
     "media_tokens",
     "stream_whep",
@@ -3080,6 +3084,26 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
     );
     crate::binds::report(ds, clashes);
     let media_auth = media_auth.map(|(m, _)| m).unwrap_or_default();
+    // The policies the media handlers name (I123), each handed the policy's config.
+    for r in &mut routes {
+        let auth = match &mut r.v.handler {
+            Handler::HttpFlv(h) => Some((&h.auth, &mut h.policy)),
+            Handler::Hls(h) => Some((&h.auth, &mut h.policy)),
+            _ => None,
+        };
+        let Some((name, policy)) = auth.filter(|(n, _)| !n.is_empty()) else {
+            continue;
+        };
+        match media_auth.iter().find(|p| p.name == *name) {
+            Some(p) => *policy = Some(p.clone()),
+            None => {
+                let msg = format!("there is no media_auth policy named {name:?}");
+                if let Some(d) = ds.get_mut(r.file) {
+                    d.error(r.off, &format!("{}.handler.params.auth", r.path), msg);
+                }
+            }
+        }
+    }
     // The policies the role's listeners name, once every file is read (fit's checkStreaming).
     let streaming = streaming.map(|((s, refs), file)| {
         if let Some(d) = ds.get_mut(file) {
@@ -4703,6 +4727,9 @@ fn handler(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<Handler> {
         "static" => static_files(d, params, off, &params_path).map(Handler::Static),
         "proxy" => proxy(d, params, &params_path, off).map(Handler::Proxy),
         "fastcgi" => crate::fastcgi::fastcgi(d, params, off, &params_path).map(Handler::FastCgi),
+        // I123: the streaming role's HTTP egress.
+        "httpflv" => crate::media::httpflv(d, params, &params_path).map(Handler::HttpFlv),
+        "hls" => crate::media::hls(d, params, &params_path).map(Handler::Hls),
         "forward_proxy" => {
             let Some(n) = params else {
                 d.error(

@@ -233,6 +233,18 @@
     "streaming.srt.auth": {
       "en": "A token in the access control syntax's resource (`#!::r=live/cam?token=T,m=publish`) is refused with 1400 until akio A265: give it as `s=`, or in a plain stream ID's query (`live/cam?token=T`).",
       "zh": "在 akio A265 之前，放在访问控制语法资源中的 token（`#!::r=live/cam?token=T,m=publish`）以 1400 拒绝：请放在 `s=` 中，或放在普通 stream ID 的查询参数中（`live/cam?token=T`）。"
+    },
+    "routes[].handler<httpflv>.params.prefix": {
+      "en": "akio-media's service reads the stream from the request's path: with a prefix other than `/`, akit hands it the path without the prefix, which the access log then writes (akio A266).",
+      "zh": "akio-media 的服务从请求路径中读取流：前缀不是 `/` 时，akit 把去掉前缀的路径交给它，访问日志随后写的也是这个路径（akio A266）。"
+    },
+    "routes[].handler<hls>.params.prefix": {
+      "en": "akio-media's service reads the stream from the request's path: with a prefix other than `/`, akit hands it the path without the prefix, which the access log then writes (akio A266).",
+      "zh": "akio-media 的服务从请求路径中读取流：前缀不是 `/` 时，akit 把去掉前缀的路径交给它，访问日志随后写的也是这个路径（akio A266）。"
+    },
+    "routes[].handler<hls>.params.format": {
+      "en": "Two akio-media `Hls` services, one a format, share the handler's segments' bounds (akio A266: one `Hls` serving both).",
+      "zh": "两个 akio-media `Hls` 服务各管一种格式，共用处理器分片的上限（akio A266：一个 `Hls` 同时提供两种格式）。"
     }
   }
 }
