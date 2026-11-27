@@ -20,6 +20,9 @@ use akit_roles::host::Manager;
 
 const HASH: &str = "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy";
 
+/// A port free now, for a listener of fit's binary, whose config must name it before it starts:
+/// another process may take it before fit binds it. akit's own listeners bind port 0 and are
+/// asked where they listen.
 fn free_port() -> u16 {
     TcpListener::bind("127.0.0.1:0")
         .unwrap()
@@ -102,16 +105,35 @@ impl Drop for Env {
     }
 }
 
-/// A hub whose console is on `console`, its socket's, and a proxy's web proxy to it.
+/// Applies `doc` on `roles`, which must take it.
+fn apply(roles: &mut Manager, doc: &str) {
+    let config = akit_config::from_json(doc, None).unwrap_or_else(|e| panic!("{doc}\n{e}"));
+    let errs = roles.apply(&config);
+    assert!(errs.is_empty(), "{errs:?}");
+}
+
+/// The port the first web proxy of the proxy of `roles` bound (port 0 in its config).
+fn web_port(roles: &Manager) -> u16 {
+    roles
+        .api("tunnel.proxy")
+        .unwrap()
+        .downcast_ref::<akit_tunnel::proxy::ProxyApi>()
+        .unwrap()
+        .web_proxies()
+        .first()
+        .and_then(|w| w.addr.parse::<std::net::SocketAddr>().ok())
+        .expect("the web proxy's address")
+        .port()
+}
+
+/// A hub whose console is on `console`, its socket's, and a proxy's web proxy to it: the hub
+/// first, its socket on port 0, then the proxy given the address the socket bound, its web proxy
+/// on port 0 too.
 fn start(console: u16) -> Env {
-    let (sock, web) = (free_port(), free_port());
-    let doc = format!(
-        r#"{{"tunnel": {{
-          "hub": {{"name": "hub", "password": "pw", "console": {{"address": "127.0.0.1:{console}", "users": [{{"username": "admin", "password_hash": "{HASH}"}}]}},
-                   "console_socket": {{"address": "127.0.0.1:{sock}", "password": "sock"}}}},
-          "proxy": {{"name": "me", "web_proxies": [{{"name": "hub", "listen": "127.0.0.1:{web}", "url": "ws://127.0.0.1:{sock}/", "password": "sock"}}]}}}}}}"#
+    let hub = format!(
+        r#""hub": {{"name": "hub", "password": "pw", "console": {{"address": "127.0.0.1:{console}", "users": [{{"username": "admin", "password_hash": "{HASH}"}}]}},
+                   "console_socket": {{"address": "127.0.0.1:0", "password": "sock"}}}}"#
     );
-    let config = akit_config::from_json(&doc, None).unwrap_or_else(|e| panic!("{doc}\n{e}"));
     let engine = akio::Engine::builder().client_threads(2).build().unwrap();
     engine.start().unwrap();
     let engine = Arc::new(engine);
@@ -120,8 +142,22 @@ fn start(console: u16) -> Env {
         Arc::clone(&engine),
         None,
     );
-    let errs = roles.apply(&config);
-    assert!(errs.is_empty(), "{errs:?}");
+    apply(&mut roles, &format!(r#"{{"tunnel": {{{hub}}}}}"#));
+    let sock = roles
+        .api("tunnel.hub")
+        .unwrap()
+        .downcast_ref::<akit_tunnel::hub::HubApi>()
+        .unwrap()
+        .socket_addr()
+        .expect("the console socket's address");
+    apply(
+        &mut roles,
+        &format!(
+            r#"{{"tunnel": {{{hub},
+              "proxy": {{"name": "me", "web_proxies": [{{"name": "hub", "listen": "127.0.0.1:0", "url": "ws://{sock}/", "password": "sock"}}]}}}}}}"#
+        ),
+    );
+    let web = web_port(&roles);
     Env { engine, roles, web }
 }
 
@@ -304,7 +340,7 @@ fn with_fits_hub_and_proxy() {
         return;
     };
     // fit's hub, akit's proxy.
-    let (con, sock, web) = (free_port(), free_port(), free_port());
+    let (con, sock) = (free_port(), free_port());
     let _hub = fit(
         &bin,
         "hub",
@@ -318,13 +354,10 @@ fn with_fits_hub_and_proxy() {
     let engine = Arc::new(engine);
     let mut roles = Manager::new(&[akit_tunnel::PROXY], Arc::clone(&engine), None);
     let doc = format!(
-        r#"{{"tunnel": {{"proxy": {{"name": "me", "web_proxies": [{{"name": "hub", "listen": "127.0.0.1:{web}", "url": "ws://127.0.0.1:{sock}/", "password": "sock"}}]}}}}}}"#
+        r#"{{"tunnel": {{"proxy": {{"name": "me", "web_proxies": [{{"name": "hub", "listen": "127.0.0.1:0", "url": "ws://127.0.0.1:{sock}/", "password": "sock"}}]}}}}}}"#
     );
-    assert!(
-        roles
-            .apply(&akit_config::from_json(&doc, None).unwrap())
-            .is_empty()
-    );
+    apply(&mut roles, &doc);
+    let web = web_port(&roles);
     let page = get_page(web, "/");
     assert!(
         page.starts_with("HTTP/1.1 200") && page.contains("core/workbench.js"),

@@ -25,14 +25,6 @@ pub(crate) const HASH: &str = "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68
 /// What a test console's page holds, as fit's tests look for its workbench.
 pub(crate) const PAGE_MARK: &str = "core/workbench.js";
 
-pub(crate) fn free_port() -> u16 {
-    TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port()
-}
-
 /// A console of the test's own: each request (its head, up to a blank line) answered with a page
 /// that names [`PAGE_MARK`], the connection closed after it.
 pub(crate) fn page_console() -> u16 {
@@ -197,9 +189,12 @@ impl WsClient {
     }
 }
 
-/// Reads what `s` sends until it closes, within 10 s.
+/// Reads what `s` sends until it closes, within 10 s. Nothing when the peer already reset it:
+/// macOS then refuses the timeout (`EINVAL`).
 pub(crate) fn read_to_end(s: &mut TcpStream) -> Vec<u8> {
-    s.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+    if s.set_read_timeout(Some(Duration::from_secs(10))).is_err() {
+        return Vec::new();
+    }
     let mut out = Vec::new();
     let _ = s.read_to_end(&mut out);
     out

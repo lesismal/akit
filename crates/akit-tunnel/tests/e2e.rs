@@ -16,6 +16,9 @@ use std::time::{Duration, Instant};
 use akit_roles::host::Manager;
 use akit_roles::linktoken::Secret;
 
+/// A port free now, for a listener of fit's binary, whose config must name it before it starts:
+/// another process may take it before fit binds it. akit's own listeners bind port 0 and are
+/// asked where they listen ([`hub_ports`], [`forward_ports`]).
 fn free_port() -> u16 {
     TcpListener::bind("127.0.0.1:0")
         .unwrap()
@@ -63,23 +66,57 @@ impl Drop for Env {
     }
 }
 
-/// The three roles, linked with `auth` (the members' fields) over TCP, with `body`.
+/// Applies `doc` on `roles`, which must take it.
+fn apply(roles: &mut Manager, doc: &str) {
+    let config = akit_config::from_json(doc, None).unwrap_or_else(|e| panic!("{doc}\n{e}"));
+    let errs = roles.apply(&config);
+    assert!(errs.is_empty(), "{errs:?}");
+}
+
+/// The ports the hub of `roles` listens on, by its listeners in order, as it bound them: their
+/// configs say port 0, so that no other process can take a port between its pick and the bind.
+fn hub_ports(roles: &Manager) -> Vec<u16> {
+    arr(&status(&hub_api(roles)), "listen")
+        .iter()
+        .map(|v| match v {
+            akit_config::value::Value::String(url) => port_of(url),
+            other => panic!("a listener's URL: {other:?}"),
+        })
+        .collect()
+}
+
+/// The ports the forwards of the proxy of `roles` listen on, in order, as they bound them (port
+/// 0 in their configs).
+fn forward_ports(roles: &Manager) -> Vec<u16> {
+    let api = roles
+        .api("tunnel.proxy")
+        .expect("the proxy's handle")
+        .downcast_ref::<akit_tunnel::proxy::ProxyApi>()
+        .expect("a ProxyApi")
+        .clone();
+    let st = akit_tunnel::msg::parse(api.status().as_bytes()).expect("the status is JSON");
+    arr(&st, "forwards")
+        .iter()
+        .map(|f| port_of(&akit_tunnel::msg::get_str(f, "addr")))
+        .collect()
+}
+
+/// The port of `url` (`127.0.0.1:1`, `quic://127.0.0.1:1`, `ws://127.0.0.1:1/t`).
+fn port_of(url: &str) -> u16 {
+    let rest = url.split_once("://").map_or(url, |(_, r)| r);
+    let host = rest.split('/').next().unwrap_or_default();
+    host.rsplit_once(':')
+        .and_then(|(_, p)| p.parse().ok())
+        .unwrap_or_else(|| panic!("no port in {url:?}"))
+}
+
+/// The three roles, linked with `auth` (the members' fields) over TCP, with `body`: the hub first,
+/// then the node and the proxy, given the port it bound.
 fn start(hub_auth: &str, peer_auth: (&str, &str), body: &str) -> Env {
-    let (hub, svc, fwd) = (free_port(), echo(), free_port());
-    let up = |auth: &str| {
-        format!(
-            r#"{{"name": "hub", "endpoints": [{{"address": "127.0.0.1:{hub}"}}], {auth}{body}, "pool_size": 2, "retry_interval": "100ms", "ping_interval": "200ms"}}"#
-        )
-    };
-    let doc = format!(
-        r#"{{"tunnel": {{
-          "hub": {{"name": "hub"{hub_auth}{body}, "listeners": [{{"protocol": "tcp", "address": "127.0.0.1:{hub}"}}]}},
-          "node": {{"name": "lab", "hubs": [{}], "services": [{{"name": "echo", "address": "127.0.0.1:{svc}"}}]}},
-          "proxy": {{"name": "alice", "hubs": [{}], "forwards": [{{"listen": "127.0.0.1:{fwd}", "node": "lab", "service": "echo"}}]}}}}}}"#,
-        up(peer_auth.0),
-        up(peer_auth.1)
+    let svc = echo();
+    let hub_member = format!(
+        r#""hub": {{"name": "hub"{hub_auth}{body}, "listeners": [{{"protocol": "tcp", "address": "127.0.0.1:0"}}]}}"#
     );
-    let config = akit_config::from_json(&doc, None).unwrap_or_else(|e| panic!("{doc}\n{e}"));
     let engine = akio::Engine::builder().client_threads(2).build().unwrap();
     engine.start().unwrap();
     let engine = Arc::new(engine);
@@ -88,12 +125,27 @@ fn start(hub_auth: &str, peer_auth: (&str, &str), body: &str) -> Env {
         Arc::clone(&engine),
         None,
     );
-    let errs = roles.apply(&config);
-    assert!(errs.is_empty(), "{errs:?}");
+    apply(&mut roles, &format!(r#"{{"tunnel": {{{hub_member}}}}}"#));
+    let hub = hub_ports(&roles)[0];
+    let up = |auth: &str| {
+        format!(
+            r#"{{"name": "hub", "endpoints": [{{"address": "127.0.0.1:{hub}"}}], {auth}{body}, "pool_size": 2, "retry_interval": "100ms", "ping_interval": "200ms"}}"#
+        )
+    };
+    let doc = format!(
+        r#"{{"tunnel": {{
+          {hub_member},
+          "node": {{"name": "lab", "hubs": [{}], "services": [{{"name": "echo", "address": "127.0.0.1:{svc}"}}]}},
+          "proxy": {{"name": "alice", "hubs": [{}], "forwards": [{{"listen": "127.0.0.1:0", "node": "lab", "service": "echo"}}]}}}}}}"#,
+        up(peer_auth.0),
+        up(peer_auth.1)
+    );
+    apply(&mut roles, &doc);
+    let forward = forward_ports(&roles)[0];
     Env {
         engine,
         roles,
-        forward: fwd,
+        forward,
     }
 }
 
@@ -227,8 +279,9 @@ fn a_token_another_member_holds_is_refused() {
 
 // I102: TLS links.
 
-/// A hub alone on `engine`, keeping its certificate beside `dir/akit.json`, with `listener`.
-fn hub_alone(engine: &Arc<akio::Engine>, dir: &std::path::Path, listener: &str) -> Manager {
+/// A hub alone on `engine`, keeping its certificate beside `dir/akit.json`, with `listener` (on
+/// port 0); and the port its listener bound.
+fn hub_alone(engine: &Arc<akio::Engine>, dir: &std::path::Path, listener: &str) -> (Manager, u16) {
     let doc = format!(
         r#"{{"tunnel": {{"hub": {{"name": "hub", "password": "pw", "listeners": [{listener}]}}}}}}"#
     );
@@ -237,18 +290,20 @@ fn hub_alone(engine: &Arc<akio::Engine>, dir: &std::path::Path, listener: &str) 
     m.keep_beside(dir.join("akit.json").to_str().unwrap());
     let errs = m.apply(&config);
     assert!(errs.is_empty(), "{errs:?}");
-    m
+    let port = hub_ports(&m)[0];
+    (m, port)
 }
 
-/// The node and the proxy, linking to `endpoint` with `check` (a pin or a CA file).
-fn peers(engine: &Arc<akio::Engine>, endpoint: &str, check: &str, svc: u16, fwd: u16) -> Manager {
+/// The node and the proxy, linking to `endpoint` with `check` (a pin or a CA file); and the port
+/// the proxy's forward bound.
+fn peers(engine: &Arc<akio::Engine>, endpoint: &str, check: &str, svc: u16) -> (Manager, u16) {
     let up = format!(
         r#"{{"name": "hub", "endpoints": [{{"address": "{endpoint}"}}], "password": "pw"{check}, "retry_interval": "100ms"}}"#
     );
     let doc = format!(
         r#"{{"tunnel": {{
           "node": {{"name": "lab", "hubs": [{up}], "services": [{{"name": "echo", "address": "127.0.0.1:{svc}"}}]}},
-          "proxy": {{"name": "alice", "hubs": [{up}], "forwards": [{{"listen": "127.0.0.1:{fwd}", "node": "lab", "service": "echo"}}]}}}}}}"#
+          "proxy": {{"name": "alice", "hubs": [{up}], "forwards": [{{"listen": "127.0.0.1:0", "node": "lab", "service": "echo"}}]}}}}}}"#
     );
     let config = akit_config::from_json(&doc, None).unwrap_or_else(|e| panic!("{doc}\n{e}"));
     let mut m = Manager::new(
@@ -258,7 +313,8 @@ fn peers(engine: &Arc<akio::Engine>, endpoint: &str, check: &str, svc: u16, fwd:
     );
     let errs = m.apply(&config);
     assert!(errs.is_empty(), "{errs:?}");
-    m
+    let fwd = forward_ports(&m)[0];
+    (m, fwd)
 }
 
 fn engine() -> Arc<akio::Engine> {
@@ -278,12 +334,8 @@ fn tmp(name: &str) -> std::path::PathBuf {
 fn tls_links_check_the_hubs_certificate_by_its_pin() {
     let dir = tmp("pin");
     let e = engine();
-    let (hub, svc) = (free_port(), echo());
-    let mut h = hub_alone(
-        &e,
-        &dir,
-        &format!(r#"{{"protocol": "tls", "address": "127.0.0.1:{hub}"}}"#),
-    );
+    let svc = echo();
+    let (mut h, hub) = hub_alone(&e, &dir, r#"{"protocol": "tls", "address": "127.0.0.1:0"}"#);
     let kept = dir.join("akit.tunnel.hub.pem");
     let pem =
         std::fs::read_to_string(&kept).expect("the hub keeps its certificate beside the config");
@@ -296,26 +348,22 @@ fn tls_links_check_the_hubs_certificate_by_its_pin() {
         assert_eq!(mode, 0o600);
     }
     // The pin links.
-    let fwd = free_port();
-    let mut p = peers(
+    let (mut p, fwd) = peers(
         &e,
         &format!("tls://127.0.0.1:{hub}"),
         &format!(r#", "pin": "{fp}""#),
         svc,
-        fwd,
     );
     let mut s = tunnel(fwd);
     round_trip(&mut s, 4 << 20);
     p.stop(Duration::ZERO);
     // Another pin does not: the handshake is checked before a byte is sent.
-    let fwd = free_port();
     let other = "ab".repeat(32);
-    let mut p = peers(
+    let (mut p, fwd) = peers(
         &e,
         &format!("tls://127.0.0.1:{hub}"),
         &format!(r#", "pin": "{other}""#),
         svc,
-        fwd,
     );
     std::thread::sleep(Duration::from_millis(700));
     let mut s = TcpStream::connect(("127.0.0.1", fwd)).unwrap();
@@ -329,23 +377,16 @@ fn tls_links_check_the_hubs_certificate_by_its_pin() {
     p.stop(Duration::ZERO);
     h.stop(Duration::ZERO);
     // A hub started again keeps its certificate: the pin stays good.
-    let hub2 = free_port();
-    let mut h = hub_alone(
-        &e,
-        &dir,
-        &format!(r#"{{"protocol": "tls", "address": "127.0.0.1:{hub2}"}}"#),
-    );
+    let (mut h, hub2) = hub_alone(&e, &dir, r#"{"protocol": "tls", "address": "127.0.0.1:0"}"#);
     assert_eq!(
         akit_tunnel::tls::fingerprint(&std::fs::read_to_string(&kept).unwrap()),
         fp
     );
-    let fwd = free_port();
-    let mut p = peers(
+    let (mut p, fwd) = peers(
         &e,
         &format!("tls://127.0.0.1:{hub2}"),
         &format!(r#", "pin": "{fp}""#),
         svc,
-        fwd,
     );
     let _ = tunnel(fwd);
     p.stop(Duration::ZERO);
@@ -377,12 +418,12 @@ fn tls_links_check_a_listeners_certificate_by_its_cas() {
     )
     .unwrap();
     let e = engine();
-    let (hub, svc, fwd) = (free_port(), echo(), free_port());
-    let mut h = hub_alone(
+    let svc = echo();
+    let (mut h, hub) = hub_alone(
         &e,
         &dir,
         &format!(
-            r#"{{"protocol": "tls", "address": "127.0.0.1:{hub}", "cert_file": "{}", "key_file": "{}"}}"#,
+            r#"{{"protocol": "tls", "address": "127.0.0.1:0", "cert_file": "{}", "key_file": "{}"}}"#,
             dir.join("cert.pem").display(),
             dir.join("key.pem").display()
         ),
@@ -391,12 +432,11 @@ fn tls_links_check_a_listeners_certificate_by_its_cas() {
         !dir.join("akit.tunnel.hub.pem").exists(),
         "a listener with a certificate of its own makes none"
     );
-    let mut p = peers(
+    let (mut p, fwd) = peers(
         &e,
         &format!("tls://127.0.0.1:{hub}"),
         &format!(r#", "ca_file": "{}""#, dir.join("ca.pem").display()),
         svc,
-        fwd,
     );
     let mut s = tunnel(fwd);
     round_trip(&mut s, 1 << 20);
@@ -408,14 +448,6 @@ fn tls_links_check_a_listeners_certificate_by_its_cas() {
 }
 
 // I102b: QUIC links.
-
-fn free_udp_port() -> u16 {
-    std::net::UdpSocket::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port()
-}
 
 fn quic_engine() -> Arc<akio::Engine> {
     let e = akio::Engine::builder()
@@ -431,22 +463,20 @@ fn quic_engine() -> Arc<akio::Engine> {
 fn quic_links_carry_tunnels_and_check_the_pin() {
     let dir = tmp("quic");
     let e = quic_engine();
-    let (hub, svc) = (free_udp_port(), echo());
-    let mut h = hub_alone(
+    let svc = echo();
+    let (mut h, hub) = hub_alone(
         &e,
         &dir,
-        &format!(r#"{{"protocol": "quic", "address": "127.0.0.1:{hub}"}}"#),
+        r#"{"protocol": "quic", "address": "127.0.0.1:0"}"#,
     );
     let pem = std::fs::read_to_string(dir.join("akit.tunnel.hub.pem")).unwrap();
     let fp = akit_tunnel::tls::fingerprint(&pem);
     // The pin links; tunnels carry more than a stream's send buffer each, several at once.
-    let fwd = free_port();
-    let mut p = peers(
+    let (mut p, fwd) = peers(
         &e,
         &format!("quic://127.0.0.1:{hub}"),
         &format!(r#", "pin": "{fp}""#),
         svc,
-        fwd,
     );
     let mut s = tunnel(fwd);
     round_trip(&mut s, 12 << 20);
@@ -463,26 +493,22 @@ fn quic_links_carry_tunnels_and_check_the_pin() {
     }
     p.stop(Duration::ZERO);
     // quic_insecure takes any certificate.
-    let fwd = free_port();
-    let mut p = peers(
+    let (mut p, fwd) = peers(
         &e,
         &format!("quic://127.0.0.1:{hub}"),
         r#", "quic_insecure": true"#,
         svc,
-        fwd,
     );
     let mut s = tunnel(fwd);
     round_trip(&mut s, 64 << 10);
     p.stop(Duration::ZERO);
     // Another pin does not link.
-    let fwd = free_port();
     let other = "ab".repeat(32);
-    let mut p = peers(
+    let (mut p, fwd) = peers(
         &e,
         &format!("quic://127.0.0.1:{hub}"),
         &format!(r#", "pin": "{other}""#),
         svc,
-        fwd,
     );
     std::thread::sleep(Duration::from_millis(700));
     let mut s = TcpStream::connect(("127.0.0.1", fwd)).unwrap();
@@ -507,11 +533,11 @@ fn quic_links_carry_tunnels_and_check_the_pin() {
 fn quic_links_refused_at_the_filter() {
     let dir = tmp("quic-access");
     let e = quic_engine();
-    let (hub, svc) = (free_udp_port(), echo());
+    let svc = echo();
     let doc = |access: &str| {
         format!(
             r#"{{"tunnel": {{"hub": {{"name": "hub", "password": "pw", "access": {access},
-              "listeners": [{{"protocol": "quic", "address": "127.0.0.1:{hub}"}}]}}}}}}"#
+              "listeners": [{{"protocol": "quic", "address": "127.0.0.1:0"}}]}}}}}}"#
         )
     };
     let config = akit_config::from_json(&doc(r#"{"deny": ["127.0.0.1"]}"#), None).unwrap();
@@ -519,13 +545,12 @@ fn quic_links_refused_at_the_filter() {
     h.keep_beside(dir.join("akit.json").to_str().unwrap());
     let errs = h.apply(&config);
     assert!(errs.is_empty(), "{errs:?}");
-    let fwd = free_port();
-    let mut p = peers(
+    let hub = hub_ports(&h)[0];
+    let (mut p, fwd) = peers(
         &e,
         &format!("quic://127.0.0.1:{hub}"),
         r#", "quic_insecure": true"#,
         svc,
-        fwd,
     );
     let deadline = Instant::now() + Duration::from_secs(10);
     while e.telemetry().metrics().total.filtered == 0 {
@@ -560,18 +585,17 @@ fn quic_links_refused_at_the_filter() {
 fn ws_links_carry_tunnels() {
     let dir = tmp("ws");
     let e = engine();
-    let (hub, svc) = (free_port(), echo());
-    let mut h = hub_alone(
+    let svc = echo();
+    let (mut h, hub) = hub_alone(
         &e,
         &dir,
-        &format!(r#"{{"protocol": "ws", "address": "127.0.0.1:{hub}", "path": "/t"}}"#),
+        r#"{"protocol": "ws", "address": "127.0.0.1:0", "path": "/t"}"#,
     );
     assert!(
         !dir.join("akit.tunnel.hub.pem").exists(),
         "a ws listener needs no certificate"
     );
-    let fwd = free_port();
-    let mut p = peers(&e, &format!("ws://127.0.0.1:{hub}/t"), "", svc, fwd);
+    let (mut p, fwd) = peers(&e, &format!("ws://127.0.0.1:{hub}/t"), "", svc);
     let mut s = tunnel(fwd);
     round_trip(&mut s, 12 << 20);
     let ts: Vec<_> = (0..4)
@@ -593,8 +617,7 @@ fn ws_links_carry_tunnels() {
     let mut head = [0u8; 12];
     c.read_exact(&mut head).unwrap();
     assert_eq!(&head, b"HTTP/1.1 404");
-    let fwd = free_port();
-    let mut p = peers(&e, &format!("ws://127.0.0.1:{hub}/other"), "", svc, fwd);
+    let (mut p, fwd) = peers(&e, &format!("ws://127.0.0.1:{hub}/other"), "", svc);
     std::thread::sleep(Duration::from_millis(700));
     let mut s = TcpStream::connect(("127.0.0.1", fwd)).unwrap();
     s.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
@@ -610,25 +633,27 @@ fn ws_links_carry_tunnels() {
     e.wait();
     let _ = std::fs::remove_dir_all(&dir);
     // Sealed, the default path.
-    let (hub, svc, fwd) = (free_port(), echo(), free_port());
-    let up = format!(
-        r#"{{"name": "hub", "endpoints": [{{"address": "ws://127.0.0.1:{hub}/tunnel"}}], "password": "pw", "body_password": "b", "pool_size": 2, "retry_interval": "100ms"}}"#
-    );
-    let doc = format!(
-        r#"{{"tunnel": {{
-          "hub": {{"name": "hub", "password": "pw", "body_password": "b", "listeners": [{{"protocol": "ws", "address": "127.0.0.1:{hub}"}}]}},
-          "node": {{"name": "lab", "hubs": [{up}], "services": [{{"name": "echo", "address": "127.0.0.1:{svc}"}}]}},
-          "proxy": {{"name": "alice", "hubs": [{up}], "forwards": [{{"listen": "127.0.0.1:{fwd}", "node": "lab", "service": "echo"}}]}}}}}}"#
-    );
-    let config = akit_config::from_json(&doc, None).unwrap_or_else(|e| panic!("{doc}\n{e}"));
+    let svc = echo();
+    let hub_member = r#""hub": {"name": "hub", "password": "pw", "body_password": "b", "listeners": [{"protocol": "ws", "address": "127.0.0.1:0"}]}"#;
     let e = engine();
     let mut roles = Manager::new(
         &[akit_tunnel::HUB, akit_tunnel::NODE, akit_tunnel::PROXY],
         Arc::clone(&e),
         None,
     );
-    let errs = roles.apply(&config);
-    assert!(errs.is_empty(), "{errs:?}");
+    apply(&mut roles, &format!(r#"{{"tunnel": {{{hub_member}}}}}"#));
+    let hub = hub_ports(&roles)[0];
+    let up = format!(
+        r#"{{"name": "hub", "endpoints": [{{"address": "ws://127.0.0.1:{hub}/tunnel"}}], "password": "pw", "body_password": "b", "pool_size": 2, "retry_interval": "100ms"}}"#
+    );
+    let doc = format!(
+        r#"{{"tunnel": {{
+          {hub_member},
+          "node": {{"name": "lab", "hubs": [{up}], "services": [{{"name": "echo", "address": "127.0.0.1:{svc}"}}]}},
+          "proxy": {{"name": "alice", "hubs": [{up}], "forwards": [{{"listen": "127.0.0.1:0", "node": "lab", "service": "echo"}}]}}}}}}"#
+    );
+    apply(&mut roles, &doc);
+    let fwd = forward_ports(&roles)[0];
     let mut s = tunnel(fwd);
     round_trip(&mut s, 8 << 20);
     roles.stop(Duration::ZERO);
@@ -642,33 +667,25 @@ fn ws_links_carry_tunnels() {
 fn wss_links_check_the_hubs_certificate_by_its_pin() {
     let dir = tmp("wss");
     let e = engine();
-    let (hub, svc) = (free_port(), echo());
-    let mut h = hub_alone(
-        &e,
-        &dir,
-        &format!(r#"{{"protocol": "wss", "address": "127.0.0.1:{hub}"}}"#),
-    );
+    let svc = echo();
+    let (mut h, hub) = hub_alone(&e, &dir, r#"{"protocol": "wss", "address": "127.0.0.1:0"}"#);
     let pem = std::fs::read_to_string(dir.join("akit.tunnel.hub.pem")).unwrap();
     let fp = akit_tunnel::tls::fingerprint(&pem);
-    let fwd = free_port();
-    let mut p = peers(
+    let (mut p, fwd) = peers(
         &e,
         &format!("wss://127.0.0.1:{hub}/tunnel"),
         &format!(r#", "pin": "{fp}""#),
         svc,
-        fwd,
     );
     let mut s = tunnel(fwd);
     round_trip(&mut s, 8 << 20);
     p.stop(Duration::ZERO);
-    let fwd = free_port();
     let other = "ab".repeat(32);
-    let mut p = peers(
+    let (mut p, fwd) = peers(
         &e,
         &format!("wss://127.0.0.1:{hub}/tunnel"),
         &format!(r#", "pin": "{other}""#),
         svc,
-        fwd,
     );
     std::thread::sleep(Duration::from_millis(700));
     let mut s = TcpStream::connect(("127.0.0.1", fwd)).unwrap();
@@ -741,12 +758,7 @@ fn ws_opcodes(b: &[u8]) -> Vec<u8> {
 fn ws_links_that_fail_end_at_once() {
     let dir = tmp("ws-abort");
     let e = engine();
-    let hub = free_port();
-    let mut h = hub_alone(
-        &e,
-        &dir,
-        &format!(r#"{{"protocol": "ws", "address": "127.0.0.1:{hub}"}}"#),
-    );
+    let (mut h, hub) = hub_alone(&e, &dir, r#"{"protocol": "ws", "address": "127.0.0.1:0"}"#);
     let (mut c, mut got) = ws_handshake(hub, "/tunnel");
     // A binary message, masked with a zero key: a link frame whose length is 0.
     c.write_all(&[0x82, 0x84, 0, 0, 0, 0, 0, 0, 0, 0]).unwrap();
@@ -795,20 +807,15 @@ fn source(n: usize) -> u16 {
 fn ws_links_a_slow_reader_holds_its_tunnel_alone() {
     let dir = tmp("ws-slow");
     let e = engine();
-    let (hub, svc, src) = (free_port(), echo(), source(24 << 20));
-    let mut h = hub_alone(
-        &e,
-        &dir,
-        &format!(r#"{{"protocol": "ws", "address": "127.0.0.1:{hub}"}}"#),
-    );
+    let (svc, src) = (echo(), source(24 << 20));
+    let (mut h, hub) = hub_alone(&e, &dir, r#"{"protocol": "ws", "address": "127.0.0.1:0"}"#);
     let up = format!(
         r#"{{"name": "hub", "endpoints": [{{"address": "ws://127.0.0.1:{hub}/tunnel"}}], "password": "pw", "pool_size": 1, "retry_interval": "100ms"}}"#
     );
-    let (fwd, fwd_src) = (free_port(), free_port());
     let doc = format!(
         r#"{{"tunnel": {{
           "node": {{"name": "lab", "hubs": [{up}], "services": [{{"name": "echo", "address": "127.0.0.1:{svc}"}}, {{"name": "src", "address": "127.0.0.1:{src}"}}]}},
-          "proxy": {{"name": "alice", "hubs": [{up}], "forwards": [{{"listen": "127.0.0.1:{fwd}", "node": "lab", "service": "echo"}}, {{"listen": "127.0.0.1:{fwd_src}", "node": "lab", "service": "src"}}]}}}}}}"#
+          "proxy": {{"name": "alice", "hubs": [{up}], "forwards": [{{"listen": "127.0.0.1:0", "node": "lab", "service": "echo"}}, {{"listen": "127.0.0.1:0", "node": "lab", "service": "src"}}]}}}}}}"#
     );
     let config = akit_config::from_json(&doc, None).unwrap_or_else(|e| panic!("{doc}\n{e}"));
     let mut p = Manager::new(
@@ -817,6 +824,7 @@ fn ws_links_a_slow_reader_holds_its_tunnel_alone() {
         None,
     );
     assert!(p.apply(&config).is_empty());
+    let (fwd, fwd_src) = (forward_ports(&p)[0], forward_ports(&p)[1]);
     let _ = tunnel(fwd);
     // The source's tunnel, not read for a while.
     let mut slow = TcpStream::connect(("127.0.0.1", fwd_src)).unwrap();
@@ -885,18 +893,25 @@ fn call_info(f: impl FnOnce(akit_tunnel::hub::InfoDone)) -> InfoResult {
 /// services set where it lets the hub, a tunnel closed and a peer kicked.
 #[test]
 fn the_hubs_calls_and_status() {
-    let (hub, svc, fwd) = (free_port(), echo(), free_port());
-    let up = format!(
-        r#"{{"name": "hub", "endpoints": [{{"address": "127.0.0.1:{hub}"}}], "password": "pw", "pool_size": 2, "retry_interval": "100ms"}}"#
-    );
-    let doc = format!(
-        r#"{{"tunnel": {{
-          "hub": {{"name": "hub", "password": "pw", "listeners": [{{"protocol": "tcp", "address": "127.0.0.1:{hub}"}}]}},
-          "node": {{"name": "lab", "hubs": [{up}], "allow_hub_services": true, "services": [{{"name": "echo", "address": "127.0.0.1:{svc}"}}]}},
-          "proxy": {{"name": "alice", "hubs": [{up}], "forwards": [{{"listen": "127.0.0.1:{fwd}", "node": "lab", "service": "echo"}}]}}}}}}"#
-    );
+    let svc = echo();
     let e = engine();
-    let (roles, api) = controlled(&e, &doc);
+    let (roles, api) = controlled(
+        &e,
+        r#""hub": {"name": "hub", "password": "pw", "listeners": [{"protocol": "tcp", "address": "127.0.0.1:0"}]}"#,
+        |hub| {
+            let up = format!(
+                r#"{{"name": "hub", "endpoints": [{{"address": "127.0.0.1:{hub}"}}], "password": "pw", "pool_size": 2, "retry_interval": "100ms"}}"#
+            );
+            format!(
+                r#""node": {{"name": "lab", "hubs": [{up}], "allow_hub_services": true, "services": [{{"name": "echo", "address": "127.0.0.1:{svc}"}}]}},
+                "proxy": {{"name": "alice", "hubs": [{up}], "forwards": [{{"listen": "127.0.0.1:0", "node": "lab", "service": "echo"}}]}}"#
+            )
+        },
+    );
+    let (hub, fwd) = {
+        let r = roles.lock().unwrap();
+        (hub_ports(&r)[0], forward_ports(&r)[0])
+    };
     let mut s = tunnel(fwd);
     round_trip(&mut s, 1 << 20);
 
@@ -976,11 +991,13 @@ fn the_hubs_calls_and_status() {
     e.wait();
 }
 
-/// The roles of `doc`, with a control thread that applies their edits as `akit run`'s does; and
-/// the hub's handle.
+/// The roles applied, with a control thread that applies their edits as `akit run`'s does: the
+/// hub of `hub_member` first (its listener on port 0), then the members `others` writes given the
+/// port it bound; and the hub's handle.
 fn controlled(
     e: &Arc<akio::Engine>,
-    doc: &str,
+    hub_member: &str,
+    others: impl FnOnce(u16) -> String,
 ) -> (Arc<std::sync::Mutex<Manager>>, akit_tunnel::hub::HubApi) {
     let (tx, rx) = std::sync::mpsc::channel::<akit_roles::host::Edit>();
     let tx = std::sync::Mutex::new(tx);
@@ -993,12 +1010,16 @@ fn controlled(
         Arc::clone(e),
         Some(editor),
     );
-    let config = akit_config::from_json(doc, None).unwrap_or_else(|err| panic!("{doc}\n{err}"));
-    assert!(roles.apply(&config).is_empty());
+    apply(&mut roles, &format!(r#"{{"tunnel": {{{hub_member}}}}}"#));
+    let doc = format!(
+        r#"{{"tunnel": {{{hub_member}, {}}}}}"#,
+        others(hub_ports(&roles)[0])
+    );
+    apply(&mut roles, &doc);
     let api = hub_api(&roles);
     let roles = Arc::new(std::sync::Mutex::new(roles));
     let control = Arc::clone(&roles);
-    let mut value = akit_config::value::parse(doc).unwrap();
+    let mut value = akit_config::value::parse(&doc).unwrap();
     std::thread::spawn(move || {
         while let Ok(edit) = rx.recv() {
             match edit.apply_to(&mut value) {
@@ -1072,7 +1093,7 @@ fn a_tokens_expiry_closes_its_links() {
 fn a_listeners_certificate_is_read_again() {
     let dir = tmp("certs");
     let e = quic_engine();
-    let (tls_port, quic_port, wss_port, svc) = (free_port(), free_udp_port(), free_port(), echo());
+    let svc = echo();
     let cert_file = dir.join("c.pem").to_str().unwrap().to_owned();
     let key_file = dir.join("k.pem").to_str().unwrap().to_owned();
     let write = || {
@@ -1088,15 +1109,16 @@ fn a_listeners_certificate_is_read_again() {
     let fp1 = write();
     let doc = format!(
         r#"{{"tunnel": {{"hub": {{"name": "hub", "password": "pw", "listeners": [
-          {{"protocol": "tls", "address": "127.0.0.1:{tls_port}", "cert_file": "{cert_file}", "key_file": "{key_file}"}},
-          {{"protocol": "quic", "address": "127.0.0.1:{quic_port}", "cert_file": "{cert_file}", "key_file": "{key_file}"}},
-          {{"protocol": "wss", "address": "127.0.0.1:{wss_port}"}}]}}}}}}"#
+          {{"protocol": "tls", "address": "127.0.0.1:0", "cert_file": "{cert_file}", "key_file": "{key_file}"}},
+          {{"protocol": "quic", "address": "127.0.0.1:0", "cert_file": "{cert_file}", "key_file": "{key_file}"}},
+          {{"protocol": "wss", "address": "127.0.0.1:0"}}]}}}}}}"#
     );
     let config = akit_config::from_json(&doc, None).unwrap_or_else(|e| panic!("{doc}\n{e}"));
     let mut h = Manager::new(&[akit_tunnel::HUB], Arc::clone(&e), None);
     h.keep_beside(dir.join("akit.json").to_str().unwrap());
     let errs = h.apply(&config);
     assert!(errs.is_empty(), "{errs:?}");
+    let (tls_port, quic_port) = (hub_ports(&h)[0], hub_ports(&h)[1]);
     let kept = dir.join("akit.tunnel.hub.pem").to_str().unwrap().to_owned();
     let files: Vec<String> = h.files().into_iter().map(|(p, _)| p).collect();
     for f in [&cert_file, &key_file, &kept] {
@@ -1120,13 +1142,11 @@ fn a_listeners_certificate_is_read_again() {
     assert_eq!(before[1].0, fp1);
     assert_eq!(before[2].0, hub_fp);
     // A link over tls, pinning the first certificate, with a tunnel open.
-    let fwd = free_port();
-    let mut p = peers(
+    let (mut p, fwd) = peers(
         &e,
         &format!("tls://127.0.0.1:{tls_port}"),
         &format!(r#", "pin": "{fp1}""#),
         svc,
-        fwd,
     );
     let mut s = tunnel(fwd);
     round_trip(&mut s, 64 << 10);
@@ -1148,8 +1168,7 @@ fn a_listeners_certificate_is_read_again() {
         format!("tls://127.0.0.1:{tls_port}"),
         format!("quic://127.0.0.1:{quic_port}"),
     ] {
-        let fwd = free_port();
-        let mut p = peers(&e, &at, &format!(r#", "pin": "{fp2}""#), svc, fwd);
+        let (mut p, fwd) = peers(&e, &at, &format!(r#", "pin": "{fp2}""#), svc);
         let mut s = tunnel(fwd);
         round_trip(&mut s, 64 << 10);
         p.stop(Duration::ZERO);
@@ -1171,13 +1190,11 @@ fn a_listeners_certificate_is_read_again() {
         .unwrap()
         .1;
     assert_eq!(key_sum, [0u8; 32]);
-    let fwd = free_port();
-    let mut p = peers(
+    let (mut p, fwd) = peers(
         &e,
         &format!("tls://127.0.0.1:{tls_port}"),
         &format!(r#", "pin": "{fp2}""#),
         svc,
-        fwd,
     );
     let mut s = tunnel(fwd);
     round_trip(&mut s, 64 << 10);
@@ -1227,7 +1244,7 @@ fn with_fits_node_and_proxy_over_quic() {
     };
     let dir = tmp("fit-quic");
     let e = quic_engine();
-    let (hub, svc, fwd) = (free_udp_port(), echo(), free_port());
+    let (svc, fwd) = (echo(), free_port());
     let cert_file = dir.join("c.pem").to_str().unwrap().to_owned();
     let key_file = dir.join("k.pem").to_str().unwrap().to_owned();
     let write = || {
@@ -1240,12 +1257,13 @@ fn with_fits_node_and_proxy_over_quic() {
     let doc = format!(
         r#"{{"tunnel": {{"hub": {{"name": "hub", "password": "pw",
             "quic": {{"handshake_timeout": "3s", "max_handshakes": 4}},
-            "listeners": [{{"protocol": "quic", "address": "127.0.0.1:{hub}", "cert_file": "{cert_file}", "key_file": "{key_file}"}}]}}}}}}"#
+            "listeners": [{{"protocol": "quic", "address": "127.0.0.1:0", "cert_file": "{cert_file}", "key_file": "{key_file}"}}]}}}}}}"#
     );
     let config = akit_config::from_json(&doc, None).unwrap_or_else(|e| panic!("{doc}\n{e}"));
     let mut h = Manager::new(&[akit_tunnel::HUB], Arc::clone(&e), None);
     let errs = h.apply(&config);
     assert!(errs.is_empty(), "{errs:?}");
+    let hub = hub_ports(&h)[0];
     // Each run's names its own: the hub holds a killed run's links until their idle timeout.
     let peers_doc = |fp: &str, fwd: u16, n: u8| {
         let up = format!(

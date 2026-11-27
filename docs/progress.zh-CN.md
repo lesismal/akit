@@ -19,6 +19,16 @@
 
 ## 日志
 
+### 2026-11-27：隧道的测试绑定端口 0
+
+- `tunnels_sealed_by_the_body_password` 在 gpu51 的一次完整运行中（epoll）失败过一次："forward 127.0.0.1:3921: Address
+  already in use"。隧道的测试先绑定端口 0 再释放来挑选端口，然后让角色去绑定；其间别的进程可能占用它。现在测试中 akit
+  自己的监听器都绑定端口 0，测试再询问它们实际监听的位置：hub 的监听器从其状态取得，forward 从 proxy 的状态取得，console
+  socket 从 hub 取得，web proxy 从 proxy 取得，角色的控制台从 `Manager::console_addr` 取得（新增：`Consoles::addr`，由
+  `RoleConsoles` 回答）。连接到 hub 的 node 或 proxy 在 hub 绑定端口之后才应用。无人应答的 hub 用端口 1。仍须在绑定前写明
+  端口的保留挑选的端口：fit 二进制的监听器、通过页面添加的 forward（与 fit 一样以地址命名）、以及 hub 的 socket 所拨的控制台
+  （与 fit 一样拨其成员的地址）。web proxy 测试的读取把对端已重置的连接视为空（此时 macOS 拒绝设置超时）。
+
 ### 2026-11-27：隧道 proxy 的节点不再被自身的 apply 丢掉
 
 - `tunnels_with_tokens_plain_and_sealed` 在 gpu51 上偶尔失败（以 `AKIO_TEST_BACKEND=uring` 单独运行 60 次失败 5 次，都在

@@ -16,7 +16,7 @@ use std::time::Duration;
 use akio_http::ws::{MessageRef, WsHandler, WsSender};
 
 use crate::proxy::ProxyApi;
-use crate::testutil::{Env, HASH, PAGE_MARK, free_port, page_console, read_to_end, wait_for};
+use crate::testutil::{Env, HASH, PAGE_MARK, page_console, read_to_end, wait_for};
 use crate::wscrypt::{Secret, Session};
 
 /// Gets `/` through the web proxy on `port`, on a connection of its own: the status line's code,
@@ -53,11 +53,31 @@ fn web_proxies(env: &Env) -> Vec<super::WebProxyView> {
     api.downcast_ref::<ProxyApi>().unwrap().web_proxies()
 }
 
-fn doc(console: u16, sock: u16, proxies: &str) -> String {
+/// The port the first web proxy bound (its `listen` says port 0).
+fn web_port(env: &Env) -> u16 {
+    web_proxies(env)[0]
+        .addr
+        .parse::<std::net::SocketAddr>()
+        .expect("the web proxy's address")
+        .port()
+}
+
+/// Where the hub's console socket listens (its `address` says port 0).
+fn socket_port(env: &Env) -> u16 {
+    let api = env.roles.api("tunnel.hub").unwrap();
+    api.downcast_ref::<crate::hub::HubApi>()
+        .unwrap()
+        .socket_addr()
+        .expect("the console socket's address")
+        .port()
+}
+
+/// The hub (its console on `console`, its socket on port 0) and the proxy with `proxies`.
+fn doc(console: u16, proxies: &str) -> String {
     format!(
         r#"{{"tunnel": {{
           "hub": {{"name": "hub", "password": "pw", "console": {{"address": "127.0.0.1:{console}", "users": [{{"username": "admin", "password_hash": "{HASH}"}}]}},
-                   "console_socket": {{"address": "127.0.0.1:{sock}", "password": "sock"}}}},
+                   "console_socket": {{"address": "127.0.0.1:0", "password": "sock"}}}},
           "proxy": {{"name": "me", "web_proxies": [{proxies}]}}}}}}"#
     )
 }
@@ -66,13 +86,18 @@ fn doc(console: u16, sock: u16, proxies: &str) -> String {
 /// for the connections it accepts from then on, and closes its connections when it is removed.
 #[test]
 fn web_proxy() {
-    let (con, sock, port) = (page_console(), free_port(), free_port());
+    let con = page_console();
+    // The hub first, its socket on port 0; then the web proxy, given the port the socket bound,
+    // on port 0 too.
+    let mut env = Env::start(&[crate::HUB, crate::PROXY], &doc(con, ""));
+    let sock = socket_port(&env);
     let pm = |password: &str, conns: usize| {
         format!(
-            r#"{{"name": "hub", "listen": "127.0.0.1:{port}", "url": "ws://127.0.0.1:{sock}/", "password": "{password}", "max_conns": {conns}}}"#
+            r#"{{"name": "hub", "listen": "127.0.0.1:0", "url": "ws://127.0.0.1:{sock}/", "password": "{password}", "max_conns": {conns}}}"#
         )
     };
-    let mut env = Env::start(&[crate::HUB, crate::PROXY], &doc(con, sock, &pm("sock", 0)));
+    env.apply(&doc(con, &pm("sock", 0)));
+    let port = web_port(&env);
     let (code, body) = proxy_get(port);
     assert_eq!(code, 200, "{body}");
     assert!(body.contains(PAGE_MARK), "the page: {body}");
@@ -83,12 +108,14 @@ fn web_proxy() {
     assert_eq!(v[0].error, "");
 
     // Another password: the hub opens nothing the proxy sends.
-    env.apply(&doc(con, sock, &pm("wrong", 0)));
+    env.apply(&doc(con, &pm("wrong", 0)));
+    assert_eq!(web_port(&env), port, "the listener kept");
     let (code, _) = proxy_get(port);
     assert_eq!(code, 0, "a wrong password got an answer");
 
     // One connection at most: a second is closed at once.
-    env.apply(&doc(con, sock, &pm("sock", 1)));
+    env.apply(&doc(con, &pm("sock", 1)));
+    assert_eq!(web_port(&env), port, "the listener kept");
     let mut first = TcpStream::connect(("127.0.0.1", port)).unwrap();
     wait_for("the first connection", || {
         let v = web_proxies(&env);
@@ -97,7 +124,7 @@ fn web_proxy() {
     closed_soon(port);
 
     // Removed, it closes the connection it has.
-    env.apply(&doc(con, sock, ""));
+    env.apply(&doc(con, ""));
     first
         .set_read_timeout(Some(Duration::from_secs(10)))
         .unwrap();
@@ -107,29 +134,22 @@ fn web_proxy() {
     );
     assert!(web_proxies(&env).is_empty());
 
-    // A socket nothing listens on: each connection is closed.
-    let nowhere = free_port();
+    // A socket nothing listens on (port 1): each connection is closed.
     env.apply(&doc(
         con,
-        sock,
-        &format!(
-            r#"{{"listen": "127.0.0.1:{port}", "url": "ws://127.0.0.1:{nowhere}/", "password": "sock"}}"#
-        ),
+        r#"{"listen": "127.0.0.1:0", "url": "ws://127.0.0.1:1/", "password": "sock"}"#,
     ));
-    closed_soon(port);
+    closed_soon(web_port(&env));
 }
 
 /// fit's `TestWebProxyBadURL`: a web proxy whose URL cannot be dialed closes each connection.
 #[test]
 fn bad_url() {
-    let port = free_port();
     let env = Env::start(
         &[crate::PROXY],
-        &format!(
-            r#"{{"tunnel": {{"proxy": {{"name": "me", "web_proxies": [{{"listen": "127.0.0.1:{port}", "url": "ws://127.0.0.1:1/", "password": "p"}}]}}}}}}"#
-        ),
+        r#"{"tunnel": {"proxy": {"name": "me", "web_proxies": [{"listen": "127.0.0.1:0", "url": "ws://127.0.0.1:1/", "password": "p"}]}}}"#,
     );
-    closed_soon(port);
+    closed_soon(web_port(&env));
     drop(env);
 }
 
@@ -207,9 +227,10 @@ fn closed(rx: &Receiver<Event>) {
     }
 }
 
-fn proxy_to(port: u16, ws: u16) -> String {
+/// A proxy whose web proxy (on port 0) dials the WebSocket server on `ws`.
+fn proxy_to(ws: u16) -> String {
     format!(
-        r#"{{"tunnel": {{"proxy": {{"name": "me", "web_proxies": [{{"listen": "127.0.0.1:{port}", "url": "ws://127.0.0.1:{ws}/", "password": "sock"}}]}}}}}}"#
+        r#"{{"tunnel": {{"proxy": {{"name": "me", "web_proxies": [{{"listen": "127.0.0.1:0", "url": "ws://127.0.0.1:{ws}/", "password": "sock"}}]}}}}}}"#
     )
 }
 
@@ -218,11 +239,11 @@ fn proxy_to(port: u16, ws: u16) -> String {
 /// is opened, and one message that does not open ends it, and the local connection with it.
 #[test]
 fn conn_session() {
-    let port = free_port();
     let engine = Arc::new(akio::Engine::builder().client_threads(2).build().unwrap());
     engine.start().unwrap();
     let (ws_port, rx) = ws_server(&engine);
-    let env = Env::start(&[crate::PROXY], &proxy_to(port, ws_port));
+    let env = Env::start(&[crate::PROXY], &proxy_to(ws_port));
+    let port = web_port(&env);
     let secret = Secret::new("sock");
 
     let mut local = TcpStream::connect(("127.0.0.1", port)).unwrap();
@@ -258,11 +279,11 @@ fn conn_session() {
 /// socket, and the local connection.
 #[test]
 fn conn_closed() {
-    let port = free_port();
     let engine = Arc::new(akio::Engine::builder().client_threads(2).build().unwrap());
     engine.start().unwrap();
     let (ws_port, rx) = ws_server(&engine);
-    let env = Env::start(&[crate::PROXY], &proxy_to(port, ws_port));
+    let env = Env::start(&[crate::PROXY], &proxy_to(ws_port));
+    let port = web_port(&env);
 
     let local = TcpStream::connect(("127.0.0.1", port)).unwrap();
     drop(local);

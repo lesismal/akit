@@ -351,6 +351,12 @@ impl Manager {
         }
     }
 
+    /// Where role `id`'s console listens, when it runs ([`Consoles::addr`]).
+    #[must_use]
+    pub fn console_addr(&self, id: &str) -> Option<std::net::SocketAddr> {
+        self.consoles.as_ref().and_then(|cs| cs.addr(id))
+    }
+
     /// Reads the roles' consoles' certificate files now (SIGHUP; [`Consoles::reload_certs`]).
     pub fn reload_console_certs(&mut self) {
         if let Some(cs) = self.consoles.as_mut() {

@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use super::super::{HubApi, HubCore};
 use super::*;
-use crate::testutil::{Env, HASH, PAGE_MARK, WsClient, free_port, page_console, wait_for};
+use crate::testutil::{Env, HASH, PAGE_MARK, WsClient, page_console, wait_for};
 
 fn console(port: u16) -> String {
     format!(
@@ -79,8 +79,8 @@ fn console_socket() {
     wait_for("the WebSocket to go", || st.conns() == 0);
 
     // Without the console, there is nothing to carry: the console's address now has nothing
-    // listening; the socket, on the same address, stays.
-    env.apply(&hub_doc(free_port(), socket));
+    // listening (port 1); the socket, on the same address, stays.
+    env.apply(&hub_doc(1, socket));
     let w = WsClient::dial(&env.engine, &url(&c));
     let mut sess = w.session("s");
     w.send(&sess.seal(b"GET / HTTP/1.1\r\n\r\n"));

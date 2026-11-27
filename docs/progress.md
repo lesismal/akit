@@ -20,6 +20,21 @@ done and where the work differs from the plan.
 
 ## Log
 
+### 2026-11-27: the tunnel's tests bind port 0
+
+- `tunnels_sealed_by_the_body_password` failed once in a full run on gpu51 (epoll): "forward
+  127.0.0.1:3921: Address already in use". The tunnel's tests picked their ports by binding port 0
+  and letting it go, then had the roles bind them; another process could take one in between.
+  akit's own listeners in them now bind port 0, and the tests ask where they listen: the hub's
+  listeners from its status, the forwards from the proxy's, the console socket from the hub,
+  the web proxies from the proxy, and the roles' consoles from `Manager::console_addr` (new:
+  `Consoles::addr`, which `RoleConsoles` answers). A node or proxy that links to a hub is applied
+  once the hub has bound its port. A hub nothing answers on is port 1. What must still name its
+  port before it binds keeps a picked one: fit's binary's listeners, a forward added through the
+  pages (named by its address, as fit's), and a console its hub's socket dials (at its member's
+  address, as fit's). The web proxy tests' reads take a connection the peer already reset as
+  empty (macOS refuses its timeout then).
+
 ### 2026-11-27: the tunnel proxy's nodes no longer lost to its own apply
 
 - `tunnels_with_tokens_plain_and_sealed` failed now and then on gpu51 (5 in 60 runs alone with

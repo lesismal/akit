@@ -537,6 +537,12 @@ pub trait Consoles: Send {
     /// Reads the running consoles' certificate files now (SIGHUP), as
     /// [`watch_certs`](Consoles::watch_certs) otherwise. Nothing by default.
     fn reload_certs(&mut self) {}
+
+    /// Where role `id`'s console listens, when it runs: the port it bound, when its `address`
+    /// says port 0. None by default.
+    fn addr(&self, _id: &str) -> Option<std::net::SocketAddr> {
+        None
+    }
 }
 
 /// Role `id`'s `console` in `c`.

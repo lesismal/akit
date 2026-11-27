@@ -21,6 +21,10 @@ use akit_admin::console::RoleConsoles;
 use akit_config::value::{self, Value};
 use akit_roles::host::{Edit, Editor, Manager};
 
+/// A port free now, for what must name its port before it binds: a listener of fit's binary, and
+/// a forward added through the pages, which name a forward by its address as fit's do. Another
+/// process may take it meanwhile. akit's other listeners bind port 0 and are asked where they
+/// listen.
 fn free_port() -> u16 {
     TcpListener::bind("127.0.0.1:0")
         .unwrap()
@@ -78,7 +82,66 @@ impl Drop for Env {
     }
 }
 
-fn start(doc: &str) -> Env {
+/// Applies `doc` on `roles`, which must take it.
+fn apply(roles: &mut Manager, doc: &str) {
+    let config = akit_config::from_json(doc, None).unwrap_or_else(|e| panic!("{doc}\n{e}"));
+    let errs = roles.apply(&config);
+    assert!(errs.is_empty(), "{errs:?}");
+}
+
+/// The port of `addr`, a `host:port`.
+fn port_of(addr: &str) -> u16 {
+    addr.parse::<SocketAddr>()
+        .unwrap_or_else(|e| panic!("{addr:?}: {e}"))
+        .port()
+}
+
+/// The port the hub's first listener bound.
+fn hub_port(roles: &Manager) -> u16 {
+    let api = roles.api("tunnel.hub").unwrap();
+    let st = api
+        .downcast_ref::<akit_tunnel::hub::HubApi>()
+        .unwrap()
+        .status();
+    let st = value::parse(&st).unwrap();
+    match arr(&st, "listen").first() {
+        Some(Value::String(a)) => port_of(a),
+        other => panic!("the hub's listeners: {other:?}"),
+    }
+}
+
+/// The hub's console socket's address.
+fn socket_addr(roles: &Manager) -> SocketAddr {
+    let api = roles.api("tunnel.hub").unwrap();
+    api.downcast_ref::<akit_tunnel::hub::HubApi>()
+        .unwrap()
+        .socket_addr()
+        .expect("the console socket's address")
+}
+
+/// The port the proxy's first forward bound.
+fn forward_port(roles: &Manager) -> u16 {
+    let api = roles.api("tunnel.proxy").unwrap();
+    let st = api
+        .downcast_ref::<akit_tunnel::proxy::ProxyApi>()
+        .unwrap()
+        .status();
+    let st = value::parse(&st).unwrap();
+    port_of(&text(&arr(&st, "forwards")[0], "addr"))
+}
+
+/// The port role `id`'s console bound.
+fn console_port(roles: &Manager, id: &str) -> u16 {
+    roles
+        .console_addr(id)
+        .expect("the console's address")
+        .port()
+}
+
+/// The roles of `first` (members of `tunnel`, their listeners on port 0), then of `first` and the
+/// members `more` writes once they run, given the roles to ask where they listen. Edits are
+/// applied to the doc of them all.
+fn start(first: &str, more: impl FnOnce(&Manager) -> String) -> Env {
     let engine = akio::Engine::builder().client_threads(2).build().unwrap();
     engine.start().unwrap();
     let engine = Arc::new(engine);
@@ -94,11 +157,15 @@ fn start(doc: &str) -> Env {
         Some(editor),
     );
     roles.set_consoles(Box::new(RoleConsoles::new(&akit_admin::Options::default())));
-    let config = akit_config::from_json(doc, None).unwrap_or_else(|e| panic!("{doc}\n{e}"));
-    let errs = roles.apply(&config);
-    assert!(errs.is_empty(), "{errs:?}");
+    let mut doc = format!(r#"{{"tunnel": {{{first}}}}}"#);
+    apply(&mut roles, &doc);
+    let m = more(&roles);
+    if !m.is_empty() {
+        doc = format!(r#"{{"tunnel": {{{first}, {m}}}}}"#);
+        apply(&mut roles, &doc);
+    }
     let roles = Arc::new(Mutex::new(roles));
-    let value = Arc::new(Mutex::new(value::parse(doc).unwrap()));
+    let value = Arc::new(Mutex::new(value::parse(&doc).unwrap()));
     let (control, v) = (Arc::clone(&roles), Arc::clone(&value));
     std::thread::spawn(move || {
         while let Ok(edit) = rx.recv() {
@@ -138,6 +205,11 @@ impl Env {
         api.downcast_ref::<akit_tunnel::node::NodeApi>()
             .unwrap()
             .clone()
+    }
+
+    /// What `f` makes of the roles: where they listen.
+    fn ask<T>(&self, f: impl FnOnce(&Manager) -> T) -> T {
+        f(&self.roles.lock().unwrap())
     }
 
     fn proxy(&self) -> akit_tunnel::proxy::ProxyApi {
@@ -311,16 +383,21 @@ fn uplink(name: &str, port: u16) -> String {
 #[test]
 #[allow(clippy::too_many_lines)]
 fn the_nodes_pages() {
-    let (link, svc, fwd, con) = (free_port(), echo(), free_port(), free_port());
-    let env = start(&format!(
-        r#"{{"tunnel": {{
-          "hub": {{"name": "hub", "password": "pw", "listeners": [{{"protocol": "tcp", "address": "127.0.0.1:{link}"}}]}},
-          "node": {{"name": "lab", "hubs": [{}], "services": [{{"name": "echo", "address": "127.0.0.1:{svc}"}}], "console": {}}},
-          "proxy": {{"name": "me", "hubs": [{}], "forwards": [{{"listen": "127.0.0.1:{fwd}", "node": "lab", "service": "echo"}}]}}}}}}"#,
-        uplink("hub", link),
-        console_json(&format!("127.0.0.1:{con}")),
-        uplink("hub", link)
-    ));
+    let svc = echo();
+    let env = start(
+        r#""hub": {"name": "hub", "password": "pw", "listeners": [{"protocol": "tcp", "address": "127.0.0.1:0"}]}"#,
+        |roles| {
+            let link = hub_port(roles);
+            format!(
+                r#""node": {{"name": "lab", "hubs": [{}], "services": [{{"name": "echo", "address": "127.0.0.1:{svc}"}}], "console": {}}},
+          "proxy": {{"name": "me", "hubs": [{}], "forwards": [{{"listen": "127.0.0.1:0", "node": "lab", "service": "echo"}}]}}"#,
+                uplink("hub", link),
+                console_json("127.0.0.1:0"),
+                uplink("hub", link)
+            )
+        },
+    );
+    let (fwd, con) = env.ask(|r| (forward_port(r), console_port(r, "tunnel.node")));
     let pg = login(con);
     let wb = pg.get("/api/workbench");
     assert!(wb.body.contains(r#""modules":["tunnel.node"]"#), "{wb:?}");
@@ -415,7 +492,7 @@ fn the_nodes_pages() {
     assert_eq!(services.len(), 2, "{}", m.to_json());
     assert_eq!(text(&services[0], "name"), "echo");
     assert_eq!(text(&services[1], "description"), "d");
-    let far = free_port();
+    let far = 1;
     let far_req = format!(
         r#"{{"name": "far", "endpoints": [{{"protocol": "tcp", "address": "127.0.0.1:{far}", "enabled": true}}], "password": "pw"}}"#
     );
@@ -487,25 +564,25 @@ struct ProxyEnv {
 /// fit's `startHub`: a hub with a console socket, a node reaching echo, and a proxy with a
 /// console, a forward to echo and a web proxy to the socket, `extra` added to the proxy's member.
 fn start_hub(extra: &str) -> ProxyEnv {
-    let (link, sock, fwd, web, con, svc) = (
-        free_port(),
-        free_port(),
-        free_port(),
-        free_port(),
-        free_port(),
-        echo(),
+    let svc = echo();
+    let env = start(
+        &format!(
+            r#""hub": {{"name": "hub", "password": "pw", "allow_proxy_services": true, "listeners": [{{"protocol": "tcp", "address": "127.0.0.1:0"}}], "console_socket": {{"address": "127.0.0.1:0", "password": "sock"}}, "console": {}}}"#,
+            console_json("127.0.0.1:0")
+        ),
+        |roles| {
+            let (link, sock) = (hub_port(roles), socket_addr(roles));
+            format!(
+                r#""node": {{"name": "lab", "allow_hub_services": true, "hubs": [{}], "services": [{{"name": "echo", "address": "127.0.0.1:{svc}"}}]}},
+          "proxy": {{"name": "me", "hubs": [{}], "forwards": [{{"listen": "127.0.0.1:0", "node": "lab", "service": "echo"}}],
+            "web_proxies": [{{"name": "hub", "listen": "127.0.0.1:0", "url": "ws://{sock}/", "password": "sock"}}], "console": {}{extra}}}"#,
+                uplink("hub", link),
+                uplink("hub", link),
+                console_json("127.0.0.1:0")
+            )
+        },
     );
-    let env = start(&format!(
-        r#"{{"tunnel": {{
-          "hub": {{"name": "hub", "password": "pw", "allow_proxy_services": true, "listeners": [{{"protocol": "tcp", "address": "127.0.0.1:{link}"}}], "console_socket": {{"address": "127.0.0.1:{sock}", "password": "sock"}}, "console": {}}},
-          "node": {{"name": "lab", "allow_hub_services": true, "hubs": [{}], "services": [{{"name": "echo", "address": "127.0.0.1:{svc}"}}]}},
-          "proxy": {{"name": "me", "hubs": [{}], "forwards": [{{"listen": "127.0.0.1:{fwd}", "node": "lab", "service": "echo"}}],
-            "web_proxies": [{{"name": "hub", "listen": "127.0.0.1:{web}", "url": "ws://127.0.0.1:{sock}/", "password": "sock"}}], "console": {}{extra}}}}}}}"#,
-        console_json(&format!("127.0.0.1:{}", free_port())),
-        uplink("hub", link),
-        uplink("hub", link),
-        console_json(&format!("127.0.0.1:{con}"))
-    ));
+    let (fwd, con) = env.ask(|r| (forward_port(r), console_port(r, "tunnel.proxy")));
     let p = env.proxy();
     wait_for("the proxy to know the node", || {
         p.has_node("hub", "lab", "echo")
@@ -532,7 +609,8 @@ fn the_proxys_pages() {
     assert_eq!(tunnels.len(), 2, "{}", st.to_json());
     assert!(text(&tunnels[0], "created") <= text(&tunnels[1], "created"));
     assert_eq!(text(&tunnels[0], "hub"), "hub");
-    assert_eq!(text(&tunnels[0], "peer"), format!("127.0.0.1:{fwd}"));
+    // The forward's `listen`, as its member says (port 0: the one it bound is `fwd`).
+    assert_eq!(text(&tunnels[0], "peer"), "127.0.0.1:0");
     assert_eq!(text(&tunnels[0], "addr"), format!("127.0.0.1:{svc}"));
     let id = text(&tunnels[0], "id");
     pg.expect(
@@ -611,7 +689,7 @@ fn the_proxys_pages() {
     pg.expect(
         400,
         "/api/forwards",
-        &format!(r#"{{"listen": "127.0.0.1:{fwd}", "node": "lab", "service": "echo"}}"#),
+        r#"{"listen": "127.0.0.1:0", "node": "lab", "service": "echo"}"#,
         "forwarded already",
     );
     let by_hub = pg.forward("lab", "extra", " hub ");
@@ -654,7 +732,7 @@ fn the_proxys_pages() {
     }
 
     // A hub that does not answer, a forward through it, and its changes.
-    let far = free_port();
+    let far = 1;
     let ep = format!(r#"[{{"protocol": "tcp", "address": "127.0.0.1:{far}", "enabled": true}}]"#);
     let far_req = format!(r#"{{"name": "far", "endpoints": {ep}, "password": "pw"}}"#);
     pg.expect(200, "/api/hubs", &far_req, "ok");
@@ -768,7 +846,7 @@ fn with_fits_hub() {
         eprintln!("AKIT_FIT_BIN not set: skipped");
         return;
     };
-    let (link, svc, fwd, ncon, pcon) = (free_port(), echo(), free_port(), free_port(), free_port());
+    let (link, svc) = (free_port(), echo());
     let dir = std::env::temp_dir().join(format!("akit-i109b-fit-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("fit.json");
@@ -792,15 +870,24 @@ fn with_fits_hub() {
     wait_for("fit's hub", || {
         TcpStream::connect(("127.0.0.1", link)).is_ok()
     });
-    let env = start(&format!(
-        r#"{{"tunnel": {{
-          "node": {{"name": "lab", "allow_hub_services": true, "hubs": [{}], "services": [{{"name": "echo", "address": "127.0.0.1:{svc}"}}], "console": {}}},
-          "proxy": {{"name": "me", "hubs": [{}], "forwards": [{{"listen": "127.0.0.1:{fwd}", "node": "lab", "service": "echo"}}], "console": {}}}}}}}"#,
-        uplink("fithub", link),
-        console_json(&format!("127.0.0.1:{ncon}")),
-        uplink("fithub", link),
-        console_json(&format!("127.0.0.1:{pcon}"))
-    ));
+    let env = start(
+        &format!(
+            r#""node": {{"name": "lab", "allow_hub_services": true, "hubs": [{}], "services": [{{"name": "echo", "address": "127.0.0.1:{svc}"}}], "console": {}}},
+          "proxy": {{"name": "me", "hubs": [{}], "forwards": [{{"listen": "127.0.0.1:0", "node": "lab", "service": "echo"}}], "console": {}}}"#,
+            uplink("fithub", link),
+            console_json("127.0.0.1:0"),
+            uplink("fithub", link),
+            console_json("127.0.0.1:0")
+        ),
+        |_| String::new(),
+    );
+    let (fwd, ncon, pcon) = env.ask(|r| {
+        (
+            forward_port(r),
+            console_port(r, "tunnel.node"),
+            console_port(r, "tunnel.proxy"),
+        )
+    });
     let p = env.proxy();
     wait_for("the proxy to know the node through fit's hub", || {
         p.has_node("fithub", "lab", "echo")

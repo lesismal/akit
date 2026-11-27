@@ -20,6 +20,10 @@ use akit_admin::console::RoleConsoles;
 use akit_config::value::{self, Value};
 use akit_roles::host::{Edit, Editor, Manager};
 
+/// A port free now, for what must name its port before it binds: a listener of fit's binary, and
+/// a console its hub's console socket dials (at the console's `address`, as fit's). Another
+/// process may take it meanwhile. akit's other listeners bind port 0 and are asked where they
+/// listen.
 fn free_port() -> u16 {
     TcpListener::bind("127.0.0.1:0")
         .unwrap()
@@ -83,7 +87,10 @@ impl Drop for Env {
     }
 }
 
-fn start(doc: &str, console: u16) -> Env {
+/// The hub of `hub_member` (its listeners and console on port 0), with its console; then, given
+/// the port its first listener bound, the members `others` writes, when it writes any. Edits are
+/// applied to the doc of them all, as `akit run`'s control thread does.
+fn start(hub_member: &str, others: impl FnOnce(u16) -> String) -> Env {
     let engine = akio::Engine::builder().client_threads(2).build().unwrap();
     engine.start().unwrap();
     let engine = Arc::new(engine);
@@ -99,11 +106,26 @@ fn start(doc: &str, console: u16) -> Env {
         Some(editor),
     );
     roles.set_consoles(Box::new(RoleConsoles::new(&akit_admin::Options::default())));
-    let config = akit_config::from_json(doc, None).unwrap_or_else(|e| panic!("{doc}\n{e}"));
-    let errs = roles.apply(&config);
-    assert!(errs.is_empty(), "{errs:?}");
+    let mut doc = format!(r#"{{"tunnel": {{{hub_member}}}}}"#);
+    apply(&mut roles, &doc);
+    let st = value::parse(&hub_api(&roles).status()).unwrap();
+    let link = match st.get("listen") {
+        Some(Value::Array(l)) => match l.first() {
+            Some(Value::String(a)) => a.parse::<SocketAddr>().unwrap().port(),
+            _ => 0,
+        },
+        _ => 0,
+    };
+    let more = others(link);
+    if !more.is_empty() {
+        doc = format!(r#"{{"tunnel": {{{hub_member}, {more}}}}}"#);
+        apply(&mut roles, &doc);
+    }
+    let console = roles
+        .console_addr("tunnel.hub")
+        .expect("the hub's console's address");
     let roles = Arc::new(Mutex::new(roles));
-    let value = Arc::new(Mutex::new(value::parse(doc).unwrap()));
+    let value = Arc::new(Mutex::new(value::parse(&doc).unwrap()));
     let (control, v) = (Arc::clone(&roles), Arc::clone(&value));
     std::thread::spawn(move || {
         while let Ok(edit) = rx.recv() {
@@ -129,7 +151,6 @@ fn start(doc: &str, console: u16) -> Env {
             .ids()
             .contains(&"tunnel.hub")
     );
-    let console = SocketAddr::from(([127, 0, 0, 1], console));
     Env {
         engine,
         roles,
@@ -268,23 +289,40 @@ fn wait_for(what: &str, cond: impl Fn() -> bool) {
     }
 }
 
-fn hub_doc(console: u16, extra: &str) -> String {
+/// Applies `doc` on `roles`, which must take it.
+fn apply(roles: &mut Manager, doc: &str) {
+    let config = akit_config::from_json(doc, None).unwrap_or_else(|e| panic!("{doc}\n{e}"));
+    let errs = roles.apply(&config);
+    assert!(errs.is_empty(), "{errs:?}");
+}
+
+fn hub_api(roles: &Manager) -> akit_tunnel::hub::HubApi {
+    roles
+        .api("tunnel.hub")
+        .unwrap()
+        .downcast_ref::<akit_tunnel::hub::HubApi>()
+        .unwrap()
+        .clone()
+}
+
+/// The hub's member, its listener and console on port 0, with `extra`.
+fn hub_member(extra: &str) -> String {
     format!(
-        r#"{{"tunnel": {{"hub": {{"name": "hub", "password": "pw", "listeners": [{{"protocol": "tcp", "address": "127.0.0.1:0"}}], "console": {}{extra}}}}}}}"#,
-        console_json(&format!("127.0.0.1:{console}"))
+        r#""hub": {{"name": "hub", "password": "pw", "listeners": [{{"protocol": "tcp", "address": "127.0.0.1:0"}}], "console": {}{extra}}}"#,
+        console_json("127.0.0.1:0")
     )
 }
 
-fn hub_env(extra_doc: impl FnOnce(u16) -> String) -> Env {
-    let port = free_port();
-    start(&extra_doc(port), port)
+/// The hub of [`hub_member`] alone.
+fn hub_env(extra: &str) -> Env {
+    start(&hub_member(extra), |_| String::new())
 }
 
 /// fit's `TestModule` (roleconsole): the hub's console serves its module, under its own cookie,
 /// at `/api/` and at `/api/m/tunnel.hub/`, and no other.
 #[test]
 fn the_console_serves_the_hubs_module() {
-    let env = hub_env(|p| hub_doc(p, ""));
+    let env = hub_env("");
     let r = exchange(env.console, "GET", "/api/status", "", "");
     assert_eq!(r.status, 401, "{r:?}");
     let pg = login(env.console);
@@ -336,21 +374,28 @@ fn the_console_serves_the_hubs_module() {
     pg.expect(400, "/api/tokens", r#"{"name": ""}"#);
     pg.expect(200, "/api/tokens/revoke", &format!(r#"{{"id": "{id}"}}"#));
     assert!(!env.current().contains(&id), "{}", env.current());
-    // Moved with the member: another port, the old one closed.
-    let next = free_port();
+    // Moved with the member (from 127.0.0.1 to localhost, both on port 0): bound anew while the
+    // old one still runs, so on another port; the old one closed.
     let cur = env.current();
-    let moved = cur.replace(
-        &format!("127.0.0.1:{}", env.console.port()),
-        &format!("127.0.0.1:{next}"),
-    );
-    let doc = format!(r#"{{"tunnel": {{"hub": {moved}}}}}"#);
-    let errs = env
-        .roles
-        .lock()
-        .unwrap()
-        .apply(&akit_config::from_json(&doc, None).unwrap());
-    assert!(errs.is_empty(), "{errs:?}");
-    let pg2 = login(SocketAddr::from(([127, 0, 0, 1], next)));
+    let mut moved = value::parse(&cur).unwrap();
+    let Value::Object(hub) = &mut moved else {
+        panic!("{cur}")
+    };
+    let Some((_, Value::Object(console))) = hub.iter_mut().find(|(k, _)| k == "console") else {
+        panic!("{cur}")
+    };
+    let Some((_, address)) = console.iter_mut().find(|(k, _)| k == "address") else {
+        panic!("{cur}")
+    };
+    *address = Value::String("localhost:0".to_owned());
+    let doc = format!(r#"{{"tunnel": {{"hub": {}}}}}"#, moved.to_json());
+    let next = {
+        let mut roles = env.roles.lock().unwrap();
+        apply(&mut roles, &doc);
+        roles.console_addr("tunnel.hub").unwrap()
+    };
+    assert_ne!(next, env.console);
+    let pg2 = login(next);
     assert_eq!(pg2.get("/api/status").status, 200);
     assert!(TcpStream::connect(env.console).is_err());
 }
@@ -358,7 +403,7 @@ fn the_console_serves_the_hubs_module() {
 /// fit's `TestPages`: what the hub's API refuses, and what it changes.
 #[test]
 fn pages_change_the_member() {
-    let env = hub_env(|p| hub_doc(p, ""));
+    let env = hub_env("");
     let pg = login(env.console);
 
     // Bodies that do not decode.
@@ -485,19 +530,32 @@ fn pages_change_the_member() {
 /// fit's `TestPagesPeers`: the hub's API on peers and tunnels, with akit's own node and proxy.
 #[test]
 fn pages_on_peers_and_tunnels() {
-    let (link, svc, fwd) = (free_port(), echo(), free_port());
-    let up = format!(
-        r#"{{"name": "hub", "endpoints": [{{"address": "127.0.0.1:{link}"}}], "password": "pw", "pool_size": 1, "retry_interval": "100ms"}}"#
-    );
-    let env = hub_env(|p| {
+    let svc = echo();
+    let env = start(&hub_member(""), |link| {
+        let up = format!(
+            r#"{{"name": "hub", "endpoints": [{{"address": "127.0.0.1:{link}"}}], "password": "pw", "pool_size": 1, "retry_interval": "100ms"}}"#
+        );
         format!(
-            r#"{{"tunnel": {{
-          "hub": {{"name": "hub", "password": "pw", "listeners": [{{"protocol": "tcp", "address": "127.0.0.1:{link}"}}], "console": {}}},
-          "node": {{"name": "lab", "allow_hub_services": true, "hubs": [{up}], "services": [{{"name": "echo", "address": "127.0.0.1:{svc}"}}]}},
-          "proxy": {{"name": "me", "hubs": [{up}], "forwards": [{{"listen": "127.0.0.1:{fwd}", "node": "lab", "service": "b"}}]}}}}}}"#,
-            console_json(&format!("127.0.0.1:{p}"))
+            r#""node": {{"name": "lab", "allow_hub_services": true, "hubs": [{up}], "services": [{{"name": "echo", "address": "127.0.0.1:{svc}"}}]}},
+          "proxy": {{"name": "me", "hubs": [{up}], "forwards": [{{"listen": "127.0.0.1:0", "node": "lab", "service": "b"}}]}}"#
         )
     });
+    let fwd = {
+        let roles = env.roles.lock().unwrap();
+        let api = roles.api("tunnel.proxy").unwrap();
+        let st = api
+            .downcast_ref::<akit_tunnel::proxy::ProxyApi>()
+            .unwrap()
+            .status();
+        let st = value::parse(&st).unwrap();
+        let Some(Value::Array(fs)) = st.get("forwards") else {
+            panic!("{}", st.to_json())
+        };
+        let Some(Value::String(addr)) = fs[0].get("addr") else {
+            panic!("{}", st.to_json())
+        };
+        addr.parse::<SocketAddr>().unwrap().port()
+    };
     let pg = login(env.console);
     let api = env.hub();
     wait_for("the node and the proxy to register", || {
@@ -567,16 +625,12 @@ fn pages_on_peers_and_tunnels() {
 /// an error, 502.
 #[test]
 fn a_node_that_refuses_is_a_bad_gateway() {
-    let link = free_port();
-    let up = format!(
-        r#"{{"name": "hub", "endpoints": [{{"address": "127.0.0.1:{link}"}}], "password": "pw", "pool_size": 1, "retry_interval": "100ms"}}"#
-    );
-    let env = hub_env(|p| {
+    let env = start(&hub_member(""), |link| {
+        let up = format!(
+            r#"{{"name": "hub", "endpoints": [{{"address": "127.0.0.1:{link}"}}], "password": "pw", "pool_size": 1, "retry_interval": "100ms"}}"#
+        );
         format!(
-            r#"{{"tunnel": {{
-          "hub": {{"name": "hub", "password": "pw", "listeners": [{{"protocol": "tcp", "address": "127.0.0.1:{link}"}}], "console": {}}},
-          "node": {{"name": "lab", "hubs": [{up}], "services": [{{"name": "echo", "address": "127.0.0.1:1"}}]}}}}}}"#,
-            console_json(&format!("127.0.0.1:{p}"))
+            r#""node": {{"name": "lab", "hubs": [{up}], "services": [{{"name": "echo", "address": "127.0.0.1:1"}}]}}"#
         )
     });
     let pg = login(env.console);
@@ -601,15 +655,16 @@ fn akits_hub_pages_through_fits_web_proxy() {
         eprintln!("AKIT_FIT_BIN not set: skipped");
         return;
     };
-    let sock = free_port();
-    let env = hub_env(|p| {
-        hub_doc(
-            p,
-            &format!(
-                r#", "console_socket": {{"address": "127.0.0.1:{sock}", "password": "sock"}}"#
-            ),
-        )
-    });
+    // The socket dials the console at its member's address, as fit's does: a port named there.
+    let console = free_port();
+    let env = start(
+        &format!(
+            r#""hub": {{"name": "hub", "password": "pw", "listeners": [{{"protocol": "tcp", "address": "127.0.0.1:0"}}], "console": {}, "console_socket": {{"address": "127.0.0.1:0", "password": "sock"}}}}"#,
+            console_json(&format!("127.0.0.1:{console}"))
+        ),
+        |_| String::new(),
+    );
+    let sock = env.hub().socket_addr().unwrap().port();
     let web = free_port();
     let dir = std::env::temp_dir().join(format!("akit-i109-proxy-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();

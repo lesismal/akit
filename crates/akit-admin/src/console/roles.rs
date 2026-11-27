@@ -136,6 +136,10 @@ impl Consoles for RoleConsoles {
         let _ = RoleConsoles::reload_certs(self);
     }
 
+    fn addr(&self, id: &str) -> Option<std::net::SocketAddr> {
+        RoleConsoles::addr(self, id)
+    }
+
     fn apply(
         &mut self,
         id: &'static str,
