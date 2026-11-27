@@ -1120,6 +1120,174 @@ fn bittorrent(out: &mut Vec<(String, String, Read)>) {
     console_and_access(out, "bittorrent.tracker", &tw, true);
 }
 
+/// `media_auth` and `streaming` (I120).
+fn media(out: &mut Vec<(String, String, Read)>) {
+    const P: &str = r#"{"name": "p", "public": ["play"]}"#;
+    out.push((
+        "media_auth".into(),
+        r#"{"media_auth": []}"#.into(),
+        Read::Differs(format!(r#"{{"media_auth": [{P}]}}"#)),
+    ));
+    let pw = |m: &str| format!(r#"{{"media_auth": [{m}]}}"#);
+    emit(
+        out,
+        "media_auth[]",
+        &pw,
+        &[("name", q("p")), ("public", r#"["play"]"#.into())],
+        vec![
+            f("name", q("a"), q("b")),
+            f("public", r#"["play"]"#, r#"["publish"]"#),
+            f("secret", q("0123456789abcdef"), q("0123456789abcdeg")),
+            f("secret_file", q("a"), q("b")),
+            f("token_ttl", q("1h"), q("2h")),
+            f("tokens", "[]", r#"[{"token": "0123456789abcdef"}]"#),
+            f("users", "[]", r#"[{"name": "u", "password": "p"}]"#),
+        ],
+    );
+    let tw = |m: &str| pw(&format!(r#"{{"name": "p", "tokens": [{m}]}}"#));
+    emit(
+        out,
+        "media_auth[].tokens[]",
+        &tw,
+        &[("token", q("0123456789abcdef"))],
+        vec![
+            f("name", q("a"), q("b")),
+            f("token", q("0123456789abcdef"), q("0123456789abcdeg")),
+            fx("token_sha256", q(H64), q(C64), &[("token", "")]),
+            f("publish", r#"["a"]"#, r#"["b"]"#),
+            f("play", r#"["a"]"#, r#"["b"]"#),
+        ],
+    );
+    let uw = |m: &str| pw(&format!(r#"{{"name": "p", "users": [{m}]}}"#));
+    emit(
+        out,
+        "media_auth[].users[]",
+        &uw,
+        &[("name", q("u")), ("password", q("p"))],
+        vec![
+            f("name", q("a"), q("b")),
+            f("password", q("a"), q("b")),
+            fx("password_hash", q(HASH_A), q(HASH_B), &[("password", "")]),
+            f("publish", r#"["a"]"#, r#"["b"]"#),
+            f("play", r#"["a"]"#, r#"["b"]"#),
+        ],
+    );
+    // The role, with a policy its listeners may name.
+    let sw = |m: &str| format!(r#"{{"media_auth": [{P}], "streaming": {m}}}"#);
+    let rtmp = r#"{"listen": "127.0.0.1:1935"}"#;
+    out.push((
+        "streaming".into(),
+        sw(&format!(r#"{{"rtmp": {rtmp}}}"#)),
+        Read::Differs(sw(&format!(r#"{{"rtmp": {rtmp}, "max_streams": 1}}"#))),
+    ));
+    emit(
+        out,
+        "streaming",
+        &sw,
+        &[("rtmp", rtmp.into())],
+        vec![
+            f("max_streams", "1", "2"),
+            f("max_players", "1", "2"),
+            f("gop_cache_bytes", "1", "2"),
+            f(
+                "rtmp",
+                r#"{"listen": "127.0.0.1:1935"}"#,
+                r#"{"listen": "127.0.0.1:1936"}"#,
+            ),
+            f(
+                "rtsp",
+                r#"{"listen": "127.0.0.1:8554"}"#,
+                r#"{"listen": "127.0.0.1:8555"}"#,
+            ),
+            f(
+                "srt",
+                r#"{"listen": "127.0.0.1:8890"}"#,
+                r#"{"listen": "127.0.0.1:8891"}"#,
+            ),
+            f(
+                "webrtc",
+                r#"{"listen": "127.0.0.1:8188"}"#,
+                r#"{"listen": "127.0.0.1:8189"}"#,
+            ),
+            f("access", "{}", r#"{"allow": ["10.0.0.0/8"]}"#),
+        ],
+    );
+    let aw = |m: &str| sw(&format!(r#"{{"rtmp": {rtmp}, "access": {m}}}"#));
+    emit(out, "streaming.access", &aw, &[], access_fields());
+    for (name, port, extra) in [
+        (
+            "rtmp",
+            1935_u16,
+            vec![
+                f("handshake_timeout", q("1s"), q("2s")),
+                f("idle_timeout", q("1s"), q("2s")),
+            ],
+        ),
+        ("rtsp", 8554, vec![f("session_timeout", q("1s"), q("2s"))]),
+        (
+            "srt",
+            8890,
+            vec![
+                f("latency", q("1s"), q("2s")),
+                f("passphrase", q("0123456789"), q("0123456780")),
+                f("peer_idle_timeout", q("1s"), q("2s")),
+            ],
+        ),
+    ] {
+        let lw = |m: &str| sw(&format!(r#"{{"{name}": {m}}}"#));
+        let mut fields = vec![
+            f(
+                "listen",
+                q(&format!("127.0.0.1:{port}")),
+                q(&format!("127.0.0.1:{}", port.saturating_add(1))),
+            ),
+            f("auth", q("p"), q("")),
+            f("max_conns", "1", "2"),
+            f("play_wait", q("1s"), q("2s")),
+        ];
+        fields.extend(extra);
+        emit(
+            out,
+            &format!("streaming.{name}"),
+            &lw,
+            &[("listen", q(&format!("127.0.0.1:{port}")))],
+            fields,
+        );
+    }
+    let ww = |m: &str| sw(&format!(r#"{{"webrtc": {m}}}"#));
+    emit(
+        out,
+        "streaming.webrtc",
+        &ww,
+        &[("listen", q("127.0.0.1:8188"))],
+        vec![
+            f("listen", q("127.0.0.1:8188"), q("127.0.0.1:8189")),
+            f("public_ips", r#"["10.0.0.1"]"#, r#"["10.0.0.2"]"#),
+            f("ice_servers", "[]", r#"[{"urls": ["stun:a"]}]"#),
+            f("max_sessions", "1", "2"),
+            f("connect_timeout", q("1s"), q("2s")),
+            f("play_wait", q("1s"), q("2s")),
+            f("max_offer_bytes", "1", "2"),
+        ],
+    );
+    let iw = |m: &str| {
+        sw(&format!(
+            r#"{{"webrtc": {{"listen": "127.0.0.1:8188", "ice_servers": [{m}]}}}}"#
+        ))
+    };
+    emit(
+        out,
+        "streaming.webrtc.ice_servers[]",
+        &iw,
+        &[("urls", r#"["stun:a"]"#.into())],
+        vec![
+            f("urls", r#"["stun:a"]"#, r#"["stun:b"]"#),
+            f("username", q("a"), q("b")),
+            f("credential", q("a"), q("b")),
+        ],
+    );
+}
+
 /// Every sample of the roles' fields.
 pub(crate) fn samples() -> Vec<(String, String, Read)> {
     let mut out = Vec::new();
@@ -1127,5 +1295,6 @@ pub(crate) fn samples() -> Vec<(String, String, Read)> {
     llm(&mut out);
     webrtc(&mut out);
     bittorrent(&mut out);
+    media(&mut out);
     out
 }

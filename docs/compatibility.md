@@ -394,7 +394,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 1059 supported.
+3821 fields in 121 sections, at fit `7daee573`; 1118 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -443,7 +443,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`listeners`](#fields-listeners) | 30 | 28 | 2 |
 | [`llm`](#fields-llm) | 218 | 215 | 3 |
 | [`log`](#fields-log) | 24 | 24 | 0 |
-| [`media_auth`](#fields-media-auth) | 34 | 0 | 34 |
+| [`media_auth`](#fields-media-auth) | 34 | 18 | 16 |
 | [`media_library`](#fields-media-library) | 24 | 0 | 24 |
 | [`metrics`](#fields-metrics) | 1 | 1 | 0 |
 | [`pprof`](#fields-pprof) | 4 | 0 | 4 |
@@ -451,7 +451,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`routes`](#fields-routes) | 24 | 24 | 0 |
 | [`schema_version`](#fields-schema-version) | 1 | 1 | 0 |
 | [`services`](#fields-services) | 13 | 13 | 0 |
-| [`streaming`](#fields-streaming) | 76 | 0 | 76 |
+| [`streaming`](#fields-streaming) | 76 | 41 | 35 |
 | [`sync`](#fields-sync) | 42 | 0 | 42 |
 | [`sync.codecs/canal_json`](#fields-sync-codecs-canal-json) | 87 | 0 | 87 |
 | [`sync.codecs/csv`](#fields-sync-codecs-csv) | 116 | 0 | 116 |
@@ -519,7 +519,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 161 | 3 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 76 | 0 |
-| **Total** | 3821 | 1059 | 2762 |
+| **Total** | 3821 | 1118 | 2703 |
 
 <a id="fields-access"></a>
 
@@ -1789,22 +1789,22 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 | Field | Type | Status |
 | --- | --- | --- |
-| `media_auth` | `array<object>` | not supported yet |
+| `media_auth` | `array<object>` | supported |
 | `media_auth[].keys` | `array<object>` | not supported yet |
 | `media_auth[].keys[].key` | `string, required` | not supported yet |
 | `media_auth[].keys[].secret` | `string` | not supported yet |
 | `media_auth[].keys[].secret_file` | `string` | not supported yet |
-| `media_auth[].name` | `string, required` | not supported yet |
-| `media_auth[].public` | `array<enum(publish\|play)>` | not supported yet |
-| `media_auth[].secret` | `string` | not supported yet |
-| `media_auth[].secret_file` | `string` | not supported yet |
-| `media_auth[].token_ttl` | `duration` | not supported yet |
-| `media_auth[].tokens` | `array<object>` | not supported yet |
-| `media_auth[].tokens[].name` | `string` | not supported yet |
-| `media_auth[].tokens[].play` | `array<string>` | not supported yet |
-| `media_auth[].tokens[].publish` | `array<string>` | not supported yet |
-| `media_auth[].tokens[].token` | `string` | not supported yet |
-| `media_auth[].tokens[].token_sha256` | `string` | not supported yet |
+| `media_auth[].name` | `string, required` | supported |
+| `media_auth[].public` | `array<enum(publish\|play)>` | supported |
+| `media_auth[].secret` | `string` | supported |
+| `media_auth[].secret_file` | `string` | supported |
+| `media_auth[].token_ttl` | `duration` | supported |
+| `media_auth[].tokens` | `array<object>` | supported |
+| `media_auth[].tokens[].name` | `string` | supported |
+| `media_auth[].tokens[].play` | `array<string>` | supported |
+| `media_auth[].tokens[].publish` | `array<string>` | supported |
+| `media_auth[].tokens[].token` | `string` | supported |
+| `media_auth[].tokens[].token_sha256` | `string` | supported |
 | `media_auth[].url_signing` | `object` | not supported yet |
 | `media_auth[].url_signing.bind_address` | `enum(ip\|subnet)` | not supported yet |
 | `media_auth[].url_signing.cookie` | `boolean` | not supported yet |
@@ -1817,12 +1817,12 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `media_auth[].url_signing.session_idle` | `duration` | not supported yet |
 | `media_auth[].url_signing.trusted_proxies` | `array<string>` | not supported yet |
 | `media_auth[].url_signing.ttl` | `duration` | not supported yet |
-| `media_auth[].users` | `array<object>` | not supported yet |
-| `media_auth[].users[].name` | `string, required` | not supported yet |
-| `media_auth[].users[].password` | `string` | not supported yet |
-| `media_auth[].users[].password_hash` | `string` | not supported yet |
-| `media_auth[].users[].play` | `array<string>` | not supported yet |
-| `media_auth[].users[].publish` | `array<string>` | not supported yet |
+| `media_auth[].users` | `array<object>` | supported |
+| `media_auth[].users[].name` | `string, required` | supported |
+| `media_auth[].users[].password` | `string` | supported |
+| `media_auth[].users[].password_hash` | `string` | supported |
+| `media_auth[].users[].play` | `array<string>` | supported |
+| `media_auth[].users[].publish` | `array<string>` | supported |
 
 <a id="fields-media-library"></a>
 
@@ -2006,12 +2006,12 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 | Field | Type | Status |
 | --- | --- | --- |
-| `streaming` | `object` | not supported yet |
-| `streaming.access` | `object` | not supported yet |
-| `streaming.access.allow` | `array<string>` | not supported yet |
-| `streaming.access.allow_files` | `array<string>` | not supported yet |
-| `streaming.access.deny` | `array<string>` | not supported yet |
-| `streaming.access.deny_files` | `array<string>` | not supported yet |
+| `streaming` | `object` | supported |
+| `streaming.access` | `object` | supported |
+| `streaming.access.allow` | `array<string>` | supported |
+| `streaming.access.allow_files` | `array<string>` | supported |
+| `streaming.access.deny` | `array<string>` | supported |
+| `streaming.access.deny_files` | `array<string>` | supported |
 | `streaming.channels` | `array<object>` | not supported yet |
 | `streaming.channels[].encrypt` | `boolean` | not supported yet |
 | `streaming.channels[].items` | `array<string>` | not supported yet |
@@ -2034,9 +2034,9 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `streaming.channels[].schedule[].at` | `string, required` | not supported yet |
 | `streaming.channels[].schedule[].item` | `string, required` | not supported yet |
 | `streaming.channels[].time_zone` | `string` | not supported yet |
-| `streaming.gop_cache_bytes` | `integer` | not supported yet |
-| `streaming.max_players` | `integer` | not supported yet |
-| `streaming.max_streams` | `integer` | not supported yet |
+| `streaming.gop_cache_bytes` | `integer` | supported |
+| `streaming.max_players` | `integer` | supported |
+| `streaming.max_streams` | `integer` | supported |
 | `streaming.push` | `array<object>` | not supported yet |
 | `streaming.push[].connect_timeout` | `duration` | not supported yet |
 | `streaming.push[].name` | `string` | not supported yet |
@@ -2044,44 +2044,44 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `streaming.push[].retry_min` | `duration` | not supported yet |
 | `streaming.push[].stream` | `string` | not supported yet |
 | `streaming.push[].url` | `string, required` | not supported yet |
-| `streaming.rtmp` | `object` | not supported yet |
-| `streaming.rtmp.auth` | `string` | not supported yet |
-| `streaming.rtmp.handshake_timeout` | `duration` | not supported yet |
-| `streaming.rtmp.idle_timeout` | `duration` | not supported yet |
-| `streaming.rtmp.listen` | `string, required` | not supported yet |
-| `streaming.rtmp.max_conns` | `integer` | not supported yet |
+| `streaming.rtmp` | `object` | supported |
+| `streaming.rtmp.auth` | `string` | supported |
+| `streaming.rtmp.handshake_timeout` | `duration` | supported |
+| `streaming.rtmp.idle_timeout` | `duration` | supported |
+| `streaming.rtmp.listen` | `string, required` | supported |
+| `streaming.rtmp.max_conns` | `integer` | supported |
 | `streaming.rtmp.max_message_bytes` | `integer` | not supported yet |
 | `streaming.rtmp.mptcp` | `boolean` | not supported yet |
-| `streaming.rtmp.play_wait` | `duration` | not supported yet |
-| `streaming.rtsp` | `object` | not supported yet |
-| `streaming.rtsp.auth` | `string` | not supported yet |
+| `streaming.rtmp.play_wait` | `duration` | supported |
+| `streaming.rtsp` | `object` | supported |
+| `streaming.rtsp.auth` | `string` | supported |
 | `streaming.rtsp.auth_methods` | `array<enum(digest\|basic)>` | not supported yet |
 | `streaming.rtsp.idle_timeout` | `duration` | not supported yet |
-| `streaming.rtsp.listen` | `string, required` | not supported yet |
-| `streaming.rtsp.max_conns` | `integer` | not supported yet |
+| `streaming.rtsp.listen` | `string, required` | supported |
+| `streaming.rtsp.max_conns` | `integer` | supported |
 | `streaming.rtsp.mptcp` | `boolean` | not supported yet |
-| `streaming.rtsp.play_wait` | `duration` | not supported yet |
+| `streaming.rtsp.play_wait` | `duration` | supported |
 | `streaming.rtsp.realm` | `string` | not supported yet |
-| `streaming.rtsp.session_timeout` | `duration` | not supported yet |
-| `streaming.srt` | `object` | not supported yet |
-| `streaming.srt.auth` | `string` | not supported yet |
-| `streaming.srt.latency` | `duration` | not supported yet |
-| `streaming.srt.listen` | `string, required` | not supported yet |
-| `streaming.srt.max_conns` | `integer` | not supported yet |
-| `streaming.srt.passphrase` | `string` | not supported yet |
-| `streaming.srt.peer_idle_timeout` | `duration` | not supported yet |
-| `streaming.srt.play_wait` | `duration` | not supported yet |
-| `streaming.webrtc` | `object` | not supported yet |
-| `streaming.webrtc.connect_timeout` | `duration` | not supported yet |
-| `streaming.webrtc.ice_servers` | `array<object>` | not supported yet |
-| `streaming.webrtc.ice_servers[].credential` | `string` | not supported yet |
-| `streaming.webrtc.ice_servers[].urls` | `array<string>, required` | not supported yet |
-| `streaming.webrtc.ice_servers[].username` | `string` | not supported yet |
-| `streaming.webrtc.listen` | `string, required` | not supported yet |
-| `streaming.webrtc.max_offer_bytes` | `integer` | not supported yet |
-| `streaming.webrtc.max_sessions` | `integer` | not supported yet |
-| `streaming.webrtc.play_wait` | `duration` | not supported yet |
-| `streaming.webrtc.public_ips` | `array<string>` | not supported yet |
+| `streaming.rtsp.session_timeout` | `duration` | supported |
+| `streaming.srt` | `object` | supported |
+| `streaming.srt.auth` | `string` | supported |
+| `streaming.srt.latency` | `duration` | supported |
+| `streaming.srt.listen` | `string, required` | supported |
+| `streaming.srt.max_conns` | `integer` | supported |
+| `streaming.srt.passphrase` | `string` | supported |
+| `streaming.srt.peer_idle_timeout` | `duration` | supported |
+| `streaming.srt.play_wait` | `duration` | supported |
+| `streaming.webrtc` | `object` | supported |
+| `streaming.webrtc.connect_timeout` | `duration` | supported |
+| `streaming.webrtc.ice_servers` | `array<object>` | supported |
+| `streaming.webrtc.ice_servers[].credential` | `string` | supported |
+| `streaming.webrtc.ice_servers[].urls` | `array<string>, required` | supported |
+| `streaming.webrtc.ice_servers[].username` | `string` | supported |
+| `streaming.webrtc.listen` | `string, required` | supported |
+| `streaming.webrtc.max_offer_bytes` | `integer` | supported |
+| `streaming.webrtc.max_sessions` | `integer` | supported |
+| `streaming.webrtc.play_wait` | `duration` | supported |
+| `streaming.webrtc.public_ips` | `array<string>` | supported |
 
 <a id="fields-sync"></a>
 

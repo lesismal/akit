@@ -209,6 +209,14 @@
     "webrtc.proxy": {
       "en": "A UDP listener of the engine (I114): a new peer address's first datagram must be a STUN Binding request of an answered session's ufrag, signed with its pwd; its relay is a UDP socket of its own on the engine (`relay_ip`, a port of the range, one in use skipped), closed after `idle_timeout` without a datagram from the peer (akio's idle timeout of its connection). `/metrics` has fit's proxy families named `akit_webrtc_proxy_*`.",
       "zh": "引擎上的一个 UDP 监听器（I114）：新 peer 地址的首个数据报必须是已应答会话的 ufrag 的 STUN Binding 请求，并由其 pwd 签名；其中继是引擎上一个自己的 UDP 套接字（`relay_ip`、范围内的端口，跳过已占用的），peer 在 `idle_timeout` 内没有数据报时关闭（akio 对其连接的空闲超时）。`/metrics` 有 fit 的代理指标族，名为 `akit_webrtc_proxy_*`。"
+    },
+    "streaming": {
+      "en": "`akit run` runs the role from I122 (I124 its `webrtc` port); until then it refuses a config that sets it, which `akit validate` checks.",
+      "zh": "`akit run` 从 I122 起运行该角色（I124 起运行其 `webrtc` 端口）；在此之前它拒绝设置了该角色的配置，`akit validate` 会检查它。"
+    },
+    "media_auth": {
+      "en": "`akit run` applies the policies from I121; until then it refuses a config that sets them, which `akit validate` checks. A token's cookie is `akit_media_token` (decision 037).",
+      "zh": "`akit run` 从 I121 起应用这些策略；在此之前它拒绝设置了策略的配置，`akit validate` 会检查它们。token 的 cookie 名为 `akit_media_token`（决定 037）。"
     }
   }
 }

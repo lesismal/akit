@@ -230,6 +230,15 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I111 | WebRTC II：基于 akio-turn 的 TURN 服务器，经 UDP、TCP 和 TLS | I110 | done |
 | I112 | WebRTC III：基于 akio 钩子的 TURN 服务器：端口范围、带宽、事件、就地修改的限制、排空 | I111, akio A256–A258 | done |
 | I113 | WebRTC IV：WHIP 和 WHEP，基于 akio-webrtc `RtcServer` 的 SFU | I110 | done |
+| I109d | LLM 角色的页面调用而角色尚缺的方法：`/mesh/*`（dial、undial、kick、listen、limits、tokens）、proxy 的方法（`/proxy/*`：其 API、key、模型、node、profile、统计）；身份的 `http_url` | I109c | todo |
+| **1.0 之后：流媒体与媒体认证** | | | |
+| I120 | 流媒体与媒体认证 I：配置中的 `media_auth` 和 `streaming` | I79 | done |
+| I121 | 媒体认证 II：策略、HTTP 请求的检查、`akit media-token` | I120 | todo |
+| I122 | 流媒体 I：角色的媒体中心及其 RTMP、RTSP 和 SRT 监听器 | I121, I100 | todo |
+| I123 | 流媒体 II：`httpflv` 和 `hls` | I122 | todo |
+| I124 | 流媒体 III：`streaming.webrtc`、`stream_whip` 和 `stream_whep` | I123 | todo |
+| I125 | 媒体页面：`media_pages`、其登录和房间 API | I121、WebRTC 路线的 `whip` 和 `whep` | todo |
+| I126 | `whip`、`whep` 和 `webrtc_proxy` 上的媒体认证 | I121、WebRTC 路线的处理器 | todo |
 | I114 | WebRTC V：代理的 WHIP 和 WHEP：`webrtc_proxy` 和 `webrtc.proxy` | I113, I14 | done |
 | I150 | BitTorrent I：配置中的 `bittorrent.client` 和 `bittorrent.tracker`，fit 的字段、检查和冲突；后续迭代才运行的内容以"尚不支持"拒绝 | I98 | todo |
 | I150 | BitTorrent I：配置中的 `bittorrent.client` 和 `bittorrent.tracker`，fit 的字段、检查和冲突；后续迭代才运行的内容以"尚不支持"拒绝 | I98 | done |
@@ -256,6 +265,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I139b | 集群 XI：NAT 之后主动外连的成员 | I132 | todo |
 | I139c | 集群 XII：跨成员的指标、日志和证书；`akit cluster` | I138 | todo |
 
+状态：`todo`、`doing` 或 `done`。下一个可用的迭代编号是 I127（为日志路线和访问控制列表路线预留的 I84 和 I88 未使用；I95 和 I96 为控制台路线预留；I97 改名了 fit 的对外名字；I98–I109、I102b、I102c、I102d、I103b、I109b、I109c 和 I109d 是隧道与 LLM 路线；I110–I114 是 WebRTC 路线，I115–I119 为它预留；I120–I126 是流媒体与媒体认证路线）。
 ## 基准与优化状态
 
 [规则 24](rules.zh-CN.md) 要求做基准的每项功能（热路径：同轮 A/B；热路径之外的数据面：crate 的微基准）在这里都有一行；
@@ -305,6 +315,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | LLM mesh | I104 | 否 | 否（已实现，未测） | 对比 fit 的 mesh（fit 对 fit、akit 对 akit、以及混合）：一条链路上和一组链路上每秒的调用数；一条链路上 256 KiB 窗口下单个流每秒的字节数，以及 64 个流同时；一个慢读者只压住自己的流而链路上其他流照常进行（窗口，以及链路的 64 KiB 高水位及其暂停的读取）；1 KiB 以上帧的 gzip 每帧 CPU；每条空闲链路和每个流的内存。 |
 | 隧道：hub、node、proxy | I101–I103（I102b、I102c、I103b） | 否 | 否（已实现，未测） | 对比 fit 的隧道（fit 的 hub 配 fit 的 node 和 proxy、akit 的三者、以及混合）：一条隧道、以及一条链路上 64 条隧道同时的每秒字节数，明文、`body_password` 密封以及经 TLS（I102）、QUIC（I102b：流的发送缓冲和 wire 的溢出队列，合起来是 `LINK_QUEUE`）和 WebSocket（I102c）；每秒打开的隧道数（proxy 的 accept、经 hub 的 `tunnel/open`、node 的拨号）；hub 转发每 GB 的 CPU；每条空闲隧道和每条链路的内存；一个慢服务压住一条隧道而链路上其他隧道照常进行（只由窗口调节链路，其队列上限为 fit 的 `LinkQueue`，A234）；I103b：经 web 代理和 hub 控制台套接字的每秒字节数（双向密封，每条消息 64 KiB），对比 fit，以及 hub 每 GB 的 CPU。 |
 | WebRTC：TURN、WHIP 和 WHEP、代理 | I111–I114 | 否 | 否（尚未实现） | 与 fit 的角色对比（fit 的 TURN 服务器和媒体服务器对比 akit 的，使用相同的客户端）：经一个 allocation 和同时 1,000 个 allocation 中继的 TURN 数据报数和每秒字节数，经 channel 和经 indication，基于 UDP、TCP 和 TLS，并列 coturn；每秒建立的 allocation（校验凭据、绑定中继）；每 GB 中继的 CPU 和每个空闲 allocation 的内存。WHIP 和 WHEP：一个发布者 4 Mb/s 的视频转发给 1、100 和 256 个观看者（每个观看者的 CPU、转发延迟、丢弃的包），每秒应答的 PeerConnection，每个会话的内存；一个慢观看者不拖住其他人。代理：经其端口每秒中继的数据报，每秒应答的会话，每个中继的内存。 |
+| 流媒体角色与媒体认证 | I121–I124 | 否 | 否（已实现，未测） | 对比 fit 的角色以及 SRS 或 MediaMTX：一路通过 RTMP 推送的流（ffmpeg `-re`，H.264 和 AAC，4 Mbit/s）由 1、100 和 1,000 个播放器通过 RTMP、HTTP-FLV、HLS（fMP4 和 MPEG-TS）、RTSP 和 SRT 播放：CPU、每个播放器的内存、出口吞吐、为慢播放器丢弃的包、首帧时间；每秒推流和播放数（握手和认证检查）；每次推流和每个 HLS 分片的一次 `media_auth` 检查，分别用静态 token、签名 token 和已记住的 bcrypt 用户。 |
 | 正向代理：SOCKS 与 HTTP CONNECT | I55 | 否 | 否（已实现，未测） | 对比 fit（原始吞吐另对比 nginx 的 `stream`）：经 SOCKS5 隧道和 HTTP/1.1 CONNECT 隧道的每秒字节数（每次回显 256 KB，同 fit 的 `BenchmarkTCPProxy`），每秒建立的隧道数（握手、规则检查、在线程池上解析名字以及 `connected` 检查），每个空闲隧道的内存；共享端口上 SOCKS 的开销（akio-mux 的问候规则与 HTTP、TLS 并列）对比只有 HTTP；10,000 条隧道时 akio-socks 看门狗线程的开销（ADR-119 在其上增加了连接超时）。 |
 | 响应缓存 | I67、I68、I69 | 部分（2026-11-25，I76，`346ad8b`：基准框架的 `cache-hot` 和 `cache-zipf` 对照 nginx 和 fit，以及 1,000 个客户端的击穿，见 [M5 报告](../bench/results/m5-report-2026-11-25.zh-CN.md)） | 否 | I76 已测：经基准框架的内存命中（4 KiB；akit 第一，HTTP/1.1 上是 nginx 的 1.5 倍、h2c 上 6.2 倍，100,000 个路径时 1.75 倍，领先 fit 12% 到 23%），以及 1,000 个客户端请求一个冷键时只取一次源站。剩下的，对比 fit，按 I67 的实现：内存命中（4 KiB 与 1 MiB 消息体，HTTP/1.1 与 h2），经代理保存的未命中（旁路复制的流式消息体）对比仅代理，缓存直接放行的请求（POST、`no-store` 响应）对比无中间件的开销，大量键与单个热点键下分片锁的表现。I68：从磁盘读回的命中（64 KiB 与 1 MiB，大量并发下磁盘线程池的线程与队列），未命中率高到填满 `MAX_PENDING_WRITES` 时的磁盘写入，大量客户端对同一个键的惊群，开启锁与 `disable_lock` 两种情况（等待者的挂起与恢复、每次获取一个定时器），以及 stale-while-revalidate 的后台获取。akio ADR-116 的旁路：有旁路的流对比无旁路的流。I69：带标签响应（0 与 32 个标签）对比无标签响应的保存开销，以及服务期间对大 zone 按前缀和按标签清除（分片锁与磁盘索引锁的持有时间）。 |
 | FastCGI | I75 | 否 | 否（已实现，未测量） | 对比 fit 和 nginx 的 `fastcgi_pass`，经 TCP 和 Unix 域套接字连接 PHP-FPM（或立即应答的 FastCGI 应用）：小页面的每秒请求数与延迟，HTTP/1.1 与 h2；1 MiB 上传与 16 MiB 下载（每个进行中请求的内存，双向 64 KiB 水位线）；连接复用对比每个请求一个连接；客户端多于 `max_conns` 时连接池的队列；`try_files` 的开销（每个候选在 akio 逻辑线程池上一次 `stat`）对比不带它的路由；每秒大量请求时，handler 每 100 ms 在 akit 定时器线程（A45 的临时方案）上对其交换的巡检。 |
@@ -1081,6 +1092,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | 3 | 控制台与加密的 store | I104、I157 的页面 | [I89–I93c](#控制台与加密的-store)：控制台的登录、服务器和页面（包括基于 I83 的 `/logs` 的“日志”页面）、带 TLS 的 Admin API、加密的 store |
 | 4 | 隧道与 LLM | I105–I107, I159–I162 | [I98–I109](#隧道与-llm)：配置中的角色、链路 token、`akit run` 中的角色；基于 TCP、TLS、WebSocket 和 QUIC 的隧道链路；基于 `akio-ws` 的 LLM mesh 及其 node、hub 和 proxy；角色的页面 |
 | 5 | WebRTC | I87, I108–I111 | [I110–I114](#webrtc)：配置中的角色；基于 `akio-turn` 的 TURN；基于 `akio-webrtc` 的 WHIP 和 WHEP；代理的 WHIP 和 WHEP |
+| 6 | 流媒体与媒体认证 | I115–I117 | [I120–I126](#流媒体与媒体认证)：配置中的 `media_auth` 和 `streaming`、策略与 `akit media-token`、基于 `akio-media` 的流媒体角色（其媒体中心、RTMP、RTSP 和 SRT 监听器、`httpflv`、`hls`、`stream_whip` 和 `stream_whep`）、媒体页面 |
 | 6 | 流媒体与媒体认证 | I115–I117 | 基于 `akio-media` 的流媒体角色；`media_auth` |
 | 7 | 媒体库与频道 | I131–I139 | MP4 读取器（akio 需求）；点播；频道；签名 URL |
 | 8 | 集群管理 | I140–I150, I153 | [I130–I139c](#集群管理)：配置、成员需要什么、管理端及其成员、页面、分组、模板、带健康门槛的发布、漂移和告警、角色、NAT 之后的成员、指标和 CLI；I153 随 AI 助手路线 |
@@ -1684,6 +1696,100 @@ ICE ufrag 路由。它们对外显示的是 akit 的名字（决定 037：`SOFTW
 - **fit**：`webrtc/media/{proxy,proxyhttp,relay}.go`；I110、I111。
 - **状态**：已完成（2026-11-27）。见进度日志。
 
+### 流媒体与媒体认证
+
+fit 的 I115–I117（其[流媒体指南](https://github.com/lesismal/fit/blob/main/docs/streaming.zh-CN.md)、其决定 030，以及其包
+`mediaauth`、`streaming` 和 `handler/mediapages`、`config/mediaauth.go` 和 `config/streaming.go`），分七次迭代
+（[决定 039](decisions/039-streaming-and-media-auth.zh-CN.md)）。`media_auth` 命名规定谁可以推送和播放哪些流的策略；`streaming`
+在监听器的引擎上、与网关并列运行一个基于 akio-media 的媒体中心，带有自己的 RTMP、RTSP 和 SRT 监听器，以及通过 HTTP-FLV、HLS
+和 WHEP 播放其流的处理器；fit 的媒体页面是基于 WHIP 和 WHEP 的房间通话以及推流和播放页面。akit 对外显示的名字都是 akit 的
+（决定 037：cookie `akit_media_token`、`akit media-token`、指标 `akit_streaming_*`）；akit 签发的 token 采用 fit 的格式，使双方
+互认对方的 token（决定 039）。媒体协议都是标准协议，因此 akit 的角色与 fit 的角色可通过 ffmpeg 和标准客户端互通。fit 之后在
+这些成员上新增的内容（I119 的密钥环和 `media_tokens`、媒体库的频道、推送目标和签名 URL）属于“媒体库与频道”路线，在此之前作为
+“尚不支持”拒绝。
+
+### I120 流媒体与媒体认证 I：配置中的 `media_auth` 和 `streaming`
+
+- **做什么**：两个成员与其余配置一样严格读取，字段、默认值、范围和检查与 fit 的相同（`config/mediaauth.go`、
+  `config/streaming.go`）：策略的名字、token（或其 SHA-256）、用户（密码或 bcrypt 哈希）、`secret` 或 `secret_file`、`public`、
+  `token_ttl` 和流模式；角色的上限、其 `rtmp`、`rtsp`、`srt` 和 `webrtc` 监听器及其超时和上限，以及其 `access`；监听器跨文件
+  引用的策略；其地址参与“一个地址一个服务器”的检查。作为“尚不支持”拒绝：策略的 `keys` 和 `url_signing`（fit 的 I119、媒体库）、
+  角色的 `channels` 和 `push`（媒体库）、`mptcp`、RTMP 的 `max_message_bytes`（akio A263）、RTSP 的 `auth_methods`、`realm` 和
+  `idle_timeout`（akio A264）。在 I121 和 I122 运行它们之前，`akit run` 拒绝带有这两个成员之一的配置。
+- **完成标准**：移植后的 fit `config/mediaauth_test.go` 和 `streaming_test.go` 用例通过（akit 作为“尚不支持”拒绝的用例按拒绝
+  处理）；fit-examples 的 `streaming` 除其处理器外通过门禁；配置参考列出每个字段；v1 冻结把它们标为新增。
+- **涉及**：`akit-config`（`media`、`binds`）、`akit-roles`（`members`）、`akit`、`tests/compat`、`docs/reference`。
+- **fit**：`config/mediaauth.go`、`config/streaming.go`、`config/bindings.go`；I115、I116。
+- **状态**：已完成（2026-11-27）。见进度日志。
+
+### I121 媒体认证 II：策略、检查、`akit media-token`
+
+- **做什么**：把 fit 的 `mediaauth` 包做成新 crate `akit-media`：静态 token 和签名 token（fit 的格式）、带明文密码（常数时间比较）
+  或 bcrypt 哈希的用户（在 crate 自己的有界池上检查，与 fit 相同：CPU 数的四分之一、最多 256 个等待、5 秒；验证正确的密码以策略
+  随机密钥下的 HMAC 记住）、公开的动作、流模式；HTTP 请求的凭据（`Bearer`、`Basic`、`?token=`、cookie `akit_media_token`）和
+  URL 查询中的凭据；HTTP 请求的守卫（401 带 Bearer 质询、403、503 带 `Retry-After`；bcrypt 检查期间挂起请求）；查询参数中的
+  token 在访问日志中写为 `REDACTED`；按引擎和名字查找的策略，由 `media_auth` 角色在每次应用配置时就地修改；`secret_file` 在每次
+  应用时读取并由 `-watch-certs` 监视；`akit media-token`。
+- **完成标准**：移植后的 fit `mediaauth_test.go` 用例（匹配、允许、公开、bcrypt、签发、注册表、密钥文件）和 `TestGuard` 通过；
+  接受 fit 的 `media-token` 签发的 token，且对相同声明 akit 签发的 token 与 fit 的逐字节相同；`akit media-token` 签发策略接受的
+  token，并像 fit 一样拒绝错误用法。
+- **涉及**：`akit-media`（新增：`auth`、`http`、`role`）、`akit`（`media-token`、`ROLES`）。
+- **fit**：`mediaauth/mediaauth.go`、`http.go`、`registry.go`、`pool.go`、`cli/mediatoken.go`；I115。
+- **状态**：todo。
+
+### I122 流媒体 I：角色的媒体中心及其 RTMP、RTSP 和 SRT 监听器
+
+- **做什么**：`akit run` 基于 akio-media 的 hub 运行 `streaming`，其监听器加到监听器的引擎上：RTMP、RTSP（交织 RTP；请求 UDP 的
+  SETUP 答复 461）和 SRT，各自带 `auth`（RTMP 的查询参数、SRT 的 stream ID、在 akio A264 之前 RTSP 的 URL 查询参数）、
+  `max_conns`、超时和 `play_wait`，以及基于 akio 接入过滤器的角色 `access` 和全局 `access`；重载时就地修改 `auth` 和
+  `access`，其他字段变化的监听器重启，上限变化时重启 hub；bcrypt 用户在池检查密码期间以各协议的重试方式拒绝一次；指标
+  `akit_streaming_*`。
+- **完成标准**：移植后的 fit `streaming_test.go`、`listeners_test.go`、`limits_test.go` 和 `access_test.go` 用例通过，按 hub 的
+  状态而非时间同步；ffmpeg 通过 RTMP、RTSP 和 SRT（若其构建带 libsrt）用有效和无效凭据推流并分别回放，同样的命令对 fit 的二进制
+  也通过；上限和重载都成立。
+- **涉及**：`akit-media`（`streaming`）、`akit`（`ROLES`）、`docs/reference`。
+- **fit**：`streaming/streaming.go`、`listeners.go`、`rtspauth.go`；I116。
+- **状态**：todo。
+
+### I123 流媒体 II：`httpflv` 和 `hls`
+
+- **做什么**：基于 akio-media 的 `HttpFlv` 和 `Hls` 的处理器，带 `prefix`、`auth`（I121 的守卫）、`wait` 和 `play_wait`、`cors`；
+  HLS 的 `format`（另一种格式用 `?format=`）、`target_duration`、`part_duration`（LL-HLS）、`playlist_size`、`max_bytes` 和
+  `idle_timeout`，参数不变的重载保留其分片，带 `?token=` 获取的播放列表把 token 交给其中的每个 URI；角色未运行时答复 503。
+- **完成标准**：移植后的 fit 处理器测试通过；HTTP-FLV、WebSocket-FLV 和 HLS（fMP4 和 MPEG-TS）带凭据可以播放、不带则被拒绝；
+  门禁除 `stream_whip` 和 `stream_whep` 外接受 fit-examples 的 `streaming`。
+- **涉及**：`akit-media`（`handlers`）、`akit-config`、`akit`、`tests/compat`、`docs/reference`。
+- **fit**：`streaming/handlers.go`；I116。
+- **状态**：todo。
+
+### I124 流媒体 III：`streaming.webrtc`、`stream_whip` 和 `stream_whep`
+
+- **做什么**：基于 akio-media 的 `webrtc` 特性（akio-webrtc，单个 UDP 端口上的 ICE lite 代理）的角色 WebRTC 端口，以及向 hub
+  推送和从 hub 播放的 `stream_whip` 和 `stream_whep`：POST 上的 `auth`、会话的 PATCH 和 DELETE 不需要凭据、`max_sessions`、
+  `connect_timeout`、`play_wait`、`max_offer_bytes`、`public_ips`，以及放在 `Link` 头字段中的 `ice_servers`。
+- **完成标准**：移植后的 fit WHIP 和 WHEP 测试通过；通过 WHIP 推送的流可通过 RTMP 和 HLS 播放，通过 RTMP 推送的流可通过 WHEP
+  播放；fit-examples 的 `streaming` 有效。
+- **涉及**：`akit-media`、`akit-config`、`tests/compat`、`docs/reference`。
+- **fit**：`streaming/handlers.go`、`listeners.go`（`applyWebRTC`）；I116。
+- **状态**：todo。
+
+### I125 媒体页面
+
+- **做什么**：fit 的 I117：处理器 `media_pages`，其资源为改名后的 fit 资源（决定 037），基于策略用户的登录，以 HttpOnly cookie
+  `akit_media_token` 签发签名 token，以及有界的房间 API；移植 I118 时一并加入其聊天。
+- **完成标准**：移植后的 fit `handler/mediapages` 测试通过；fit-examples 的 `media-pages` 有效。
+- **涉及**：`akit-media`（`pages`）、`akit-config`、`tests/compat`、`docs/reference`。
+- **fit**：`handler/mediapages`；I117、I118。
+- **状态**：todo；需要 WebRTC 路线的 `whip` 和 `whep`。
+
+### I126 WebRTC 路线的处理器上的媒体认证
+
+- **做什么**：按 fit 的 I115，在 `whip`、`whep` 和 `webrtc_proxy`（带 `action`）上用 I121 的守卫实现 `auth`，会话的 DELETE 不需要
+  凭据。
+- **完成标准**：移植后的 fit 中这些处理器上 `auth` 的测试通过。
+- **涉及**：WebRTC 路线的处理器、`akit-config`。
+- **fit**：`webrtc/media`；I115。
+- **状态**：todo；需要 WebRTC 路线的处理器。
 ### BitTorrent
 
 fit 的 I196–I210（其 [BitTorrent 指南](https://github.com/lesismal/fit/blob/main/docs/bittorrent.md)、

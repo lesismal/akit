@@ -1558,7 +1558,7 @@ pub(crate) fn text_at(d: &mut Decoder<'_>, o: &mut Obj<'_>, key: &str) -> Option
 }
 
 /// A required string member, and where it is (the object's position when it is missing).
-fn required(d: &mut Decoder<'_>, o: &mut Obj<'_>, key: &str) -> (String, usize) {
+pub(crate) fn required(d: &mut Decoder<'_>, o: &mut Obj<'_>, key: &str) -> (String, usize) {
     match o.require(d, key) {
         Some(v) => (d.string(v, &o.at(key)).unwrap_or_default(), v.off),
         None => (String::new(), o.off),
@@ -1649,7 +1649,7 @@ pub(crate) fn access_of(d: &mut Decoder<'_>, o: &mut Obj<'_>) -> Option<Access> 
 }
 
 /// A listener's address: a host and port, as fit's `checkAddress`.
-fn check_listen(d: &mut Decoder<'_>, address: &str, off: usize, path: &str) -> bool {
+pub(crate) fn check_listen(d: &mut Decoder<'_>, address: &str, off: usize, path: &str) -> bool {
     match crate::model::check_address(address) {
         Ok(()) => true,
         Err(msg) => {

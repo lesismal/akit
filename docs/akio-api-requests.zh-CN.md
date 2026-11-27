@@ -116,6 +116,8 @@
 | A259 | `RtcServer` 上每个 peer 自己的配置（`accept_offer_with`）：一个会话的编解码器，如同 SFU 以其为每类媒体选定的编解码器应答发布者，并以同样的编解码器应答其观看者 | 已进入 akio 的 main 并锁定（自 `d8d51f61` 起，akio 的 ADR-187）：`RtcServer::accept_offer_with` | 12 | I113 |
 | A260 | akio-webrtc 中供 SFU 使用的 RTP 转发：收到的包写到另一个 peer 的发送媒体行上，改写其 SSRC、负载类型、序号和时间戳，映射其头部扩展 | 已进入 akio 的 main 并锁定（自 `d8d51f61` 起，akio 的 ADR-187）：`Peer::write_rtp` | 13 | I113 |
 | A261 | 接收方的码率上限以 REMB 告知远端发送方，以及按 peer 设置的 ICE consent 超时 | 已进入 akio 的 main 并锁定（自 `d8d51f61` 起，akio 的 ADR-187）：`Peer::set_receive_bitrate_cap`、`RtcConfig::set_ice_timeouts` | 10, 11 | I113 |
+| A263 | akio-media 的 RTMP 服务器：按服务器设置的消息上限，按 fit 的方式告知拒绝（`NetStream.Publish.Unauthorized`、`NetStream.Play.Failed`、重试），订阅成功之后才发播放的状态，从接受连接到推流或播放的期限 | 由 I120 提出 | 4, 11, 19 | I122 |
+| A264 | akio-media 的 RTSP 服务器：每个请求（其方法、URL、`Authorization` 和连接的会话）上的钩子，可以答复该请求；DESCRIBE 经过 hub 的播放钩子；无会话连接的空闲期限 | 由 I120 提出 | 4, 19 | I122 |
 | A283 | 运行在调用者引擎上的 BitTorrent 客户端（fit 向 fib 提出的 A79） | 已提出；临时做法：客户端使用它自己的引擎 | 16 | I152 |
 | A284 | BitTorrent 客户端按地址拒绝 peer、限制其连接数和同时拨号数、在运行时修改其限制（fib 的 A77、A78） | 已提出；在此之前客户端的 `access`、`max_conns`、`max_half_open` 和 `disk_queue_bytes` 以"尚不支持"拒绝 | 11 | I152, I154 |
 | A285 | tracker 服务器的存储：所有 peer 的上限、原地修改上限和 TTL、列出并计数其种子（fib 的 A85） | 已提出；在此之前 `max_peers` 被拒绝，上限的变化会建立新存储 | 11 | I151 |
@@ -2170,6 +2172,53 @@ Result<(Peer, String), Error>`，像闭包的配置一样在 `config` 之上设�
 **akit 如何使用。** `akit_webrtc::media` 把每个发布者限制在 `max_bitrate`，并在每个会话的配置上设置 `ice_timeout`
 （借助 A259）。
 
+## A263 akio-media 的 RTMP 服务器：消息上限、fit 的拒绝方式、推流或播放的期限
+
+**状态。** 由 I120 提出（2026-11-27）。没有工作等它：`streaming.rtmp.max_message_bytes` 作为“尚不支持”拒绝，RTMP 的拒绝方式
+是 akio-media 的（临时做法记录在[进度](progress.zh-CN.md)中）。
+
+**问题。** fit 的 RTMP 监听器限制客户端可发送的最大消息（`max_message_bytes`，8 MiB），对策略拒绝的推流答复
+`NetStream.Publish.Unauthorized`、对播放答复 `NetStream.Play.Failed`，拒绝原因是密码仍在检查时会说明（客户端下次尝试即可
+通过），并给客户端从连接到推流或播放的 `handshake_timeout`。akio-media 的服务器读取至多固定 16 MiB 的消息，对 hub 钩子拒绝的
+推流答复 `NetStream.Publish.Denied`，在订阅之前就发送播放的 `NetStream.Play.Reset` 和 `NetStream.Play.Start`、hub 拒绝时发送
+`NetStream.Play.StreamNotFound`，其 `handshake_timeout` 在握手（C2）结束时结束，之后只有 `idle_timeout` 约束一个始终不推流
+也不播放的客户端。
+
+**证据。** 在 akio `8a9601b9` 的 `akio-media/src/rtmp/mod.rs` 中：`RtmpConfig` 没有消息上限；`RtmpServer::on_open` 创建的
+`ChunkReader::new()`（16 MiB 消息，32 MiB 未完成部分）；`publish` 把除 `StreamBusy` 外的每个 `HubError` 映射为
+`NetStream.Publish.Denied`；`on_play` 在 `hub.subscribe` 之前发送 `Play.Reset` 和 `Play.Start`，出错时发送
+`Play.StreamNotFound`；`crate::watch::Deadlines` 的 `handshake` 在 C2 之后由 `Watch::ready` 清除。
+
+**建议的 API。** `RtmpConfig::max_message_bytes: usize`（分块读取器的消息上限，未完成部分的上限为其两倍）；hub 钩子的拒绝答复
+`NetStream.Publish.Unauthorized` 或 `NetStream.Play.Failed`，以钩子的原因作为描述（或由钩子在 `HubError::Denied` 中给出状态）；
+订阅成功之后再发送播放的状态；以及从接受连接到首次推流或播放的期限（`RtmpConfig::start_timeout`，或如此延长的
+`handshake_timeout`）。
+
+**akit 如何使用。** `akit_media::streaming` 的 RTMP 监听器根据 `streaming.rtmp` 设置 `max_message_bytes` 和该期限，届时读取
+`max_message_bytes`；其钩子的拒绝以 fit 的方式到达客户端。
+
+## A264 akio-media 的 RTSP 服务器：每个请求上的钩子、DESCRIBE 经过检查、无会话连接的空闲上限
+
+**状态。** 由 I120 提出（2026-11-27）。没有工作等它：RTSP 的 `auth` 从 URL 的查询参数中取凭据、在 hub 的钩子中检查，
+`auth_methods`、`realm` 和 `idle_timeout` 作为“尚不支持”拒绝（临时做法记录在[进度](progress.zh-CN.md)中）。
+
+**问题。** fit 用监听器的策略检查每个推流或播放的 RTSP 请求（fib 的 `OnRequest`）：DESCRIBE 和播放用的 SETUP 按其 URL 指名的
+流检查播放，ANNOUNCE 检查推流，PLAY 和 RECORD 按连接会话的流检查播放和推流，凭据取自 `Authorization` 字段（Digest，带它自己的
+无状态 nonce 和 realm，或在提供时用 Basic）或 URL 的查询参数；拒绝时答复带质询的 401、403，或在密码检查中时答复带 `Retry-After`
+的 503。akio-media 的服务器有 `RtspConfig::credentials`，它要求每个请求都认证，且不告诉钩子用户是谁；以及 hub 的钩子，只在
+ANNOUNCE、SETUP 和 PLAY 的订阅时被询问，且只带 URL 的查询参数；DESCRIBE 不经询问就答复流的 SDP。无会话的连接受
+`session_timeout` 约束，而 fit 为它单设 `idle_timeout`。
+
+**证据。** 在 akio `8a9601b9` 的 `akio-media/src/rtsp/mod.rs` 中：`RtspSession::handle` 对除 OPTIONS 外的每个请求检查
+`cfg.credentials`，答复带两种质询的 401；`describe` 直接读取 `hub.stream_info`；`PeerInfo` 带有协议、对端和查询参数；
+`on_open` 的期限为 `request_timeout` 和 `session_timeout`。
+
+**建议的 API。** `RtspConfig::on_request: Option<Arc<dyn Fn(&RequestInfo<'_>) -> Option<Response> + Send + Sync>>`，在处理
+请求之前、在其连接的线程上调用，带方法、URL、头字段、连接的会话路径（如有）以及是否在录制；返回的 `Response` 代替原处理答复
+该请求。DESCRIBE 经过 hub 的 `on_subscribe`。以及用于无会话连接的 `RtspConfig::idle_timeout`。
+
+**akit 如何使用。** 把 fit 的 `streaming/rtspauth.go` 移植到该钩子上（带 fit 的 nonce 的 Digest、Basic、查询参数；401、403、
+503）；读取 `streaming.rtsp` 的 `auth_methods`、`realm`（akit 的默认值为 `akit`，决定 037）和 `idle_timeout`。
 ## A283 运行在调用者引擎上的 BitTorrent 客户端
 
 **状态。** 由 I150 为 I152 提出（2026-11-27）。临时做法：客户端角色在 `Client::new` 为它建立的引擎上运行

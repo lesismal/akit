@@ -66,6 +66,13 @@ pub struct Config {
     pub webrtc: Option<crate::webrtc::WebRtc>,
     /// `bittorrent` (I150): the BitTorrent client and tracker; neither when left out.
     pub bittorrent: Option<crate::bittorrent::BitTorrent>,
+    /// `media_auth` (I120): the named policies of who may publish and play which streams, which
+    /// the streaming role's listeners and the media handlers name with `auth`; none when left
+    /// out.
+    pub media_auth: Vec<crate::media::MediaAuth>,
+    /// `streaming` (I120): the streaming role, its hub and its RTMP, RTSP, SRT and WebRTC
+    /// listeners; none when left out.
+    pub streaming: Option<crate::media::Streaming>,
     /// What the config was read with that is said rather than refused (I79): the old names of
     /// fields renamed in schema version 1, each at its file, line, column and path. Not part of
     /// what the config means: configs equal but for these are equal.
@@ -2267,8 +2274,11 @@ const CONFIG_FIELDS: &[&str] = &[
     "webrtc",
     // I150: fit's BitTorrent roles (crate::bittorrent).
     "bittorrent",
+    // I120: fit's media auth and streaming role (crate::media).
+    "media_auth",
+    "streaming",
 ];
-const CONFIG_FIT_ONLY: &[&str] = &["pprof", "media_auth", "streaming", "media_library", "sync"];
+const CONFIG_FIT_ONLY: &[&str] = &["pprof", "media_library", "sync"];
 // I26: the Admin API's address, history and limits; I27: its token; I63: its dashboard; I87: its
 // access lists; I89: its console; I92: its TLS.
 const ADMIN_FIELDS: &[&str] = &[
@@ -2684,6 +2694,10 @@ pub(crate) struct Part {
     webrtc: Option<(crate::webrtc::WebRtc, usize)>,
     /// `bittorrent` (I150), with the position of its key, when the file gives it.
     bittorrent: Option<(crate::bittorrent::BitTorrent, usize)>,
+    /// `media_auth` and `streaming` (I120), with the positions of their keys, when the file
+    /// gives them; `streaming` with the policies its listeners name.
+    media_auth: Option<(Vec<crate::media::MediaAuth>, usize)>,
+    streaming: Option<((crate::media::Streaming, Vec<crate::media::AuthRef>), usize)>,
     providers: Vec<At<crate::providers::Provider>>,
     /// The position of the file's top object.
     doc_off: usize,
@@ -2777,6 +2791,12 @@ pub(crate) fn part(d: &mut Decoder<'_>, n: &Node, file: usize) -> Option<Part> {
     let bittorrent = o
         .take("bittorrent")
         .and_then(|v| crate::bittorrent::bittorrent(d, v, "bittorrent").map(|b| (b, v.off)));
+    let media_auth = o
+        .take("media_auth")
+        .map(|v| (crate::media::media_auth(d, v, "media_auth"), v.off));
+    let streaming = o
+        .take("streaming")
+        .and_then(|v| crate::media::streaming(d, v, "streaming").map(|s| (s, v.off)));
     let providers = o
         .take("providers")
         .map(|v| {
@@ -2807,6 +2827,8 @@ pub(crate) fn part(d: &mut Decoder<'_>, n: &Node, file: usize) -> Option<Part> {
         llm,
         webrtc,
         bittorrent,
+        media_auth,
+        streaming,
         providers,
         doc_off,
     })
@@ -2842,6 +2864,10 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
     let mut llm: Option<(crate::roles::Llm, usize)> = None;
     let mut webrtc: Option<(crate::webrtc::WebRtc, usize)> = None;
     let mut bittorrent: Option<(crate::bittorrent::BitTorrent, usize)> = None;
+    let mut media_auth: Option<(Vec<crate::media::MediaAuth>, usize)> = None;
+    #[allow(clippy::type_complexity)]
+    let mut streaming: Option<((crate::media::Streaming, Vec<crate::media::AuthRef>), usize)> =
+        None;
     let mut providers = Vec::new();
     for (file, p) in parts.into_iter().enumerate() {
         first_doc.get_or_insert((file, p.doc_off));
@@ -2986,6 +3012,12 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
         if let Some((b, off)) = p.bittorrent {
             once(ds, &mut bittorrent, b, file, off, "bittorrent");
         }
+        if let Some((m, off)) = p.media_auth {
+            once(ds, &mut media_auth, m, file, off, "media_auth");
+        }
+        if let Some((s, off)) = p.streaming {
+            once(ds, &mut streaming, s, file, off, "streaming");
+        }
         listeners.extend(p.listeners);
         routes.extend(p.routes);
         upstreams.extend(p.upstreams);
@@ -3044,8 +3076,17 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
         llm.as_ref().map(|(l, _)| l),
         webrtc.as_ref().map(|(w, _)| w),
         bittorrent.as_ref().map(|(b, _)| b),
+        streaming.as_ref().map(|((s, _), _)| s),
     );
     crate::binds::report(ds, clashes);
+    let media_auth = media_auth.map(|(m, _)| m).unwrap_or_default();
+    // The policies the role's listeners name, once every file is read (fit's checkStreaming).
+    let streaming = streaming.map(|((s, refs), file)| {
+        if let Some(d) = ds.get_mut(file) {
+            crate::media::check_refs(d, &refs, &media_auth);
+        }
+        s
+    });
     let limits = limits.map(|(l, _)| l).unwrap_or_default();
     Config {
         schema_version: schema.map_or(SCHEMA_VERSION, |(v, _)| v),
@@ -3075,6 +3116,8 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
         llm: llm.map(|(l, _)| l),
         webrtc: webrtc.map(|(w, _)| w),
         bittorrent: bittorrent.map(|(b, _)| b),
+        media_auth,
+        streaming,
         warnings: crate::error::Warnings::default(),
     }
 }
@@ -7284,7 +7327,7 @@ fn check_routes(
 }
 
 /// fit's names: letters, digits, '_', '.' and '-', starting with a letter or digit.
-fn valid_name(s: &str) -> bool {
+pub(crate) fn valid_name(s: &str) -> bool {
     let mut b = s.bytes();
     b.next().is_some_and(|c| c.is_ascii_alphanumeric())
         && b.all(|c| c.is_ascii_alphanumeric() || matches!(c, b'_' | b'.' | b'-'))

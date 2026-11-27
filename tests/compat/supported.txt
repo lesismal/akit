@@ -1322,3 +1322,66 @@ bittorrent.tracker.access.deny_files
 # I151: the bt_tracker handler (akit-bittorrent's module), which takes no params.
 routes[].handler<bt_tracker>
 routes[].handler<bt_tracker>.params
+# I120: fit's media auth policies and streaming role (akit-config's media module). A policy's keys
+# (fit's I119) and url_signing, and the role's channels and push (the media library's track), are
+# refused as not supported yet, as are RTMP's and RTSP's mptcp, RTMP's max_message_bytes (akio A263)
+# and RTSP's auth_methods, realm and idle_timeout (Digest and Basic, a sessionless idle bound: akio A264). akit run runs the role from I122.
+media_auth
+media_auth[].name
+media_auth[].public
+media_auth[].secret
+media_auth[].secret_file
+media_auth[].token_ttl
+media_auth[].tokens
+media_auth[].tokens[].name
+media_auth[].tokens[].play
+media_auth[].tokens[].publish
+media_auth[].tokens[].token
+media_auth[].tokens[].token_sha256
+media_auth[].users
+media_auth[].users[].name
+media_auth[].users[].password
+media_auth[].users[].password_hash
+media_auth[].users[].play
+media_auth[].users[].publish
+streaming
+streaming.access
+streaming.access.allow
+streaming.access.allow_files
+streaming.access.deny
+streaming.access.deny_files
+streaming.gop_cache_bytes
+streaming.max_players
+streaming.max_streams
+streaming.rtmp
+streaming.rtmp.auth
+streaming.rtmp.handshake_timeout
+streaming.rtmp.idle_timeout
+streaming.rtmp.listen
+streaming.rtmp.max_conns
+streaming.rtmp.play_wait
+streaming.rtsp
+streaming.rtsp.auth
+streaming.rtsp.listen
+streaming.rtsp.max_conns
+streaming.rtsp.play_wait
+streaming.rtsp.session_timeout
+streaming.srt
+streaming.srt.auth
+streaming.srt.latency
+streaming.srt.listen
+streaming.srt.max_conns
+streaming.srt.passphrase
+streaming.srt.peer_idle_timeout
+streaming.srt.play_wait
+streaming.webrtc
+streaming.webrtc.connect_timeout
+streaming.webrtc.ice_servers
+streaming.webrtc.ice_servers[].credential
+streaming.webrtc.ice_servers[].urls
+streaming.webrtc.ice_servers[].username
+streaming.webrtc.listen
+streaming.webrtc.max_offer_bytes
+streaming.webrtc.max_sessions
+streaming.webrtc.play_wait
+streaming.webrtc.public_ips

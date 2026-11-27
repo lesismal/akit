@@ -16,6 +16,7 @@ examples/bittorrent: not supported yet: bittorrent.client.publish
 examples/bittorrent: not supported yet: bittorrent.client.watch_dir
 examples/bittorrent: not supported yet: bittorrent.tracker.auth
 examples/bittorrent: not supported yet: media_auth
+examples/bittorrent: not supported yet: bittorrent
 examples/bittorrent: not supported yet: media_library
 examples/bittorrent: not supported yet: routes[].handler<bt_publish>
 examples/bittorrent: not supported yet: routes[].handler<bt_stream>
@@ -44,7 +45,6 @@ examples/llm-node: valid
 examples/llm-proxy: valid
 examples/load-balancing: valid
 examples/logging: valid
-examples/media-pages: not supported yet: media_auth
 examples/media-pages: not supported yet: routes[].handler<media_pages>
 examples/media-pages: not supported yet: routes[].handler<whep>.params.auth
 examples/media-pages: not supported yet: routes[].handler<whip>.params.auth
@@ -63,12 +63,10 @@ examples/rewrite: valid
 examples/routing: valid
 examples/socks: valid
 examples/static: valid
-examples/streaming: not supported yet: media_auth
 examples/streaming: not supported yet: routes[].handler<hls>
 examples/streaming: not supported yet: routes[].handler<httpflv>
 examples/streaming: not supported yet: routes[].handler<stream_whep>
 examples/streaming: not supported yet: routes[].handler<stream_whip>
-examples/streaming: not supported yet: streaming
 examples/sync-files-to-elasticsearch: not supported yet: sync
 examples/sync-files-to-loki: not supported yet: sync
 examples/sync-mqtt-to-influxdb: not supported yet: sync
@@ -89,13 +87,13 @@ examples/telemetry: valid
 examples/tunnel-hub: valid
 examples/tunnel-node: valid
 examples/tunnel-proxy: valid
-examples/video-site: not supported yet: media_auth
+examples/video-site: not supported yet: media_auth[].url_signing
 examples/video-site: not supported yet: media_library
 examples/video-site: not supported yet: routes[].handler<hls>
 examples/video-site: not supported yet: routes[].handler<media_pages>
 examples/video-site: not supported yet: routes[].handler<media_tokens>
 examples/video-site: not supported yet: routes[].handler<vod>
-examples/video-site: not supported yet: streaming
+examples/video-site: not supported yet: streaming.channels
 examples/virtual-hosts: valid
 examples/wasm: valid
 examples/webrtc-proxy: valid

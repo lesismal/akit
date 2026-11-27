@@ -117,6 +117,8 @@ first; its status here records the branch, then the akio commit akit pins.
 | A259 | A peer's own configuration on an `RtcServer` (`accept_offer_with`): the codecs of one session, as an SFU answers a publisher with the codec it picked of each kind and its viewers with the same | on akio's main and pinned (since `d8d51f61`, akio's ADR-187): `RtcServer::accept_offer_with` | 12 | I113 |
 | A260 | RTP forwarding in akio-webrtc for an SFU: a received packet written on another peer's sending line, its SSRC, payload type, sequence and timestamp rewritten, its header extensions mapped | on akio's main and pinned (since `d8d51f61`, akio's ADR-187): `Peer::write_rtp` | 13 | I113 |
 | A261 | A receiver's bitrate cap told to the remote sender as REMB, and the ICE consent timeout set per peer | on akio's main and pinned (since `d8d51f61`, akio's ADR-187): `Peer::set_receive_bitrate_cap`, `RtcConfig::set_ice_timeouts` | 10, 11 | I113 |
+| A263 | akio-media's RTMP server: a message bound set per server, a refusal told as fit's (`NetStream.Publish.Unauthorized`, `NetStream.Play.Failed`, a retry), the play's statuses after its subscription, a deadline from accept to publish or play | requested by I120 | 4, 11, 19 | I122 |
+| A264 | akio-media's RTSP server: a hook on each request (its method, URL, `Authorization` and the connection's session) that may answer it; DESCRIBE asked of the hub's play hook; an idle deadline for a connection without a session | requested by I120 | 4, 19 | I122 |
 | A283 | The BitTorrent client on the caller's engine (fit's fib A79) | requested; stopgap: the client on an engine of its own | 16 | I152 |
 | A284 | The BitTorrent client's peers refused by address, its connections and dials bounded, its limits changed at run time (fib's A77, A78) | requested; until then the client's `access`, `max_conns`, `max_half_open` and `disk_queue_bytes` are refused as not supported yet | 11 | I152, I154 |
 | A285 | The tracker server's store: a bound of all its peers, bounds and TTL changed in place, its torrents listed and counted (fib's A85) | requested; until then `max_peers` is refused, and a change of the bounds makes a new store | 11 | I151 |
@@ -2700,6 +2702,70 @@ the estimate when lower, once a second for every remote SSRC), and
 **How akit would use it.** `akit_webrtc::media` caps each publisher at `max_bitrate` and sets
 `ice_timeout` on each session's configuration (with A259).
 
+## A263 akio-media's RTMP server: a message bound, fit's refusals, a deadline to publish or play
+
+**Status.** Requested by I120 (2026-11-27). Nothing waits for it: `streaming.rtmp.max_message_bytes`
+is refused as not supported yet, and RTMP's refusals are akio-media's (a stopgap recorded in
+[progress](progress.md)).
+
+**Problem.** fit's RTMP listener bounds the largest message a client may send
+(`max_message_bytes`, 8 MiB), answers a publish its policy refuses with
+`NetStream.Publish.Unauthorized` and a play with `NetStream.Play.Failed`, saying so when the
+refusal is a password still being checked (the client's next attempt passes), and gives a client
+`handshake_timeout` from connecting to publishing or playing. akio-media's server reads messages
+up to a fixed 16 MiB, answers a publish its hub's hook refuses with `NetStream.Publish.Denied`,
+sends a play's `NetStream.Play.Reset` and `NetStream.Play.Start` before it subscribes and
+`NetStream.Play.StreamNotFound` when the hub refuses, and its `handshake_timeout` ends with the
+handshake (C2), after which only `idle_timeout` bounds a client that never publishes or plays.
+
+**Evidence.** At akio `8a9601b9`, `akio-media/src/rtmp/mod.rs`: `RtmpConfig` has no message bound;
+`RtmpServer::on_open` makes its `ChunkReader::new()` (16 MiB messages, 32 MiB partial); `publish`
+maps every `HubError` but `StreamBusy` to `NetStream.Publish.Denied`; `on_play` sends `Play.Reset`
+and `Play.Start` before `hub.subscribe`, and `Play.StreamNotFound` on its error;
+`crate::watch::Deadlines`' `handshake` is cleared by `Watch::ready` after C2.
+
+**Suggested API.** `RtmpConfig::max_message_bytes: usize` (the chunk reader's message bound, its
+partial bound twice it); a refusal of the hub's hooks answered `NetStream.Publish.Unauthorized` or
+`NetStream.Play.Failed` with the hook's reason as the description (or a status the hook names in
+`HubError::Denied`); a play's statuses sent once its subscription is made; and a deadline from
+accept to the first publish or play (`RtmpConfig::start_timeout`, or `handshake_timeout` so
+extended).
+
+**How akit would use it.** `akit_media::streaming`'s RTMP listener sets `max_message_bytes` and its
+deadline from `streaming.rtmp`, which reads `max_message_bytes` then; its hook's refusals reach the
+client as fit's.
+
+## A264 akio-media's RTSP server: a hook on each request, DESCRIBE asked, a sessionless idle bound
+
+**Status.** Requested by I120 (2026-11-27). Nothing waits for it: RTSP's `auth` takes credentials in
+the URL's query, checked in the hub's hooks, and `auth_methods`, `realm` and `idle_timeout` are
+refused as not supported yet (a stopgap recorded in [progress](progress.md)).
+
+**Problem.** fit checks every RTSP request that publishes or plays against the listener's policy
+(fib's `OnRequest`): DESCRIBE and a SETUP play on the stream their URL names, ANNOUNCE publish,
+PLAY and RECORD play and publish on the connection's session's stream, with credentials from the
+`Authorization` field (Digest, with its own stateless nonces and realm, or Basic when offered) or
+the URL's query; a refusal is 401 with the challenges, 403, or 503 with `Retry-After` for a password
+being checked. akio-media's server has `RtspConfig::credentials`, which makes every request
+authenticate and does not tell the hooks who the user is, and the hub's hooks, asked on ANNOUNCE
+and on SETUP and PLAY's subscription with the URL's query only; DESCRIBE answers a stream's SDP
+without asking them. A connection without a session is held to `session_timeout`, where fit has
+`idle_timeout` for it.
+
+**Evidence.** At akio `8a9601b9`, `akio-media/src/rtsp/mod.rs`: `RtspSession::handle` checks
+`cfg.credentials` for every request but OPTIONS and answers 401 with both challenges;
+`describe` reads `hub.stream_info` directly; `PeerInfo` carries the protocol, the peer and the
+query; `on_open`'s deadlines are `request_timeout` and `session_timeout`.
+
+**Suggested API.** `RtspConfig::on_request: Option<Arc<dyn Fn(&RequestInfo<'_>) -> Option<Response>
++ Send + Sync>>`, called before a request is handled, on its connection's thread, with the method,
+the URL, the header fields, the connection's session path (if any) and whether it records; a
+`Response` returned answers the request instead. DESCRIBE asked of the hub's `on_subscribe`. And
+`RtspConfig::idle_timeout` for a connection without a session.
+
+**How akit would use it.** fit's `streaming/rtspauth.go` ported onto the hook (Digest with fit's
+nonces, Basic, the query; 401, 403, 503); `streaming.rtsp`'s `auth_methods`, `realm` (akit's
+default `akit`, decision 037) and `idle_timeout` read.
 ## A283 The BitTorrent client on the caller's engine
 
 **Status.** Requested by I150 (2026-11-27) for I152. Stopgap: the client role runs

@@ -126,6 +126,9 @@ pub fn members(c: &Config) -> Vec<(&'static str, bool)> {
         ("webrtc.media", w.is_some_and(|w| w.media.is_some())),
         ("webrtc.proxy", w.is_some_and(|w| w.proxy.is_some())),
         ("webrtc.turn", w.is_some_and(|w| w.turn.is_some())),
+        // I120: fit's media auth policies and its streaming role.
+        ("media_auth", !c.media_auth.is_empty()),
+        ("streaming", c.streaming.is_some()),
     ]
 }
 

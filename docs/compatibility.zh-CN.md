@@ -324,7 +324,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 1059 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 1118 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
@@ -373,7 +373,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`listeners`](#fields-listeners) | 30 | 28 | 2 |
 | [`llm`](#fields-llm) | 218 | 215 | 3 |
 | [`log`](#fields-log) | 24 | 24 | 0 |
-| [`media_auth`](#fields-media-auth) | 34 | 0 | 34 |
+| [`media_auth`](#fields-media-auth) | 34 | 18 | 16 |
 | [`media_library`](#fields-media-library) | 24 | 0 | 24 |
 | [`metrics`](#fields-metrics) | 1 | 1 | 0 |
 | [`pprof`](#fields-pprof) | 4 | 0 | 4 |
@@ -381,7 +381,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`routes`](#fields-routes) | 24 | 24 | 0 |
 | [`schema_version`](#fields-schema-version) | 1 | 1 | 0 |
 | [`services`](#fields-services) | 13 | 13 | 0 |
-| [`streaming`](#fields-streaming) | 76 | 0 | 76 |
+| [`streaming`](#fields-streaming) | 76 | 41 | 35 |
 | [`sync`](#fields-sync) | 42 | 0 | 42 |
 | [`sync.codecs/canal_json`](#fields-sync-codecs-canal-json) | 87 | 0 | 87 |
 | [`sync.codecs/csv`](#fields-sync-codecs-csv) | 116 | 0 | 116 |
@@ -449,7 +449,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`tunnel`](#fields-tunnel) | 164 | 161 | 3 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 76 | 0 |
-| **合计** | 3821 | 1059 | 2762 |
+| **合计** | 3821 | 1118 | 2703 |
 
 <a id="fields-access"></a>
 
@@ -1719,22 +1719,22 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 | 字段 | 类型 | 状态 |
 | --- | --- | --- |
-| `media_auth` | `array<object>` | 尚不支持（not supported yet） |
+| `media_auth` | `array<object>` | 已支持 |
 | `media_auth[].keys` | `array<object>` | 尚不支持（not supported yet） |
 | `media_auth[].keys[].key` | `string, required` | 尚不支持（not supported yet） |
 | `media_auth[].keys[].secret` | `string` | 尚不支持（not supported yet） |
 | `media_auth[].keys[].secret_file` | `string` | 尚不支持（not supported yet） |
-| `media_auth[].name` | `string, required` | 尚不支持（not supported yet） |
-| `media_auth[].public` | `array<enum(publish\|play)>` | 尚不支持（not supported yet） |
-| `media_auth[].secret` | `string` | 尚不支持（not supported yet） |
-| `media_auth[].secret_file` | `string` | 尚不支持（not supported yet） |
-| `media_auth[].token_ttl` | `duration` | 尚不支持（not supported yet） |
-| `media_auth[].tokens` | `array<object>` | 尚不支持（not supported yet） |
-| `media_auth[].tokens[].name` | `string` | 尚不支持（not supported yet） |
-| `media_auth[].tokens[].play` | `array<string>` | 尚不支持（not supported yet） |
-| `media_auth[].tokens[].publish` | `array<string>` | 尚不支持（not supported yet） |
-| `media_auth[].tokens[].token` | `string` | 尚不支持（not supported yet） |
-| `media_auth[].tokens[].token_sha256` | `string` | 尚不支持（not supported yet） |
+| `media_auth[].name` | `string, required` | 已支持 |
+| `media_auth[].public` | `array<enum(publish\|play)>` | 已支持 |
+| `media_auth[].secret` | `string` | 已支持 |
+| `media_auth[].secret_file` | `string` | 已支持 |
+| `media_auth[].token_ttl` | `duration` | 已支持 |
+| `media_auth[].tokens` | `array<object>` | 已支持 |
+| `media_auth[].tokens[].name` | `string` | 已支持 |
+| `media_auth[].tokens[].play` | `array<string>` | 已支持 |
+| `media_auth[].tokens[].publish` | `array<string>` | 已支持 |
+| `media_auth[].tokens[].token` | `string` | 已支持 |
+| `media_auth[].tokens[].token_sha256` | `string` | 已支持 |
 | `media_auth[].url_signing` | `object` | 尚不支持（not supported yet） |
 | `media_auth[].url_signing.bind_address` | `enum(ip\|subnet)` | 尚不支持（not supported yet） |
 | `media_auth[].url_signing.cookie` | `boolean` | 尚不支持（not supported yet） |
@@ -1747,12 +1747,12 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | `media_auth[].url_signing.session_idle` | `duration` | 尚不支持（not supported yet） |
 | `media_auth[].url_signing.trusted_proxies` | `array<string>` | 尚不支持（not supported yet） |
 | `media_auth[].url_signing.ttl` | `duration` | 尚不支持（not supported yet） |
-| `media_auth[].users` | `array<object>` | 尚不支持（not supported yet） |
-| `media_auth[].users[].name` | `string, required` | 尚不支持（not supported yet） |
-| `media_auth[].users[].password` | `string` | 尚不支持（not supported yet） |
-| `media_auth[].users[].password_hash` | `string` | 尚不支持（not supported yet） |
-| `media_auth[].users[].play` | `array<string>` | 尚不支持（not supported yet） |
-| `media_auth[].users[].publish` | `array<string>` | 尚不支持（not supported yet） |
+| `media_auth[].users` | `array<object>` | 已支持 |
+| `media_auth[].users[].name` | `string, required` | 已支持 |
+| `media_auth[].users[].password` | `string` | 已支持 |
+| `media_auth[].users[].password_hash` | `string` | 已支持 |
+| `media_auth[].users[].play` | `array<string>` | 已支持 |
+| `media_auth[].users[].publish` | `array<string>` | 已支持 |
 
 <a id="fields-media-library"></a>
 
@@ -1936,12 +1936,12 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 | 字段 | 类型 | 状态 |
 | --- | --- | --- |
-| `streaming` | `object` | 尚不支持（not supported yet） |
-| `streaming.access` | `object` | 尚不支持（not supported yet） |
-| `streaming.access.allow` | `array<string>` | 尚不支持（not supported yet） |
-| `streaming.access.allow_files` | `array<string>` | 尚不支持（not supported yet） |
-| `streaming.access.deny` | `array<string>` | 尚不支持（not supported yet） |
-| `streaming.access.deny_files` | `array<string>` | 尚不支持（not supported yet） |
+| `streaming` | `object` | 已支持 |
+| `streaming.access` | `object` | 已支持 |
+| `streaming.access.allow` | `array<string>` | 已支持 |
+| `streaming.access.allow_files` | `array<string>` | 已支持 |
+| `streaming.access.deny` | `array<string>` | 已支持 |
+| `streaming.access.deny_files` | `array<string>` | 已支持 |
 | `streaming.channels` | `array<object>` | 尚不支持（not supported yet） |
 | `streaming.channels[].encrypt` | `boolean` | 尚不支持（not supported yet） |
 | `streaming.channels[].items` | `array<string>` | 尚不支持（not supported yet） |
@@ -1964,9 +1964,9 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | `streaming.channels[].schedule[].at` | `string, required` | 尚不支持（not supported yet） |
 | `streaming.channels[].schedule[].item` | `string, required` | 尚不支持（not supported yet） |
 | `streaming.channels[].time_zone` | `string` | 尚不支持（not supported yet） |
-| `streaming.gop_cache_bytes` | `integer` | 尚不支持（not supported yet） |
-| `streaming.max_players` | `integer` | 尚不支持（not supported yet） |
-| `streaming.max_streams` | `integer` | 尚不支持（not supported yet） |
+| `streaming.gop_cache_bytes` | `integer` | 已支持 |
+| `streaming.max_players` | `integer` | 已支持 |
+| `streaming.max_streams` | `integer` | 已支持 |
 | `streaming.push` | `array<object>` | 尚不支持（not supported yet） |
 | `streaming.push[].connect_timeout` | `duration` | 尚不支持（not supported yet） |
 | `streaming.push[].name` | `string` | 尚不支持（not supported yet） |
@@ -1974,44 +1974,44 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | `streaming.push[].retry_min` | `duration` | 尚不支持（not supported yet） |
 | `streaming.push[].stream` | `string` | 尚不支持（not supported yet） |
 | `streaming.push[].url` | `string, required` | 尚不支持（not supported yet） |
-| `streaming.rtmp` | `object` | 尚不支持（not supported yet） |
-| `streaming.rtmp.auth` | `string` | 尚不支持（not supported yet） |
-| `streaming.rtmp.handshake_timeout` | `duration` | 尚不支持（not supported yet） |
-| `streaming.rtmp.idle_timeout` | `duration` | 尚不支持（not supported yet） |
-| `streaming.rtmp.listen` | `string, required` | 尚不支持（not supported yet） |
-| `streaming.rtmp.max_conns` | `integer` | 尚不支持（not supported yet） |
+| `streaming.rtmp` | `object` | 已支持 |
+| `streaming.rtmp.auth` | `string` | 已支持 |
+| `streaming.rtmp.handshake_timeout` | `duration` | 已支持 |
+| `streaming.rtmp.idle_timeout` | `duration` | 已支持 |
+| `streaming.rtmp.listen` | `string, required` | 已支持 |
+| `streaming.rtmp.max_conns` | `integer` | 已支持 |
 | `streaming.rtmp.max_message_bytes` | `integer` | 尚不支持（not supported yet） |
 | `streaming.rtmp.mptcp` | `boolean` | 尚不支持（not supported yet） |
-| `streaming.rtmp.play_wait` | `duration` | 尚不支持（not supported yet） |
-| `streaming.rtsp` | `object` | 尚不支持（not supported yet） |
-| `streaming.rtsp.auth` | `string` | 尚不支持（not supported yet） |
+| `streaming.rtmp.play_wait` | `duration` | 已支持 |
+| `streaming.rtsp` | `object` | 已支持 |
+| `streaming.rtsp.auth` | `string` | 已支持 |
 | `streaming.rtsp.auth_methods` | `array<enum(digest\|basic)>` | 尚不支持（not supported yet） |
 | `streaming.rtsp.idle_timeout` | `duration` | 尚不支持（not supported yet） |
-| `streaming.rtsp.listen` | `string, required` | 尚不支持（not supported yet） |
-| `streaming.rtsp.max_conns` | `integer` | 尚不支持（not supported yet） |
+| `streaming.rtsp.listen` | `string, required` | 已支持 |
+| `streaming.rtsp.max_conns` | `integer` | 已支持 |
 | `streaming.rtsp.mptcp` | `boolean` | 尚不支持（not supported yet） |
-| `streaming.rtsp.play_wait` | `duration` | 尚不支持（not supported yet） |
+| `streaming.rtsp.play_wait` | `duration` | 已支持 |
 | `streaming.rtsp.realm` | `string` | 尚不支持（not supported yet） |
-| `streaming.rtsp.session_timeout` | `duration` | 尚不支持（not supported yet） |
-| `streaming.srt` | `object` | 尚不支持（not supported yet） |
-| `streaming.srt.auth` | `string` | 尚不支持（not supported yet） |
-| `streaming.srt.latency` | `duration` | 尚不支持（not supported yet） |
-| `streaming.srt.listen` | `string, required` | 尚不支持（not supported yet） |
-| `streaming.srt.max_conns` | `integer` | 尚不支持（not supported yet） |
-| `streaming.srt.passphrase` | `string` | 尚不支持（not supported yet） |
-| `streaming.srt.peer_idle_timeout` | `duration` | 尚不支持（not supported yet） |
-| `streaming.srt.play_wait` | `duration` | 尚不支持（not supported yet） |
-| `streaming.webrtc` | `object` | 尚不支持（not supported yet） |
-| `streaming.webrtc.connect_timeout` | `duration` | 尚不支持（not supported yet） |
-| `streaming.webrtc.ice_servers` | `array<object>` | 尚不支持（not supported yet） |
-| `streaming.webrtc.ice_servers[].credential` | `string` | 尚不支持（not supported yet） |
-| `streaming.webrtc.ice_servers[].urls` | `array<string>, required` | 尚不支持（not supported yet） |
-| `streaming.webrtc.ice_servers[].username` | `string` | 尚不支持（not supported yet） |
-| `streaming.webrtc.listen` | `string, required` | 尚不支持（not supported yet） |
-| `streaming.webrtc.max_offer_bytes` | `integer` | 尚不支持（not supported yet） |
-| `streaming.webrtc.max_sessions` | `integer` | 尚不支持（not supported yet） |
-| `streaming.webrtc.play_wait` | `duration` | 尚不支持（not supported yet） |
-| `streaming.webrtc.public_ips` | `array<string>` | 尚不支持（not supported yet） |
+| `streaming.rtsp.session_timeout` | `duration` | 已支持 |
+| `streaming.srt` | `object` | 已支持 |
+| `streaming.srt.auth` | `string` | 已支持 |
+| `streaming.srt.latency` | `duration` | 已支持 |
+| `streaming.srt.listen` | `string, required` | 已支持 |
+| `streaming.srt.max_conns` | `integer` | 已支持 |
+| `streaming.srt.passphrase` | `string` | 已支持 |
+| `streaming.srt.peer_idle_timeout` | `duration` | 已支持 |
+| `streaming.srt.play_wait` | `duration` | 已支持 |
+| `streaming.webrtc` | `object` | 已支持 |
+| `streaming.webrtc.connect_timeout` | `duration` | 已支持 |
+| `streaming.webrtc.ice_servers` | `array<object>` | 已支持 |
+| `streaming.webrtc.ice_servers[].credential` | `string` | 已支持 |
+| `streaming.webrtc.ice_servers[].urls` | `array<string>, required` | 已支持 |
+| `streaming.webrtc.ice_servers[].username` | `string` | 已支持 |
+| `streaming.webrtc.listen` | `string, required` | 已支持 |
+| `streaming.webrtc.max_offer_bytes` | `integer` | 已支持 |
+| `streaming.webrtc.max_sessions` | `integer` | 已支持 |
+| `streaming.webrtc.play_wait` | `duration` | 已支持 |
+| `streaming.webrtc.public_ips` | `array<string>` | 已支持 |
 
 <a id="fields-sync"></a>
 

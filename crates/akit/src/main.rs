@@ -298,6 +298,7 @@ fn roles_not_running(config: &Config) -> Result<(), Failure> {
                 "akit run does not run this role yet ({}); akit validate checks it",
                 match path {
                     p if p.starts_with("tunnel.") => "I101-I103",
+                    "media_auth" | "streaming" => "I121-I124",
                     _ => "I104-I109",
                 }
             ),

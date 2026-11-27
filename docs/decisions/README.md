@@ -35,5 +35,6 @@ says whether akit follows it.
 | [037](037-akit-names.md) | akit's names: every external name that says "fit" says "akit", with no aliases | accepted |
 | [038](038-tunnel-and-llm.md) | The tunnel and the LLM feature: fit's roles, akit's names, fit's wire protocols | waiting for review |
 | [039](039-webrtc.md) | WebRTC: fit's three roles on akio-turn and akio-webrtc, akit's names, the RFCs' wire | waiting for review |
+| [039](039-streaming-and-media-auth.md) | Streaming and media auth: fit's members, akio-media's hub, fit's tokens | waiting for review |
 | [041](041-cluster-management.md) | Cluster management: fit's manager, fit's wire to members, akit's names | waiting for review |
 | [042](042-bittorrent.md) | BitTorrent: fit's roles on akio-bittorrent, what it lacks asked of akio | waiting for review |

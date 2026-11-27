@@ -14,7 +14,7 @@ akit 配置的每个字段：配置的每一部分是做什么的、一个示例
 akit 与 fit 不同之处，在表格中以 **akit：** 标出。
 
 <!-- BEGIN GENERATED: summary -->
-fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **1059** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 163 个对象，下文各有一张表。
+fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **1118** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 173 个对象，下文各有一张表。
 <!-- END GENERATED -->
 
 字段说明来自 fit 代码中的 `doc` 标签，是英文的，所以每个字段的完整说明在[英文版](config.md)的同一张表中；本页的表格给出每个字段的
@@ -55,6 +55,8 @@ fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../co
 - [隧道](#隧道)：[`tunnel.hub`](#cfg-tunnel-hub)、[`tunnel.node`](#cfg-tunnel-node)、[`tunnel.proxy`](#cfg-tunnel-proxy)
 - [LLM](#llm)：[`llm.hub`](#cfg-llm-hub)、[`llm.node`](#cfg-llm-node)、[`llm.proxy`](#cfg-llm-proxy)
 - [WebRTC](#webrtc)：[`webrtc.turn`](#cfg-webrtc-turn)、[`webrtc.media`](#cfg-webrtc-media)、[`webrtc.proxy`](#cfg-webrtc-proxy)
+- [媒体鉴权](#媒体鉴权)：[`media_auth[]`](#cfg-media-auth)
+- [流媒体](#流媒体)：[`streaming`](#cfg-streaming)、[`rtmp`](#cfg-streaming-rtmp)、[`rtsp`](#cfg-streaming-rtsp)、[`srt`](#cfg-streaming-srt)、[`webrtc`](#cfg-streaming-webrtc)
 - [BitTorrent](#bittorrent)：[`bittorrent.client`](#cfg-bittorrent-client)、[`bittorrent.tracker`](#cfg-bittorrent-tracker)
 - [处理器](#处理器)：[`respond`](#respond)、[`static`](#static)、[`proxy`](#proxy)、[`bt_tracker`](#bt_tracker)、[`fastcgi`](#fastcgi)、[`forward_proxy`](#forward_proxy)、[`whip`](#whip)、[`whep`](#whep)、[`webrtc_proxy`](#webrtc_proxy)
 - [中间件](#中间件)：[`basic_auth`](#basic_auth)、[`body_limit`](#body_limit)、[`cache`](#cache)、[`circuit_breaker`](#circuit_breaker)、[`client_cert`](#client_cert)、[`compress`](#compress)、[`concurrency_limit`](#concurrency_limit)、[`forward_auth`](#forward_auth)、[`headers`](#headers)、[`jwt`](#jwt)、[`rate_limit`](#rate_limit)、[`redirect`](#redirect)、[`rewrite`](#rewrite)、[`wasm`](#wasm)
@@ -128,7 +130,7 @@ routes:
 | `listeners` | [对象](#cfg-listeners)的列表 |  |  |
 | `llm` | [对象](#cfg-llm) |  | **akit：**像 fit 一样读取并检查（I98）。在 LLM 的迭代运行这些角色之前（I104–I109），`akit run` 拒绝设置了角色的配置。 |
 | `log` | [对象](#cfg-log) |  |  |
-| `media_auth` | 对象的列表 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `media_auth` | [对象](#cfg-media-auth)的列表 |  | **akit：**`akit run` 从 I121 起应用这些策略；在此之前它拒绝设置了策略的配置，`akit validate` 会检查它们。token 的 cookie 名为 `akit_media_token`（决定 037）。 |
 | `media_library` | 对象的列表 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
 | `metrics` | 对象 |  |  |
 | `pprof` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
@@ -136,7 +138,7 @@ routes:
 | `routes` | [对象](#cfg-routes)的列表 |  |  |
 | `schema_version` | 整数，1 到 1 | `1` |  |
 | `services` | [对象](#cfg-services)的列表 |  |  |
-| `streaming` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `streaming` | [对象](#cfg-streaming) |  | **akit：**`akit run` 从 I122 起运行该角色（I124 起运行其 `webrtc` 端口）；在此之前它拒绝设置了该角色的配置，`akit validate` 会检查它。 |
 | `sync` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
 | `telemetry` | [对象](#cfg-telemetry) |  |  |
 | `tunnel` | [对象](#cfg-tunnel) |  | **akit：**像 fit 一样读取并检查（I98）；`akit run` 在监听器的引擎上运行这三个角色（I101），其链路与 fit 的协议逐字节相同，使 akit 的 hub、node 和 proxy 能与 fit 的互连（决定 038）。链路走 `tcp`、`tls`（I102）、`quic`（I102b），以及 `ws` 和 `wss`（I102c，基于 akio-ws）。hub 的 `console_socket` 和 proxy 的 `web_proxies` 使用 fit 的密封 WebSocket（I103b）。 |
@@ -2805,6 +2807,215 @@ webrtc {
 | `deny_files` | 字符串的列表 |  |  |
 <!-- END GENERATED -->
 
+## 媒体鉴权
+
+`media_auth` 列出 fit 的具名策略，规定谁可以推送和播放哪些流（[fit 的指南](https://github.com/lesismal/fit/blob/main/docs/streaming.zh-CN.md#auth)）：
+静态 token（或其 SHA-256）、带密码或 bcrypt 哈希的用户、为 `akit media-token` 签发的 token 签名的密钥，以及任何人都可执行
+的动作。流媒体角色的监听器和媒体处理器用 `auth` 指定一个策略，按流的路径检查。akit 像 fit 一样读取并检查这些策略（I120）；
+检查从 I121 起生效。策略的 `keys`（fit 的 I119）和 `url_signing`（媒体库那条线）尚不读取。
+
+```fit
+media_auth live {
+	public play
+	tokens studio {
+		token_sha256 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08
+		publish live/*
+	}
+}
+```
+
+### `media_auth[]`
+
+<!-- BEGIN GENERATED: media_auth[] -->
+<a id="cfg-media-auth"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-media-auth)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `name` | 字符串 | 必填 |  |
+| `keys` | 对象的列表 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `public` | 字符串：`publish`、`play`的列表 |  |  |
+| `secret` | 字符串 |  |  |
+| `secret_file` | 字符串 |  |  |
+| `token_ttl` | 时长 | `"12h"` |  |
+| `tokens` | [对象](#cfg-media-auth-tokens)的列表 |  |  |
+| `url_signing` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `users` | [对象](#cfg-media-auth-users)的列表 |  |  |
+<!-- END GENERATED -->
+
+### `media_auth[].tokens[]`
+
+<!-- BEGIN GENERATED: media_auth[].tokens[] -->
+<a id="cfg-media-auth-tokens"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-media-auth-tokens)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `name` | 字符串 |  |  |
+| `play` | 字符串的列表 |  |  |
+| `publish` | 字符串的列表 |  |  |
+| `token` | 字符串 |  |  |
+| `token_sha256` | 字符串 |  |  |
+<!-- END GENERATED -->
+
+### `media_auth[].users[]`
+
+<!-- BEGIN GENERATED: media_auth[].users[] -->
+<a id="cfg-media-auth-users"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-media-auth-users)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `name` | 字符串 | 必填 |  |
+| `password` | 字符串 |  |  |
+| `password_hash` | 字符串 |  |  |
+| `play` | 字符串的列表 |  |  |
+| `publish` | 字符串的列表 |  |  |
+<!-- END GENERATED -->
+
+## 流媒体
+
+`streaming` 是 fit 的流媒体角色（[fit 的指南](https://github.com/lesismal/fit/blob/main/docs/streaming.zh-CN.md)）：
+一个基于 akio-media 的媒体中心，一路流按其路径通过 RTMP、RTSP、SRT 或 WHIP 推送一次，即可通过其中任一协议以及 HTTP-FLV、
+HLS 和 WHEP 播放。akit 像 fit 一样读取并检查该角色（I120），`akit run` 从 I122 起运行它。尚不读取：`channels` 和 `push`
+（媒体库那条线）、Multipath TCP、RTMP 的 `max_message_bytes`（akio API 请求 A263），以及 RTSP 的 `auth_methods` 和
+`realm`（即 Digest 和 Basic）及其 `idle_timeout`（A264）：在此之前 RTSP 从 URL 的查询参数中取凭据。
+
+```fit
+streaming {
+	rtmp { listen :1935; auth live }
+	srt { listen :8890; auth live }
+}
+```
+
+### `streaming`
+
+<!-- BEGIN GENERATED: streaming -->
+<a id="cfg-streaming"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-streaming)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `access` | [对象](#cfg-streaming-access) |  |  |
+| `channels` | 对象的列表 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `gop_cache_bytes` | 整数，≥ 0 | `8388608` |  |
+| `max_players` | 整数，≥ 0 | `256` |  |
+| `max_streams` | 整数，≥ 0 | `64` |  |
+| `push` | 对象的列表 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `rtmp` | [对象](#cfg-streaming-rtmp) |  |  |
+| `rtsp` | [对象](#cfg-streaming-rtsp) |  |  |
+| `srt` | [对象](#cfg-streaming-srt) |  |  |
+| `webrtc` | [对象](#cfg-streaming-webrtc) |  |  |
+<!-- END GENERATED -->
+
+### `streaming.rtmp`
+
+<!-- BEGIN GENERATED: streaming.rtmp -->
+<a id="cfg-streaming-rtmp"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-streaming-rtmp)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `listen` | 字符串 | 必填 |  |
+| `auth` | 字符串 |  |  |
+| `handshake_timeout` | 时长 | `"10s"` |  |
+| `idle_timeout` | 时长 | `"30s"` |  |
+| `max_conns` | 整数，≥ 0 | `1024` |  |
+| `max_message_bytes` | 整数，≥ 0 | `8388608` | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `mptcp` | 布尔值 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `play_wait` | 时长 |  |  |
+<!-- END GENERATED -->
+
+### `streaming.rtsp`
+
+<!-- BEGIN GENERATED: streaming.rtsp -->
+<a id="cfg-streaming-rtsp"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-streaming-rtsp)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `listen` | 字符串 | 必填 |  |
+| `auth` | 字符串 |  |  |
+| `auth_methods` | 字符串：`digest`、`basic`的列表 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `idle_timeout` | 时长 | `"60s"` | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `max_conns` | 整数，≥ 0 | `1024` |  |
+| `mptcp` | 布尔值 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `play_wait` | 时长 |  |  |
+| `realm` | 字符串 | `"fit"` | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `session_timeout` | 时长 | `"60s"` |  |
+<!-- END GENERATED -->
+
+### `streaming.srt`
+
+<!-- BEGIN GENERATED: streaming.srt -->
+<a id="cfg-streaming-srt"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-streaming-srt)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `listen` | 字符串 | 必填 |  |
+| `auth` | 字符串 |  |  |
+| `latency` | 时长 | `"120ms"` |  |
+| `max_conns` | 整数，≥ 0 | `1024` |  |
+| `passphrase` | 字符串 |  |  |
+| `peer_idle_timeout` | 时长 | `"5s"` |  |
+| `play_wait` | 时长 |  |  |
+<!-- END GENERATED -->
+
+### `streaming.webrtc`
+
+<!-- BEGIN GENERATED: streaming.webrtc -->
+<a id="cfg-streaming-webrtc"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-streaming-webrtc)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `listen` | 字符串 | 必填 |  |
+| `connect_timeout` | 时长 | `"15s"` |  |
+| `ice_servers` | [对象](#cfg-streaming-webrtc-ice-servers)的列表 |  |  |
+| `max_offer_bytes` | 整数，0 到 65536 | `32768` |  |
+| `max_sessions` | 整数，≥ 0 | `256` |  |
+| `play_wait` | 时长 |  |  |
+| `public_ips` | 字符串的列表 |  |  |
+<!-- END GENERATED -->
+
+### `streaming.webrtc.ice_servers[]`
+
+<!-- BEGIN GENERATED: streaming.webrtc.ice_servers[] -->
+<a id="cfg-streaming-webrtc-ice-servers"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-streaming-webrtc-ice-servers)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `urls` | 字符串的列表 | 必填 |  |
+| `credential` | 字符串 |  |  |
+| `username` | 字符串 |  |  |
+<!-- END GENERATED -->
+
+### `streaming.access`
+
+<!-- BEGIN GENERATED: streaming.access -->
+<a id="cfg-streaming-access"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-streaming-access)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `allow` | 字符串的列表 |  |  |
+| `allow_files` | 字符串的列表 |  |  |
+| `deny` | 字符串的列表 |  |  |
+| `deny_files` | 字符串的列表 |  |  |
+<!-- END GENERATED -->
+
 ## BitTorrent
 
 `bittorrent` 包含 fit 的 BitTorrent 角色（[fit 的指南](https://github.com/lesismal/fit/blob/main/docs/bittorrent.md)）：
@@ -3927,6 +4138,8 @@ route {
 
 ## akit 尚不读取的部分
 
+fit 配置的以下部分被整体按名称拒绝为“尚不支持”：`log`、`pprof`、`llm`、`tunnel`、`webrtc`、
+`media_library`、`sync` 和 `bittorrent`，以及 fit 的媒体、BitTorrent 和 sync 处理器。在 akit 读取的部分中，上面
 fit 配置的以下部分被整体按名称拒绝为“尚不支持”：`log`、`pprof`、`llm`、`tunnel`、`webrtc`、`media_auth`、
 `streaming`、`media_library` 和 `sync`，以及 fit 的媒体、BitTorrent 和 sync 处理器。在 akit 读取的部分中，上面
 表格里标为 **尚不支持** 的字段也同样被拒绝。[路线图](../roadmap.zh-CN.md)说明各部分何时到来，[兼容性页面](../compatibility.zh-CN.md)

@@ -38,6 +38,7 @@ pub mod fuzzing;
 pub mod hardening;
 mod json;
 mod log;
+pub mod media;
 mod model;
 mod providers;
 mod providers_kv;

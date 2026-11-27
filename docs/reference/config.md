@@ -17,7 +17,7 @@ so in a note marked **akit:**; nine defaults that name the gateway are akit's, `
 say `fit` ([decision 037](../decisions/037-akit-names.md)).
 
 <!-- BEGIN GENERATED: summary -->
-akit reads **1059** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 163 objects akit reads, each has its table below.
+akit reads **1118** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 173 objects akit reads, each has its table below.
 <!-- END GENERATED -->
 
 How to read the tables:
@@ -61,6 +61,8 @@ is not there, a plugin that does not compile are errors.
 - [Tunnel](#tunnel): [`tunnel.hub`](#cfg-tunnel-hub), [`tunnel.node`](#cfg-tunnel-node), [`tunnel.proxy`](#cfg-tunnel-proxy)
 - [LLM](#llm): [`llm.hub`](#cfg-llm-hub), [`llm.node`](#cfg-llm-node), [`llm.proxy`](#cfg-llm-proxy)
 - [WebRTC](#webrtc): [`webrtc.turn`](#cfg-webrtc-turn), [`webrtc.media`](#cfg-webrtc-media), [`webrtc.proxy`](#cfg-webrtc-proxy)
+- [Media auth](#media-auth): [`media_auth[]`](#cfg-media-auth)
+- [Streaming](#streaming): [`streaming`](#cfg-streaming), [`rtmp`](#cfg-streaming-rtmp), [`rtsp`](#cfg-streaming-rtsp), [`srt`](#cfg-streaming-srt), [`webrtc`](#cfg-streaming-webrtc)
 - [BitTorrent](#bittorrent): [`bittorrent.client`](#cfg-bittorrent-client), [`bittorrent.tracker`](#cfg-bittorrent-tracker)
 - [Handlers](#handlers): [`respond`](#respond), [`static`](#static), [`proxy`](#proxy), [`bt_tracker`](#bt_tracker), [`fastcgi`](#fastcgi), [`forward_proxy`](#forward_proxy), [`whip`](#whip), [`whep`](#whep), [`webrtc_proxy`](#webrtc_proxy)
 - [Middleware](#middleware): [`basic_auth`](#basic_auth), [`body_limit`](#body_limit), [`cache`](#cache), [`circuit_breaker`](#circuit_breaker), [`client_cert`](#client_cert), [`compress`](#compress), [`concurrency_limit`](#concurrency_limit), [`forward_auth`](#forward_auth), [`headers`](#headers), [`jwt`](#jwt), [`rate_limit`](#rate_limit), [`redirect`](#redirect), [`rewrite`](#rewrite), [`wasm`](#wasm)
@@ -135,7 +137,7 @@ name every file on the command line (`-c` may be given again, or name a director
 | `listeners` | list of [object](#cfg-listeners) |  | The addresses akit listens on, and the protocols each one serves. When left out, HTTPS by default makes them from the routes' host names; see auto_https. |
 | `llm` | [object](#cfg-llm) |  | The LLM feature's roles to run beside the gateway, on its engine: a hub, a node and a proxy, which share AI models among machines and serve them to agents. None when left out. What their web pages change is written back here. **akit:** Read and checked as fit's (I98). `akit run` refuses a config that sets a role until the LLM iterations run it (I104–I109). |
 | `log` | [object](#cfg-log) |  | akit's own log: what it says about starting, reloading, certificates, providers and the engine, by logger, each with the least level written, and the format and output it writes in, as akio writes its own. Messages at info and debug to stdout and the rest to stderr, at info and above, as lines, when left out. |
-| `media_auth` | list of object |  | **Not supported yet**: refused by name. Named policies of who may publish and play which streams, with tokens, users and keys for tokens fit signs: the handlers and roles that take media (whip, whep, webrtc_proxy) refer to one with their auth param. A handler without auth lets everyone in, as the route's middleware allow. |
+| `media_auth` | list of [object](#cfg-media-auth) |  | Named policies of who may publish and play which streams, with tokens, users and keys for tokens akit signs: the handlers and roles that take media (whip, whep, webrtc_proxy) refer to one with their auth param. A handler without auth lets everyone in, as the route's middleware allow. **akit:** `akit run` applies the policies from I121; until then it refuses a config that sets them, which `akit validate` checks. A token's cookie is `akit_media_token` (decision 037). |
 | `media_library` | list of object |  | **Not supported yet**: refused by name. Named libraries of media files: directories scanned into a catalog of items, each a title with its renditions, audio, subtitles and poster, probed off fib's workers on a bounded file pool of the library's own, and read by the Admin API's /media/library. None when left out: no files are scanned or served. |
 | `metrics` | object |  | Count and time requests by listener and route, for the Admin API's /metrics, which serves the rest of akit's metrics without it; off when left out, since it costs every request a little. Needs admin. |
 | `pprof` | object |  | **Not supported yet**: refused by name. Serve Go's runtime profiles, as net/http/pprof does, at the Admin API's /debug/pprof/: CPU, heap, allocations, goroutines, blocking, mutexes and execution traces, for go tool pprof and go tool trace. Off when left out: the endpoints answer 404, and blocking and mutexes are not sampled. Follows every config applied, with no restart. Needs admin; served on the Admin API's own address, behind its token, and not through the console. |
@@ -143,7 +145,7 @@ name every file on the command line (`-c` may be given again, or name a director
 | `routes` | list of [object](#cfg-routes) |  | How requests are matched, and what handles them. |
 | `schema_version` | integer, 1 to 1 | `1` | The version of akit's config this one is written for, 1; akit refuses a config written for a version it does not read, rather than read it wrongly. Optional: a config that leaves it out is read as version 1. |
 | `services` | list of [object](#cfg-services) |  | Layer 4 services: the upstreams the connections of tcp listeners are proxied to, byte for byte, and the datagrams of udp listeners, one for one. |
-| `streaming` | object |  | **Not supported yet**: refused by name. fit's streaming role, beside the gateway on its engine: one media hub where a stream is published once, over RTMP, RTSP, SRT or WHIP, and played over any of them, HTTP-FLV and HLS too, each listener and handler with its media_auth policy. None when left out. |
+| `streaming` | [object](#cfg-streaming) |  | akit's streaming role, beside the gateway on its engine: one media hub where a stream is published once, over RTMP, RTSP, SRT or WHIP, and played over any of them, HTTP-FLV and HLS too, each listener and handler with its media_auth policy. None when left out. **akit:** `akit run` runs the role from I122 (I124 its `webrtc` port); until then it refuses a config that sets it, which `akit validate` checks. |
 | `sync` | object |  | **Not supported yet**: refused by name. fit's sync role: pipelines that read records from a source (a database's changes, files, a queue) and write them to sinks, each with a checkpoint saved only once every sink has acknowledged the records it covers, kept in state_dir. None when left out: no connections out and no state on disk. |
 | `telemetry` | [object](#cfg-telemetry) |  | OpenTelemetry: traces of requests, with W3C trace context sent on to upstreams, and metrics, exported over OTLP/HTTP to a collector. Neither when left out. Read when akit starts: a change takes effect when akit restarts. |
 | `tunnel` | [object](#cfg-tunnel) |  | The tunnel's roles to run beside the gateway, on its engine: a hub, a node and a proxy, which reach services behind NAT through the hub. None when left out. What their web pages change is written back here. **akit:** Read and checked as fit's (I98); `akit run` runs the three roles (I101) on the listeners' engine, their links speaking fit's protocol byte for byte, so that akit's hub, nodes and proxies link with fit's (decision 038). Links go over `tcp`, `tls` (I102), `quic` (I102b), and `ws` and `wss` (I102c, on akio-ws). A hub's `console_socket` and a proxy's `web_proxies` speak fit's sealed WebSocket (I103b). |
@@ -2666,6 +2668,200 @@ webrtc {
 | `deny_files` | list of string |  | Files of more deny entries, written as allow_files. |
 <!-- END GENERATED -->
 
+## Media auth
+
+`media_auth` lists fit's named policies of who may publish and play which streams
+([fit's guide](https://github.com/lesismal/fit/blob/main/docs/streaming.md#auth)): static tokens
+(or their SHA-256), users with a password or a bcrypt hash, a secret that signs the tokens
+`akit media-token` issues, and the actions anyone may take. The streaming role's listeners and the
+media handlers name a policy with `auth`, checked by the stream's path. akit reads and checks the
+policies as fit does (I120); the checks run from I121. A policy's `keys` (fit's I119) and
+`url_signing` (the media library's track) are not read yet.
+
+```fit
+media_auth live {
+	public play
+	tokens studio {
+		token_sha256 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08
+		publish live/*
+	}
+}
+```
+
+### `media_auth[]`
+
+<!-- BEGIN GENERATED: media_auth[] -->
+<a id="cfg-media-auth"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `name` | string | required | The policy's name, which the auth param of whip, whep and webrtc_proxy, and the media roles, refer to it by. Letters, digits, '_', '.' and '-'. |
+| `keys` | list of object |  | **Not supported yet**: refused by name. A keyring of signing keys, each a name and its secret or secret_file, in place of secret or secret_file: a token is signed with one key and checked against every key, so rotating one key, as the handler media_tokens does, refuses only the tokens that key signed and the others stay good. One of the two: keys, or secret/secret_file. None when left out. |
+| `public` | list of string: `publish`, `play` |  | The actions anyone may take without credentials, as ["play"] for streams anyone may watch and only some may publish. None when left out: every request needs credentials. |
+| `secret` | string |  | The key, at least 16 bytes, that tokens akit issues are signed with (HMAC-SHA256): akit media-token's and the media pages' logins. Tokens are good for this policy alone, until their expiry. When left out, a random key of the process's signs the pages' logins, which a restart forgets; akit media-token needs it. Or secret_file, one of the two, or keys. |
+| `secret_file` | string |  | A file holding the secret tokens are signed with, read each time the config is applied: the handler media_tokens rotates it, and every token signed before is refused. At least 16 bytes, its line breaks at the end aside. Or secret, one of the two, or keys. None when left out: a random key of the process's signs, which a restart forgets. |
+| `token_ttl` | duration | `"12h"` | How long a token akit issues is good for, unless akit media-token's -ttl says otherwise. 12h when left out. |
+| `tokens` | list of [object](#cfg-media-auth-tokens) |  | Static bearer tokens, each with the streams it may publish and play: sent as Authorization: Bearer, a token query parameter or the fit_media_token cookie. |
+| `url_signing` | object |  | **Not supported yet**: refused by name. Turns on playback URLs that expire: URLs signed for one viewer and one resource (an item of vod, a stream of hls or httpflv) with the policy's secret or a key of its keys, as media_tokens' /urls issues them, and checked by those handlers on every playlist, segment and subtitle, at once and without a callback. Needs secret, secret_file or keys. Off when left out. |
+| `users` | list of [object](#cfg-media-auth-users) |  | Users with a password, each with the streams they may publish and play: sent as Authorization: Basic, as user and pass query parameters where a protocol has no header (RTMP, SRT), or RTSP's Digest. They also log in to akit's media pages, which hand out tokens signed with secret. |
+<!-- END GENERATED -->
+
+### `media_auth[].tokens[]`
+
+<!-- BEGIN GENERATED: media_auth[].tokens[] -->
+<a id="cfg-media-auth-tokens"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `name` | string |  | What the token is called in logs, which never show the token itself: token:<name>, or token when left out. |
+| `play` | list of string |  | The streams the token may play, as publish lists them. None when left out. |
+| `publish` | list of string |  | The streams the token may publish, by name or path, with * matching any run of characters, '/' among them, as live/* or room1-*. None when left out. |
+| `token` | string |  | The token, at least 16 characters. Or token_sha256, one of the two. |
+| `token_sha256` | string |  | Instead of the token, its SHA-256 in hex, so that the config does not hold it, as sha256sum prints it for the token alone, without a newline: printf %s "$TOKEN" \| sha256sum. |
+<!-- END GENERATED -->
+
+### `media_auth[].users[]`
+
+<!-- BEGIN GENERATED: media_auth[].users[] -->
+<a id="cfg-media-auth-users"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `name` | string | required | The user's name; it may not contain a colon or a control character. |
+| `password` | string |  | The user's password. A user with one can also log in with RTSP's Digest, which needs the password itself. Or password_hash, one of the two. |
+| `password_hash` | string |  | Instead of the password, its bcrypt hash, as akit hash-password makes it: Basic and the query's user and pass only, checked off akio's I/O threads. A password once found right is remembered, as a keyed SHA-256, so that the next check is at once. |
+| `play` | list of string |  | The streams the user may play. None when left out. |
+| `publish` | list of string |  | The streams the user may publish, as a token's publish lists them. None when left out. |
+<!-- END GENERATED -->
+
+## Streaming
+
+`streaming` is fit's streaming role ([fit's guide](https://github.com/lesismal/fit/blob/main/docs/streaming.md)):
+one media hub, on akio-media, where a stream is published once by its path, over RTMP, RTSP, SRT
+or WHIP, and played over any of them and over HTTP-FLV, HLS and WHEP. akit reads and checks the
+role as fit does (I120), and `akit run` runs it from I122. Not read yet: `channels` and `push`
+(the media library's track), Multipath TCP, RTMP's `max_message_bytes` (akio API request A263),
+and RTSP's `auth_methods` and `realm`, Digest and Basic, and its `idle_timeout` (A264): RTSP takes credentials in the
+URL's query until then.
+
+```fit
+streaming {
+	rtmp { listen :1935; auth live }
+	srt { listen :8890; auth live }
+}
+```
+
+### `streaming`
+
+<!-- BEGIN GENERATED: streaming -->
+<a id="cfg-streaming"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `access` | [object](#cfg-streaming-access) |  | The client addresses the rtmp, rtsp, srt and webrtc listeners serve, deciding before the global access: a connection it refuses is closed as soon as it is accepted, and the datagrams of an srt caller or webrtc peer it refuses are dropped. A change applies to the next connection and peer, without starting a listener again; those connected are kept. |
+| `channels` | list of object |  | **Not supported yet**: refused by name. Channels: items of a media_library played into the hub as live streams, in order, shuffled, looped or on a schedule, paced by their timestamps, which run on from one item to the next; every egress plays them under its auth. A reload changes a channel in place, from its next item. At most 256. None when left out. |
+| `gop_cache_bytes` | integer, 0 or more | `8388608` | The bytes each stream keeps of its latest group of pictures, from its last key frame on, so that a new player starts at once with a picture; a group that outgrows it is dropped and caching starts again at the next key frame. 8 MiB when left out or 0. |
+| `max_players` | integer, 0 or more | `256` | The most players of one stream at once, over every protocol, HLS counting once a stream and format; one more is refused. Each packet a publisher sends is handed to every player on the worker that received it. 256 when left out or 0. |
+| `max_streams` | integer, 0 or more | `64` | The most streams at once, each a path with a publisher or players waiting for one; one more publisher is refused. 64 when left out or 0. A change of max_streams, max_players or gop_cache_bytes starts the hub again, ending every stream and connection. |
+| `push` | list of object |  | **Not supported yet**: refused by name. Outside RTMP or SRT servers, as a CDN's ingest, that streams of the hub are relayed to, each reconnected with backoff when it drops; a channel's own push lists its own. A reload keeps a target whose stream, url and connect_timeout are unchanged connected. At most 256 in all. None when left out. |
+| `rtmp` | [object](#cfg-streaming-rtmp) |  | Take and play streams over RTMP, as rtmp://host/app/stream: OBS and ffmpeg publish, players play. None when left out. |
+| `rtsp` | [object](#cfg-streaming-rtsp) |  | Take and play streams over RTSP 1.0 with interleaved RTP (RTP/AVP/TCP), as rtsp://host/app/stream. None when left out. |
+| `srt` | [object](#cfg-streaming-srt) |  | Take and play streams over SRT, MPEG-TS on UDP, the stream named by the caller's stream ID. None when left out. |
+| `webrtc` | [object](#cfg-streaming-webrtc) |  | The UDP port the PeerConnections of the stream_whip and stream_whep handlers share, which publish into the hub with WHIP and play from it with WHEP. Routes with those handlers answer 503 without it. None when left out. |
+<!-- END GENERATED -->
+
+### `streaming.rtmp`
+
+<!-- BEGIN GENERATED: streaming.rtmp -->
+<a id="cfg-streaming-rtmp"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `listen` | string | required | The TCP address RTMP clients connect to, as in ":1935". A change of any field but auth starts the listener again, closing its connections. |
+| `auth` | string |  | The media_auth policy a publish and a play must satisfy, by the stream's path, app/stream: credentials go in the query of the stream name or the app, as rtmp://host/live/cam?token=T or ?user=U&pass=P. A refusal is answered with NetStream.Publish.Unauthorized or NetStream.Play.Failed and the connection closed. Everyone may publish and play when left out. A change applies to the next publish and play. |
+| `handshake_timeout` | duration | `"10s"` | How long a client may take from connecting to publishing or playing. 10s when left out. |
+| `idle_timeout` | duration | `"30s"` | How long a publisher may send nothing, and a player's output not move, before its connection is closed. 30s when left out. |
+| `max_conns` | integer, 0 or more | `1024` | The most connections at once; one more is closed as it opens. 1024 when left out or 0. |
+| `max_message_bytes` | integer, 0 or more | `8388608` | **Not supported yet**: refused by name. The largest RTMP message a client may send, a video frame among them; a larger one closes its connection. 8 MiB when left out or 0. |
+| `mptcp` | boolean |  | **Not supported yet**: refused by name. Listen the RTMP connections with Multipath TCP where the kernel offers it (Linux 5.6+, net.mptcp.enabled), falling back to plain TCP where it does not. Off by default. |
+| `play_wait` | duration |  | How long a player may wait for a stream with no publisher yet, or for the next one after its publisher leaves. A play of a stream without a publisher fails at once when left out. |
+<!-- END GENERATED -->
+
+### `streaming.rtsp`
+
+<!-- BEGIN GENERATED: streaming.rtsp -->
+<a id="cfg-streaming-rtsp"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `listen` | string | required | The TCP address RTSP clients connect to, as in ":8554". RTP goes interleaved on the same connection (RTP/AVP/TCP); a SETUP asking for UDP is answered 461, which ffmpeg and most players then retry over TCP. A change of any field but auth starts the listener again, closing its connections. |
+| `auth` | string |  | The media_auth policy RTSP requests must satisfy, by the stream's path: ANNOUNCE publish and DESCRIBE play on the stream their URL names, RECORD publish and PLAY play on the stream of the connection's session (one whose URL names another stream is refused with 455), and a SETUP play on its stream, or once a session is set up, play or publish on the session's. Credentials are a user with a plaintext password by Digest, a user by Basic when auth_methods offers it, or a token in the URL's query, as rtsp://host/live/cam?token=T. A refusal is 401 with the challenges, or 403. Everyone may publish and play when left out. A change applies to the next request. |
+| `auth_methods` | list of string: `digest`, `basic` |  | **Not supported yet**: refused by name. The schemes a 401 offers for users: digest, which needs a user's plaintext password, and basic, which sends the password in the clear and is the only one a password_hash user can use. ["digest"] when left out. |
+| `idle_timeout` | duration | `"60s"` | **Not supported yet**: refused by name. How long a connection without a session may go without a request before it is closed. 60s when left out. |
+| `max_conns` | integer, 0 or more | `1024` | The most connections at once; one more is closed as it opens. 1024 when left out or 0. |
+| `mptcp` | boolean |  | **Not supported yet**: refused by name. Listen the RTSP connections with Multipath TCP where the kernel offers it (Linux 5.6+, net.mptcp.enabled), falling back to plain TCP where it does not. Off by default. |
+| `play_wait` | duration |  | How long a player may outlive its stream's publisher, waiting for the next one. A player ends with its publisher when left out. |
+| `realm` | string | `"fit"` | **Not supported yet**: refused by name. The realm of the challenges, which Digest's response is computed with. fit when left out. |
+| `session_timeout` | duration | `"60s"` | How long a session may go without a request, RTCP or, while recording, RTP before it and its connection end; clients are told so in the Session header and send keep-alives. 60s when left out. |
+<!-- END GENERATED -->
+
+### `streaming.srt`
+
+<!-- BEGIN GENERATED: streaming.srt -->
+<a id="cfg-streaming-srt"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `listen` | string | required | The UDP address SRT callers reach, as in ":8890". A change of any field but auth starts the listener again, ending its sessions. |
+| `auth` | string |  | The media_auth policy a caller must satisfy, publish for m=publish and play otherwise, by the stream ID's resource: a token as s= (#!::r=live/cam,m=publish,s=T), a user and password as u= and s=, or token, or user and pass, in the resource's query (live/cam?token=T). A refusal rejects the handshake with 1401 (unauthorized) or 1403 (forbidden). Everyone may publish and play when left out. A change applies to the next caller. |
+| `latency` | duration | `"120ms"` | The receive latency asked for, the time a packet may take to be sent again when lost; the caller's wins when larger. 120ms when left out. |
+| `max_conns` | integer, 0 or more | `1024` | The most sessions at once; one more caller is rejected with 1402. 1024 when left out or 0. |
+| `passphrase` | string |  | Encrypt every session with this passphrase, 10 to 79 characters, which callers must have too (pbkeylen 16). Unencrypted when left out. |
+| `peer_idle_timeout` | duration | `"5s"` | How long a peer may send nothing, keep-alives included, before its session ends. 5s when left out. |
+| `play_wait` | duration |  | How long a player may wait for a stream with no publisher yet, or for the next one after its publisher leaves. A caller playing a stream without a publisher is rejected with 1404 when left out. |
+<!-- END GENERATED -->
+
+### `streaming.webrtc`
+
+<!-- BEGIN GENERATED: streaming.webrtc -->
+<a id="cfg-streaming-webrtc"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `listen` | string | required | The UDP address every peer's media reaches akit at, one port all the role's PeerConnections share, as in ":8188"; not webrtc.media's. A wildcard host advertises every interface's address that is up, unless public_ips is set. A change of any field starts it again, ending its sessions. |
+| `connect_timeout` | duration | `"15s"` | How long a session may take from its answer to a connected PeerConnection before it is ended; once connected, ICE consent bounds it. 15s when left out. |
+| `ice_servers` | list of [object](#cfg-streaming-webrtc-ice-servers) |  | STUN and TURN servers the peers are told of in Link headers (RFC 9725), for their side of ICE; akit's is an ICE lite agent on its own address. |
+| `max_offer_bytes` | integer, 0 to 65536 | `32768` | The largest offer taken; a larger one is answered 400. At most 64 KiB. 32 KiB when left out or 0. |
+| `max_sessions` | integer, 0 or more | `256` | The most WHIP and WHEP sessions at once; one more offer is answered 503. 256 when left out or 0. |
+| `play_wait` | duration |  | How long a WHEP offer may wait for a stream with no publisher yet, its request held, before it is answered 404. Answered 404 at once when left out. |
+| `public_ips` | list of string |  | The addresses peers are told to reach the port at instead of the interfaces' own, as behind a 1:1 NAT. |
+<!-- END GENERATED -->
+
+### `streaming.webrtc.ice_servers[]`
+
+<!-- BEGIN GENERATED: streaming.webrtc.ice_servers[] -->
+<a id="cfg-streaming-webrtc-ice-servers"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `urls` | list of string | required | The server's stun:, stuns:, turn: or turns: URLs. |
+| `credential` | string |  | A TURN server's password. |
+| `username` | string |  | A TURN server's username. |
+<!-- END GENERATED -->
+
+### `streaming.access`
+
+<!-- BEGIN GENERATED: streaming.access -->
+<a id="cfg-streaming-access"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `allow` | list of string |  | IP addresses and CIDR prefixes served, as "10.0.0.0/8" or "2001:db8::/32": with any entry here or in allow_files, every address neither holds is refused, unless deny refuses it first. |
+| `allow_files` | list of string |  | Files of more allow entries, one on each line, each line told apart by its content: an address or prefix, with what follows # or ; left out, as the lists published for firewalls are written; a range, first-last; an eMule ipfilter.dat line, first - last , level , name, where a level above 127 is not listed; or a PeerGuardian .p2p line, name:first-last. IPv4 addresses of ranges may have leading zeros. Blank lines and lines that begin with #, ; or // are left out; any other line is an error. Read when the config is applied, and applied again when one changes; each at most 64 MiB. |
+| `deny` | list of string |  | IP addresses and CIDR prefixes refused, whatever allow holds. |
+| `deny_files` | list of string |  | Files of more deny entries, written as allow_files. |
+<!-- END GENERATED -->
+
 ## BitTorrent
 
 `bittorrent` holds fit's BitTorrent roles ([fit's guide](https://github.com/lesismal/fit/blob/main/docs/bittorrent.md)):
@@ -3739,6 +3935,7 @@ it, since fit refuses it as an unknown field.
 ## What akit does not read yet
 
 These parts of fit's config are refused whole, by name, as not supported yet: `log`, `pprof`,
+`llm`, `tunnel`, `webrtc`, `media_library`, `sync` and `bittorrent`, with fit's handlers for media, BitTorrent and sync. Within the parts akit reads,
 `llm`, `tunnel`, `webrtc`, `media_auth`, `streaming`, `media_library` and `sync`, with fit's handlers for media, BitTorrent and sync. Within the parts akit reads,
 the fields marked **Not supported yet** in the tables above are refused the same way. The
 [roadmap](../roadmap.md) says when each comes, and the [compatibility page](../compatibility.md)

@@ -3331,6 +3331,8 @@ fn akit_config_lists_match_the_inventory() {
         "bittorrent.rs",
         // I130: cluster management.
         "cluster.rs",
+        // I120: media auth and the streaming role.
+        "media.rs",
     ]
     .iter()
     .map(|f| fs::read_to_string(compat_dir().join("../../crates/akit-config/src").join(f)).unwrap())
@@ -3346,7 +3348,7 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 163] = [
+    let objects: [(&str, &str, Option<&str>); 173] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         (
             "providers[].kubernetes",
@@ -3689,6 +3691,33 @@ fn akit_config_lists_match_the_inventory() {
             None,
         ),
         ("bittorrent.tracker.console.access", "ACCESS_FIELDS", None),
+        // I120: media auth and the streaming role (crate::media).
+        (
+            "media_auth[]",
+            "MEDIA_AUTH_FIELDS",
+            Some("MEDIA_AUTH_FIT_ONLY"),
+        ),
+        ("media_auth[].tokens[]", "MEDIA_TOKEN_FIELDS", None),
+        ("media_auth[].users[]", "MEDIA_USER_FIELDS", None),
+        ("streaming", "STREAMING_FIELDS", Some("STREAMING_FIT_ONLY")),
+        (
+            "streaming.rtmp",
+            "STREAM_RTMP_FIELDS",
+            Some("STREAM_RTMP_FIT_ONLY"),
+        ),
+        (
+            "streaming.rtsp",
+            "STREAM_RTSP_FIELDS",
+            Some("STREAM_RTSP_FIT_ONLY"),
+        ),
+        ("streaming.srt", "STREAM_SRT_FIELDS", None),
+        ("streaming.webrtc", "STREAM_WEBRTC_FIELDS", None),
+        (
+            "streaming.webrtc.ice_servers[]",
+            "STREAM_ICE_SERVER_FIELDS",
+            None,
+        ),
+        ("streaming.access", "ACCESS_FIELDS", None),
     ];
     let mapped: BTreeSet<&str> = objects
         .iter()

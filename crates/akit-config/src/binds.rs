@@ -11,6 +11,7 @@ use std::net::IpAddr;
 
 use crate::bittorrent::BitTorrent;
 use crate::decode::Decoder;
+use crate::media::Streaming;
 use crate::model::{Admin, Listener, Protocol};
 use crate::roles::{Llm, Tunnel, TunnelProtocol};
 use crate::webrtc::WebRtc;
@@ -46,6 +47,7 @@ fn binds(
     llm: Option<&Llm>,
     webrtc: Option<&WebRtc>,
     bittorrent: Option<&BitTorrent>,
+    streaming: Option<&Streaming>,
 ) -> Vec<Bind> {
     let mut out = Vec::new();
     let mut add = |name: String, path: String, network: &'static str, address: &str| {
@@ -236,6 +238,23 @@ fn binds(
             );
         }
     }
+    // I120: the streaming role's listeners, as fit's.
+    if let Some(s) = streaming {
+        for (name, network, listen) in [
+            ("streaming.rtmp", "tcp", s.rtmp.as_ref().map(|r| &r.listen)),
+            ("streaming.rtsp", "tcp", s.rtsp.as_ref().map(|r| &r.listen)),
+            ("streaming.srt", "udp", s.srt.as_ref().map(|r| &r.listen)),
+            (
+                "streaming.webrtc",
+                "udp",
+                s.webrtc.as_ref().map(|w| &w.listen),
+            ),
+        ] {
+            if let Some(l) = listen {
+                add(name.into(), format!("{name}.listen"), network, l);
+            }
+        }
+    }
     out
 }
 
@@ -300,10 +319,11 @@ pub(crate) fn clashes(
     llm: Option<&Llm>,
     webrtc: Option<&WebRtc>,
     bittorrent: Option<&BitTorrent>,
+    streaming: Option<&Streaming>,
 ) -> Vec<(String, String)> {
     let mut kept: Vec<(Bind, String, u16)> = Vec::new();
     let mut out = Vec::new();
-    for b in binds(listeners, admin, tunnel, llm, webrtc, bittorrent) {
+    for b in binds(listeners, admin, tunnel, llm, webrtc, bittorrent, streaming) {
         // Port 0 picks a free port, so two of them do not clash.
         let Some((host, port)) = bind_key(&b.address).filter(|(_, p)| *p != 0) else {
             continue;
@@ -421,6 +441,16 @@ mod tests {
                 "webrtc.proxy",
                 "udp",
                 r#""webrtc": {"proxy": {"listen": "{a}"}}"#,
+            ),
+            (
+                "streaming.rtmp",
+                "tcp",
+                r#""streaming": {"rtmp": {"listen": "{a}"}}"#,
+            ),
+            (
+                "streaming.srt",
+                "udp",
+                r#""streaming": {"srt": {"listen": "{a}"}}"#,
             ),
         ]
     }
