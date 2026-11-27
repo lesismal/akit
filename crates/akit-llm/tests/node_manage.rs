@@ -35,7 +35,9 @@ fn tools() -> &'static PathBuf {
     static DIR: OnceLock<PathBuf> = OnceLock::new();
     DIR.get_or_init(|| {
         use std::os::unix::fs::PermissionsExt;
-        let dir = std::env::temp_dir().join(format!("akit-llm-node-manage-{}", std::process::id()));
+        // Under the build's own directory for tests, which goes with `target`.
+        let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR"))
+            .join(format!("akit-llm-node-manage-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let calls = dir.join("calls");
         let nvidia = format!(

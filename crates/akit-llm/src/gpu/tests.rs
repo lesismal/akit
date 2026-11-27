@@ -40,16 +40,9 @@ fn fake_tools(tools: &[(&str, String)]) -> Fake {
     Fake(dir)
 }
 
-/// A script body printing `out` (through a file, so any bytes do) and exiting with `code`.
+/// A script body printing `out` as it is (the shell's own `printf`) and exiting with `code`.
 fn printing(out: &str, code: i32) -> String {
-    static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-    let f = std::env::temp_dir().join(format!(
-        "akit-llm-gpu-out-{}-{}",
-        std::process::id(),
-        N.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
-    ));
-    std::fs::write(&f, out).unwrap();
-    format!("/bin/cat '{}'\nexit {code}", f.display())
+    format!("printf '%s' '{}'\nexit {code}", out.replace('\'', r"'\''"))
 }
 
 const NVIDIA_OUT: &str = "0, NVIDIA A10, GPU-a, 550.1, 24564, 100, 5, 40, 20.5, 150.00, 100.00, 150.00, 150.00, 210, 405, 1695, 6251, 30, P8, Enabled, Default\n";
