@@ -321,10 +321,11 @@ fn proxy_methods() {
         br#"{"model":"m1","messages":[]}"#,
     );
     assert_eq!(a.status, 200, "{}", a.text());
-    until("the call counted", || {
-        call(&p, "/proxy/stats", "")
-            .unwrap()
-            .contains(r#""model":"m1","calls":1,"errors":0"#)
+    // Counted as it starts, and ended once its response was relayed, which may be after the
+    // agent read it.
+    until("the call counted and ended", || {
+        let s = call(&p, "/proxy/stats", "").unwrap();
+        s.contains(r#""model":"m1","calls":1,"errors":0"#) && s.contains(r#""inflight":0"#)
     });
     let stats = call(&p, "/proxy/stats", "").unwrap();
     assert!(stats.contains(r#""inflight":0"#), "{stats}");
