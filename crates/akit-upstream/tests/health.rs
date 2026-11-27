@@ -401,9 +401,8 @@ fn all_down_still_picks() {
 
 #[test]
 fn max_fails_counts_through_the_pool() {
-    let l = TcpListener::bind("127.0.0.1:0").unwrap();
-    let a = l.local_addr().unwrap().to_string();
-    drop(l);
+    // Port 1: nothing serves it, and no test binds it.
+    let a = "127.0.0.1:1".to_owned();
     let pool = Pool::new(
         &upstream(&[a], r#""max_fails": 3, "fail_timeout": "1h""#),
         EngineSlot::with(engine()),

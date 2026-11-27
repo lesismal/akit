@@ -180,10 +180,10 @@ fn counting(status: u16, body: &'static str, delay: Duration) -> (SocketAddr, Ar
     (addr, hits)
 }
 
-/// fit's `refused`: an address nothing listens on.
+/// An address nothing listens on: port 1 (tcpmux), which nothing serves and no test binds. A
+/// port picked by binding port 0 and letting it go may be taken by another process meanwhile.
 fn refused() -> SocketAddr {
-    let l = TcpListener::bind("127.0.0.1:0").unwrap();
-    l.local_addr().unwrap()
+    SocketAddr::from(([127, 0, 0, 1], 1))
 }
 
 /// A response: its status, head and body (whole, or dechunked when short).

@@ -28,10 +28,10 @@ use akio::{Acceptor, Conn, Engine, Handler, Listener};
 use akio_crypto::base64::STANDARD;
 use akit_config::value::{Value, parse};
 
-/// An address nothing listens on.
+/// An address nothing listens on: port 1 (tcpmux), which nothing serves and no test binds. A
+/// port picked by binding port 0 and letting it go may be taken by another process meanwhile.
 pub fn closed_addr() -> String {
-    let l = TcpListener::bind("127.0.0.1:0").unwrap();
-    l.local_addr().unwrap().to_string()
+    "127.0.0.1:1".to_owned()
 }
 
 /// A temporary directory of its own, removed when dropped.

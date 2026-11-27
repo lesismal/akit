@@ -425,9 +425,8 @@ fn forward_auth() {
 // fit's TestForwardAuthUnreachable.
 #[test]
 fn forward_auth_unreachable() {
-    let l = TcpListener::bind("127.0.0.1:0").unwrap();
-    let addr = l.local_addr().unwrap();
-    drop(l);
+    // Port 1: nothing serves it, and no test binds it.
+    let addr = SocketAddr::from(([127, 0, 0, 1], 1));
     let akit = Akit::start(&forward_doc(addr, "5s", ""));
     let r = fetch(akit.addr, "GET", "/p", "Bearer good", &[]);
     assert_eq!(r.status, 502, "no auth service");

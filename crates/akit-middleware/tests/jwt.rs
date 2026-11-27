@@ -1087,10 +1087,8 @@ fn jwks_outage() {
     }
 
     // Nothing listening: refused, and the route without jwt answers meanwhile.
-    let closed = TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap();
+    // Port 1: nothing serves it, and no test binds it.
+    let closed = SocketAddr::from(([127, 0, 0, 1], 1));
     let akit2 = Akit::start(&doc(&[(
         "/p",
         format!(r#"{{"jwks_url": "http://{closed}/keys"}}"#),

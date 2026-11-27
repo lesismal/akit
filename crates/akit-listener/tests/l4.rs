@@ -188,10 +188,10 @@ fn echo(mut s: TcpStream) {
     let _ = std::io::copy(&mut r, &mut s);
 }
 
-/// An address nothing listens on.
+/// An address nothing listens on: port 1 (tcpmux), which nothing serves and no test binds. A
+/// port picked by binding port 0 and letting it go may be taken by another process meanwhile.
 fn refused() -> String {
-    let l = TcpListener::bind("127.0.0.1:0").unwrap();
-    l.local_addr().unwrap().to_string()
+    "127.0.0.1:1".to_owned()
 }
 
 /// `n` bytes that are not all alike, seeded by `seed`.
@@ -568,10 +568,9 @@ fn udp_who_am_i(from: SocketAddr, _: &[u8]) -> Option<Vec<u8>> {
     Some(from.to_string().into_bytes())
 }
 
-/// A UDP address nothing listens on.
+/// A UDP address nothing listens on: port 1, which nothing serves and no test binds.
 fn refused_udp() -> String {
-    let s = UdpSocket::bind("127.0.0.1:0").unwrap();
-    s.local_addr().unwrap().to_string()
+    "127.0.0.1:1".to_owned()
 }
 
 /// Sends `data` and returns the answer, sending again, up to five times, when none comes within
