@@ -20,6 +20,18 @@ done and where the work differs from the plan.
 
 ## Log
 
+### 2026-11-27: a node's and a proxy's tunnels listed in the order they opened
+
+- `the_proxys_pages` failed now and then under load: it compared two tunnels' `created` as
+  strings after opening them 5 ms apart. `created` is RFC 3339 with the millisecond's trailing
+  zeros dropped, as fit's JSON writes it (`…:05.1Z` for 100 ms), which does not sort as text
+  (`…:05.1Z` after `…:05.105Z`, `…:05Z` after `…:05.005Z`). The list itself was sorted by the wall
+  clock's milliseconds, then by tunnel ID, which ties within a millisecond (and the ID is no age
+  across links) and goes wrong when the clock steps back. A tunnel table now numbers its tunnels
+  as it takes them and lists them in that order, as fit sorts by its monotonic clock; `created`
+  stays what the pages show. The test opens the second tunnel once the first has echoed, no
+  sleep, and tells them apart by the bytes each carried.
+
 ### 2026-11-27: the tunnel's tests bind port 0
 
 - `tunnels_sealed_by_the_body_password` failed once in a full run on gpu51 (epoll): "forward

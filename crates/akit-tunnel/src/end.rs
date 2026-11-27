@@ -8,7 +8,7 @@
 //! its tunnels' windows (`msg::LINK_QUEUE`, fit's).
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicI64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicI64, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
 use std::time::Duration;
 
@@ -59,8 +59,11 @@ pub struct End {
     /// Bytes sent onto the link.
     pub bytes_out: AtomicI64,
     active: AtomicI64,
-    /// Milliseconds since 1970 of when it was opened.
+    /// Milliseconds since 1970 of when it was opened, as the pages show it.
     pub created: i64,
+    /// Its place in the order the table took its tunnels in, which [`Table::list`] keeps: the
+    /// wall clock's milliseconds tie, and may step back.
+    order: u64,
 }
 
 impl std::fmt::Debug for End {
@@ -393,6 +396,8 @@ impl Limit {
 pub struct Table {
     limit: Arc<Limit>,
     m: Mutex<HashMap<u64, Arc<End>>>,
+    /// The next tunnel's [`End::order`], taken under `m`'s lock.
+    next: AtomicU64,
 }
 
 impl Table {
@@ -402,6 +407,7 @@ impl Table {
         Arc::new(Table {
             limit,
             m: Mutex::new(HashMap::new()),
+            next: AtomicU64::new(0),
         })
     }
 
@@ -453,6 +459,7 @@ impl Table {
             bytes_out: AtomicI64::new(0),
             active: AtomicI64::new(now_ms()),
             created: now_ms(),
+            order: self.next.fetch_add(1, Ordering::Relaxed),
         });
         m.insert(id, Arc::clone(&e));
         Ok(e)
@@ -546,11 +553,11 @@ impl Table {
         self.len() == 0
     }
 
-    /// Every end, oldest first (by when each was opened, then by ID).
+    /// Every end, oldest first: in the order the table took them (fit's, by its monotonic clock).
     #[must_use]
     pub fn list(&self) -> Vec<Arc<End>> {
         let mut v: Vec<Arc<End>> = self.map().values().cloned().collect();
-        v.sort_by_key(|e| (e.created, e.id));
+        v.sort_by_key(|e| e.order);
         v
     }
 

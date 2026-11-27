@@ -600,14 +600,19 @@ fn the_proxys_pages() {
     let wb = pg.get("/api/workbench");
     assert!(wb.body.contains(r#""modules":["tunnel.proxy"]"#), "{wb:?}");
 
-    // Two tunnels, listed oldest first, one closed from the pages.
+    // Two tunnels, listed oldest first, one closed from the pages. The first is open, and has
+    // echoed, before the second is: told apart by the bytes each carried.
     let one = echo_once(fwd, "one");
-    std::thread::sleep(Duration::from_millis(5));
-    let two = echo_once(fwd, "two");
+    let two = echo_once(fwd, "second");
     let st = pg.status();
     let tunnels = arr(&st, "tunnels");
     assert_eq!(tunnels.len(), 2, "{}", st.to_json());
-    assert!(text(&tunnels[0], "created") <= text(&tunnels[1], "created"));
+    assert_eq!(
+        (text(&tunnels[0], "out"), text(&tunnels[1], "out")),
+        ("3".to_owned(), "6".to_owned()),
+        "{}",
+        st.to_json()
+    );
     assert_eq!(text(&tunnels[0], "hub"), "hub");
     // The forward's `listen`, as its member says (port 0: the one it bound is `fwd`).
     assert_eq!(text(&tunnels[0], "peer"), "127.0.0.1:0");
