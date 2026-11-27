@@ -48,12 +48,17 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 /// What `GET /api/me` adds beside the identity and the user: members as JSON, by name.
 pub type MeFn = Arc<dyn Fn() -> Vec<(&'static str, String)> + Send + Sync>;
 
+/// What is told where the role's console is: its identity's `http_url`.
+pub type UrlFn = Arc<dyn Fn(Option<String>) + Send + Sync>;
+
 /// An LLM role's module.
 pub struct LlmPages {
     id: &'static str,
     local: Local,
     mesh: WeakMesh,
     me: OnceLock<MeFn>,
+    /// Where the role's identity takes its `http_url` from (I109d).
+    url: OnceLock<UrlFn>,
     streams: Arc<AtomicUsize>,
     /// [`STALL_TIMEOUT`], or a test's.
     stall: Duration,
@@ -130,6 +135,7 @@ impl LlmPages {
             local,
             mesh,
             me: OnceLock::new(),
+            url: OnceLock::new(),
             streams: Arc::default(),
             stall: STALL_TIMEOUT,
         }
@@ -138,6 +144,21 @@ impl LlmPages {
     /// Has `GET /api/me` add what `f` gives (a proxy's `api_url`); set once.
     pub fn set_me(&self, f: MeFn) {
         let _ = self.me.set(f);
+    }
+
+    /// Has [`LlmPages::set_console_url`] tell `f`; set once, by the role.
+    pub fn on_console_url(&self, f: UrlFn) {
+        let _ = self.url.set(f);
+    }
+
+    /// Where the console serving the role's own pages listens, as a URL (`http://127.0.0.1:9100/`),
+    /// or `None` once it stopped: the identity's `http_url` (fit's `Console.URL`). Until a console
+    /// server says, the identity takes it from the member's `console`, which misses a port chosen
+    /// when the console starts.
+    pub fn set_console_url(&self, url: Option<String>) {
+        if let Some(f) = self.url.get() {
+            f(url);
+        }
     }
 
     /// The module with a stall timeout of its own: tests'.
@@ -412,6 +433,10 @@ impl Sse {
 impl Module for LlmPages {
     fn id(&self) -> &'static str {
         self.id
+    }
+
+    fn console_url(&self, url: Option<&str>) {
+        self.set_console_url(url.map(str::to_owned));
     }
 
     fn serve(&self, ctx: &mut Context, user: &str, path: &str) {

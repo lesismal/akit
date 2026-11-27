@@ -94,6 +94,7 @@ impl RoleConsoles {
     pub fn stop(&mut self) {
         for (_, r) in std::mem::take(&mut self.running) {
             r.console.shutdown();
+            r.module.console_url(None);
         }
     }
 }
@@ -115,6 +116,7 @@ impl Consoles for RoleConsoles {
         let (Some((config, cfg)), Some(module)) = (want, module) else {
             if let Some(r) = self.running.remove(id) {
                 r.console.shutdown();
+                r.module.console_url(None);
             }
             return Ok(());
         };
@@ -134,6 +136,9 @@ impl Consoles for RoleConsoles {
         let old = self.running.remove(id);
         if let Some(o) = &old {
             o.console.shutdown();
+            if !Arc::ptr_eq(&o.module, &module) {
+                o.module.console_url(None);
+            }
         }
         match self.start(&key, &module, access.as_ref()) {
             Ok(console) => {
@@ -141,6 +146,7 @@ impl Consoles for RoleConsoles {
                     Level::Info,
                     format_args!("{id}: console on {}", console.url()),
                 );
+                module.console_url(Some(&console.url()));
                 self.running.insert(
                     id,
                     Running {
@@ -156,12 +162,18 @@ impl Consoles for RoleConsoles {
                 if let Some(o) = old {
                     match self.start(&o.cfg, &o.module, o.access.as_ref()) {
                         Ok(console) => {
+                            o.module.console_url(Some(&console.url()));
                             self.running.insert(id, Running { console, ..o });
                         }
-                        Err(e2) => log(
-                            Level::Warn,
-                            format_args!("{id}: the console before could not start again: {e2}"),
-                        ),
+                        Err(e2) => {
+                            o.module.console_url(None);
+                            log(
+                                Level::Warn,
+                                format_args!(
+                                    "{id}: the console before could not start again: {e2}"
+                                ),
+                            );
+                        }
                     }
                 }
                 Err(e.to_string())

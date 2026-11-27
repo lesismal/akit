@@ -293,12 +293,26 @@ impl Role for Hub {
 
 /// A node's links and their traffic, as a hub's node list shows them.
 #[derive(Debug, Clone, Copy, Default)]
-struct Traffic {
+pub(crate) struct Traffic {
     calls: i64,
     errors: i64,
     inflight: i64,
     req_bytes: i64,
     resp_bytes: i64,
+}
+
+/// The traffic of the calls relayed to each node, by its ID, as the routes counted it.
+pub(crate) fn traffic_by_node(routes: &crate::mesh::Routes) -> HashMap<String, Traffic> {
+    let mut traffic: HashMap<String, Traffic> = HashMap::new();
+    for r in routes.snapshot() {
+        let t = traffic.entry(r.to).or_default();
+        t.calls = t.calls.saturating_add(r.calls);
+        t.errors = t.errors.saturating_add(r.errors);
+        t.inflight = t.inflight.saturating_add(r.inflight);
+        t.req_bytes = t.req_bytes.saturating_add(r.req_bytes);
+        t.resp_bytes = t.resp_bytes.saturating_add(r.resp_bytes);
+    }
+    traffic
 }
 
 impl Traffic {
@@ -314,11 +328,11 @@ impl Traffic {
 }
 
 /// One node of the table, as the hub's pages list it (fit's `HubNode`).
-struct NodeView {
-    info: NodeInfo,
-    online: bool,
-    conns: Vec<PeerConn>,
-    last_seen: i64,
+pub(crate) struct NodeView {
+    pub(crate) info: NodeInfo,
+    pub(crate) online: bool,
+    pub(crate) conns: Vec<PeerConn>,
+    pub(crate) last_seen: i64,
 }
 
 /// `nodes` encoded within [`MAX_NODE_LIST_BYTES`], the nodes at the end (offline ones first, as
@@ -336,7 +350,7 @@ fn encode_list(mut nodes: Vec<String>) -> String {
 
 /// A node as a hub's proxies see it (fit's `NodeSummary`): its hardware without its disks and
 /// addresses, 16 GPUs and 64 models at most, its load, its links with the hub and their traffic.
-fn summary(n: &NodeView, traffic: Traffic) -> String {
+pub(crate) fn summary(n: &NodeView, traffic: Traffic) -> String {
     let mut hw = HwInfo::parse(&n.info.hw);
     hw.disks = None;
     hw.ips = None;
@@ -674,15 +688,7 @@ impl Core {
     /// The node list for the proxies (fit's `NodeList`); when it changed since the last one,
     /// its sequence grows and every proxy gets it.
     fn node_list(&self) -> String {
-        let mut traffic: HashMap<String, Traffic> = HashMap::new();
-        for r in self.base.mesh.routes().snapshot() {
-            let t = traffic.entry(r.to).or_default();
-            t.calls = t.calls.saturating_add(r.calls);
-            t.errors = t.errors.saturating_add(r.errors);
-            t.inflight = t.inflight.saturating_add(r.inflight);
-            t.req_bytes = t.req_bytes.saturating_add(r.req_bytes);
-            t.resp_bytes = t.resp_bytes.saturating_add(r.resp_bytes);
-        }
+        let traffic = traffic_by_node(self.base.mesh.routes());
         let all = self.nodes();
         let total = all.len();
         let enc = encode_list(

@@ -5,7 +5,8 @@
 //! (4 routes at most before the response's head), streamed back as it comes with the node's ID in
 //! `X-Akit-Node`, and failed in the shape of the agent's API.
 //!
-//! The proxy's pages' methods (its keys made and deleted, its settings, its stats) are I109's.
+//! Its pages' methods (its keys made and deleted, its API's settings, its stats, its models and
+//! nodes) are [`methods`]' (I109d).
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -27,9 +28,9 @@ use crate::mesh::{RouteCall, Router};
 use crate::model::{
     API_ANTHROPIC, API_COHERE, API_GEMINI, API_OLLAMA, API_OPENAI, CODE_BAD_REQUEST, CODE_INTERNAL,
     CODE_NOT_FOUND, CODE_RATE_LIMITED, CODE_UNAVAILABLE, HubModels, Identity, METHOD_HUB_MODELS,
-    METHOD_HUB_MODELS_UPDATE, METHOD_HUB_NODE_LIST_UPDATE, METHOD_HUB_PROXY, METHOD_NODE_INFO,
-    METHOD_NODE_PROXY, METHOD_NODE_UPDATE, NodeInfo, PROXY_HEADERS, PeerConn, ProxyHead, ProxyReq,
-    ROLE_HUB, ROLE_NODE, protocol, proxy_paths,
+    METHOD_HUB_MODELS_UPDATE, METHOD_HUB_NODE_LIST, METHOD_HUB_NODE_LIST_UPDATE, METHOD_HUB_PROXY,
+    METHOD_NODE_INFO, METHOD_NODE_PROXY, METHOD_NODE_UPDATE, NodeInfo, PROXY_HEADERS, PeerConn,
+    ProxyHead, ProxyReq, ROLE_HUB, ROLE_NODE, protocol, proxy_paths,
 };
 use crate::role::Base;
 use crate::wire::{Error, Event, Stream};
@@ -54,6 +55,8 @@ const WRITE_HIGH: usize = 256 << 10;
 /// The node's ID in a response (decision 038's name).
 pub const NODE_HEADER: &str = "X-Akit-Node";
 
+pub mod methods;
+
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(PoisonError::into_inner)
 }
@@ -64,6 +67,8 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 struct Catalog {
     hubs: HashMap<String, (Identity, HubModels)>,
     nodes: HashMap<String, (Identity, NodeInfo)>,
+    /// The hubs' node lists, by hub ID, for the pages.
+    lists: HashMap<String, (Identity, methods::HubList)>,
     inflight: HashMap<String, i64>,
     rr: usize,
 }
@@ -94,9 +99,20 @@ impl Catalog {
         self.nodes.insert(peer.id.clone(), (peer.clone(), info));
     }
 
+    /// Keeps hub `peer`'s node list, unless it is older than the one kept (fit's `setList`).
+    fn set_list(&mut self, peer: &Identity, l: methods::HubList) {
+        if let Some((old, o)) = self.lists.get(&peer.id) {
+            if old.started_at == peer.started_at && l.seq < o.seq {
+                return;
+            }
+        }
+        self.lists.insert(peer.id.clone(), (peer.clone(), l));
+    }
+
     fn drop_peer(&mut self, id: &str) {
         self.hubs.remove(id);
         self.nodes.remove(id);
+        self.lists.remove(id);
     }
 
     /// The routes to `name` called with `api`: the ready direct nodes, least loaded first, then
@@ -204,6 +220,12 @@ struct Core {
     api_cfg: Mutex<LlmProxyApi>,
     policy: Mutex<Option<Arc<akit_access::Policy>>>,
     inflight: AtomicUsize,
+    /// The calls counted per model, for the pages.
+    stats: methods::Stats,
+    /// Each key's last use and calls since the start, by its ID.
+    usage: Mutex<HashMap<String, (i64, i64)>>,
+    /// The API the member asks for, as the pages read it.
+    api_want: Mutex<Option<LlmProxyApi>>,
 }
 
 struct Proxy(Arc<Core>);
@@ -220,15 +242,22 @@ impl std::fmt::Debug for Proxy {
 ///
 /// None.
 pub fn new(host: Host) -> Result<Box<dyn Role>, String> {
-    let core = Arc::new_cyclic(|me: &Weak<Core>| Core {
-        base: Base::new(host, "proxy", Router::new()),
-        me: me.clone(),
-        cat: Mutex::new(Catalog::default()),
-        keys: Mutex::new(Vec::new()),
-        api: Mutex::new(None),
-        api_cfg: Mutex::new(LlmProxyApi::default()),
-        policy: Mutex::new(None),
-        inflight: AtomicUsize::new(0),
+    let core = Arc::new_cyclic(|me: &Weak<Core>| {
+        let mut r = Router::new();
+        methods::register(&mut r, me);
+        Core {
+            base: Base::new(host, "proxy", r),
+            me: me.clone(),
+            cat: Mutex::new(Catalog::default()),
+            keys: Mutex::new(Vec::new()),
+            api: Mutex::new(None),
+            api_cfg: Mutex::new(LlmProxyApi::default()),
+            policy: Mutex::new(None),
+            inflight: AtomicUsize::new(0),
+            stats: methods::Stats::default(),
+            usage: Mutex::new(HashMap::new()),
+            api_want: Mutex::new(None),
+        }
     });
     // The pages' `GET /api/me` says where the agents' API is (fit's `me`).
     let w = Arc::downgrade(&core);
@@ -250,7 +279,20 @@ pub fn new(host: Host) -> Result<Box<dyn Role>, String> {
             lock(&c.cat).set_hub(caller, HubModels::from_value(&v));
         }
     });
-    m.on_push(METHOD_HUB_NODE_LIST_UPDATE, &[ROLE_HUB], |_, _| {});
+    let w = Arc::downgrade(&core);
+    m.on_push(
+        METHOD_HUB_NODE_LIST_UPDATE,
+        &[ROLE_HUB],
+        move |caller, msg| match (w.upgrade(), json::parse(msg)) {
+            (Some(c), Ok(v)) => lock(&c.cat).set_list(caller, methods::HubList::from_value(&v)),
+            (_, Err(e)) => akit_observe::warn!(
+                Llm,
+                "llm.proxy: a bad node list from hub {}: {e}",
+                caller.id
+            ),
+            _ => {}
+        },
+    );
     let w = Arc::downgrade(&core);
     m.on_push(METHOD_NODE_UPDATE, &[ROLE_NODE], move |caller, msg| {
         if let (Some(c), Ok(v)) = (w.upgrade(), json::parse(msg)) {
@@ -307,6 +349,9 @@ impl Role for Proxy {
 impl Core {
     fn apply(&self, p: &LlmProxy, config: &Config) -> Result<(), String> {
         lock(&self.keys).clone_from(&p.api_keys);
+        // The use of the keys kept stays.
+        lock(&self.usage).retain(|id, _| p.api_keys.iter().any(|k| k.id == *id));
+        *lock(&self.api_want) = methods::api_of(p);
         let mut errs = Vec::new();
         if let Err(e) = self.base.apply(&p.role, config) {
             errs.push(e);
@@ -377,6 +422,30 @@ impl Core {
                     ),
                 }
             });
+        if hub {
+            let me = self.me.clone();
+            let id = p.identity.clone();
+            self.base.mesh.call(
+                &id.id.clone(),
+                METHOD_HUB_NODE_LIST,
+                "{}",
+                Duration::ZERO,
+                move |r| {
+                    let Some(c) = me.upgrade() else { return };
+                    match r.and_then(|b| json::parse(&b).map_err(Error::Other)) {
+                        Ok(v) if c.base.mesh.online(&id.id) => {
+                            lock(&c.cat).set_list(&id, methods::HubList::from_value(&v));
+                        }
+                        Ok(_) => {}
+                        Err(e) => akit_observe::warn!(
+                            Llm,
+                            "llm.proxy: fetching the node list of hub {} failed: {e}",
+                            id.id
+                        ),
+                    }
+                },
+            );
+        }
     }
 
     fn start_api(&self, cfg: &LlmProxyApi) -> Result<(), String> {
@@ -489,13 +558,21 @@ impl Core {
             return false;
         }
         let sum = akit_roles::linktoken::hex(&akio_crypto::hash::Sha256::digest(key.as_bytes()));
-        let mut found = false;
+        let mut found = None;
         for k in lock(&self.keys).iter() {
             if akio_crypto::ct_eq(sum.as_bytes(), k.hash.as_bytes()) {
-                found = true;
+                found = Some(k.id.clone());
             }
         }
-        found
+        let Some(id) = found else { return false };
+        // Counted in memory, for the pages (fit's `keyStore.auth`).
+        let mut u = lock(&self.usage);
+        if u.len() < akit_config::roles::MAX_LLM_KEYS || u.contains_key(&id) {
+            let e = u.entry(id).or_default();
+            e.0 = akit_roles::linktoken::unix_now();
+            e.1 = e.1.saturating_add(1);
+        }
+        true
     }
 }
 
@@ -938,8 +1015,10 @@ impl Core {
             ));
         }
         let conn = ctx.connection();
+        let stat = self.stats.begin(&name);
         let x = Arc::new(Call {
             core: self.me.clone(),
+            stat,
             req,
             body,
             routes,
@@ -950,6 +1029,7 @@ impl Core {
         ctx.on_gone(move || x2.cancel(Gone::Agent));
         let Some(d) = ctx.detach() else {
             self.inflight.fetch_sub(1, Ordering::AcqRel);
+            self.stats.end(&x.stat, 0, true);
             return;
         };
         {
@@ -1043,10 +1123,16 @@ struct CState {
     total: Option<SendTimer>,
     /// The attempt's count on its route.
     rc: Option<RouteCall>,
+    /// The response's bytes written to the agent.
+    relayed: i64,
+    /// The call failed.
+    failed: bool,
 }
 
 struct Call {
     core: Weak<Core>,
+    /// The model the call is counted under (`Stats::begin`).
+    stat: String,
     req: ProxyReq,
     body: Vec<u8>,
     routes: Vec<RouteTo>,
@@ -1299,6 +1385,9 @@ impl Call {
         let high = b.queued_bytes() > WRITE_HIGH;
         let start = {
             let mut s = lock(&self.s);
+            s.relayed = s
+                .relayed
+                .saturating_add(i64::try_from(data.len()).unwrap_or(i64::MAX));
             if !high && !s.waiting {
                 None
             } else {
@@ -1335,6 +1424,7 @@ impl Call {
                 return;
             }
             s.done = true;
+            s.failed = r.is_err();
             self.stop(&mut s);
             if let Some(rc) = s.rc.take() {
                 rc.end(r.is_err());
@@ -1366,6 +1456,11 @@ impl Call {
     fn done(&self) {
         if let Some(c) = self.core() {
             c.inflight.fetch_sub(1, Ordering::AcqRel);
+            let (bytes, failed) = {
+                let s = lock(&self.s);
+                (s.relayed, s.failed)
+            };
+            c.stats.end(&self.stat, bytes, failed);
         }
     }
 
@@ -1387,6 +1482,7 @@ impl Call {
                 return;
             }
             s.done = true;
+            s.failed = true;
             self.stop(&mut s);
             if let Some(rc) = s.rc.take() {
                 rc.end(true);

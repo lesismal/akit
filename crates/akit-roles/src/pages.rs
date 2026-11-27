@@ -33,6 +33,11 @@ pub trait Module: Send + Sync {
     /// console's I/O thread: it must not block; an answer that waits is given through
     /// `ctx.detach()`. 404 for a path it does not serve ([`no_endpoint`]).
     fn serve(&self, ctx: &mut Context, user: &str, path: &str);
+
+    /// Where the role's own console serves the module, as a URL (`http://127.0.0.1:9100/`), once
+    /// it started, and `None` once it stopped (fit's `Console.URL`): told by the console server,
+    /// which knows a port chosen when it starts. Nothing by default.
+    fn console_url(&self, _url: Option<&str>) {}
 }
 
 /// A module, shared.

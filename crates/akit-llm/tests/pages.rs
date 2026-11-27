@@ -123,6 +123,26 @@ fn a_nodes_pages() {
     );
     let (status, _, body) = exchange(addr, "POST", "/api/rpc/mesh/status", &auth, "");
     assert_eq!(status, 200, "{body}");
+    // The identity says where the console is (I109d), and the mesh's methods answer.
+    assert!(
+        body.contains(&format!(r#""http_url":"http://127.0.0.1:{port}/""#)),
+        "{body}"
+    );
+    for m in ["/mesh/peers", "/mesh/limits/get", "/mesh/tokens/list"] {
+        let (status, _, body) = exchange(addr, "POST", &format!("/api/rpc{m}"), &auth, "");
+        assert_eq!(status, 200, "{m}: {body}");
+    }
+    let (status, _, body) = exchange(
+        addr,
+        "POST",
+        "/api/rpc/mesh/undial",
+        &auth,
+        r#"{"addr": "127.0.0.1:9"}"#,
+    );
+    assert!(
+        status == 404 && body.contains(r#""code":3000"#),
+        "{status} {body}"
+    );
     let (status, _, body) = exchange(
         addr,
         "POST",

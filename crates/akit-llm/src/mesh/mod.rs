@@ -14,7 +14,7 @@ mod listen;
 pub mod router;
 pub mod routes;
 
-pub use dial::{DIAL_TIMEOUT, backoff, refused_backoff};
+pub use dial::{DIAL_TIMEOUT, backoff, check_dial_tls, refused_backoff};
 pub use listen::{ListenState, fingerprint, validate_addr};
 pub use router::{Answer, DEFAULT_TIMEOUT, Router};
 pub use routes::{RouteCall, RouteStats, Routes};

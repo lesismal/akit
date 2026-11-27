@@ -114,6 +114,17 @@ impl Target {
     }
 }
 
+/// Checks how a target of `req` at `host` would be dialed, as [`Mesh::dial`] does, without
+/// dialing (the pages' `/mesh/dial`): its pin, or its CA file read. Reads a file: never on an I/O
+/// thread.
+///
+/// # Errors
+///
+/// A bad request.
+pub fn check_dial_tls(req: &DialReq, host: &str) -> Result<(), Error> {
+    client_tls(req, host).map(|_| ())
+}
+
 /// The TLS a target of `req` at `host` is dialed with, `None` without: the listener's
 /// certificate checked by its pin, or by the authorities of its CA file with the name; no session
 /// resumed. Reads the CA file: the control thread's.

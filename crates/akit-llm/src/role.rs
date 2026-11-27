@@ -17,6 +17,8 @@ use crate::mesh::{self, Answer, Limits, Mesh, Router, WeakMesh, bad_request};
 use crate::model::{DialReq, Identity, ListenConfig, METHOD_STATUS};
 use crate::wire::Error;
 
+pub mod admin;
+
 /// How long a method that changes the config waits for it to be applied (fit's `EditTimeout`).
 pub const EDIT_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -36,6 +38,41 @@ pub fn new_id(role: &str) -> String {
     let mut b = [0u8; 8];
     let _ = akio_crypto::rand::fill_random(&mut b);
     format!("{role}-{}", akit_roles::linktoken::hex(&b))
+}
+
+/// Where the role's console is: as its console server says, once it says (`set_console_url`),
+/// or else as its member's `console` says.
+#[derive(Default)]
+struct ConsoleUrl {
+    served: Option<String>,
+    configured: String,
+}
+
+impl ConsoleUrl {
+    fn get(&self) -> String {
+        self.served
+            .clone()
+            .unwrap_or_else(|| self.configured.clone())
+    }
+}
+
+/// The URL of a console at `c`, as fit's `Console.URL` (`http://127.0.0.1:9100/`), from its
+/// address as configured; `""` for one whose port is chosen when it starts.
+#[must_use]
+pub fn console_url(c: &akit_config::Console) -> String {
+    let a = c.address.trim();
+    let addr = a
+        .strip_prefix("localhost:")
+        .map(|p| format!("127.0.0.1:{p}"))
+        .or_else(|| a.strip_prefix(':').map(|p| format!("[::]:{p}")))
+        .unwrap_or_else(|| a.to_owned());
+    match addr.parse::<std::net::SocketAddr>() {
+        Ok(sa) if sa.port() != 0 => {
+            let secure = c.cert_file.as_deref().is_some_and(|f| !f.is_empty());
+            format!("{}://{sa}/", if secure { "https" } else { "http" })
+        }
+        _ => String::new(),
+    }
 }
 
 #[derive(Default)]
@@ -61,6 +98,10 @@ pub struct Base {
     pub pages: Arc<crate::pages::LlmPages>,
     st: Arc<Mutex<State>>,
     rpc: Arc<Mutex<String>>,
+    /// The console's URL, the identity's `http_url`.
+    url: Arc<Mutex<ConsoleUrl>>,
+    /// Runs what the pages' methods do that blocks: a file read (I109d).
+    pub work: Arc<akio::Pool>,
     /// The sweep of expired tokens: its generation, so that only the last one armed goes on.
     sweep: Arc<std::sync::atomic::AtomicU64>,
 }
@@ -137,6 +178,17 @@ impl Base {
     pub fn new(host: Host, role: &'static str, mut router: Router) -> Base {
         // `/mesh/status`, every role's, its own pages only.
         let slot: Arc<std::sync::OnceLock<WeakMesh>> = Arc::default();
+        // The pages' mesh methods (I109d): fit's role pool, 16 running, 256 waiting.
+        let work = crate::jobs::pool(&format!("akit-llm-{role}"), 16, 256);
+        admin::register(
+            &mut router,
+            &admin::Ctx {
+                mesh: Arc::clone(&slot),
+                host: host.clone(),
+                role,
+                work: Arc::clone(&work),
+            },
+        );
         let s2 = Arc::clone(&slot);
         router.handle(
             METHOD_STATUS,
@@ -153,6 +205,8 @@ impl Base {
         let s2 = Arc::clone(&st);
         let lst: Arc<Mutex<String>> = Arc::default();
         let l2 = Arc::clone(&lst);
+        let url: Arc<Mutex<ConsoleUrl>> = Arc::default();
+        let u2 = Arc::clone(&url);
         let identity = Arc::new(move || {
             let g = lock(&s2);
             Identity {
@@ -166,7 +220,7 @@ impl Base {
                 hostname: hostname.clone(),
                 version: mesh::version(),
                 pid: i64::from(std::process::id()),
-                http_url: String::new(),
+                http_url: lock(&u2).get(),
                 rpc_addr: lock(&l2).clone(),
                 started_at: started,
             }
@@ -194,6 +248,8 @@ impl Base {
             local.clone(),
             mesh.downgrade(),
         ));
+        let u3 = Arc::clone(&url);
+        pages.on_console_url(Arc::new(move |u| lock(&u3).served = u));
         Base {
             role,
             host,
@@ -202,6 +258,8 @@ impl Base {
             pages,
             st,
             rpc: lst,
+            url,
+            work,
             sweep: Arc::default(),
         }
     }
@@ -244,6 +302,7 @@ impl Base {
             g.name.clone_from(&c.name);
             (old, g.id.clone(), c.id.is_empty() && first)
         };
+        lock(&self.url).configured = c.console.as_ref().map(console_url).unwrap_or_default();
         if !old.is_empty() && old != id {
             // Peers know the role by its ID: they say hello again.
             for p in self.mesh.peers() {
@@ -343,6 +402,12 @@ impl Base {
         self.mesh.identity().name
     }
 
+    /// Where the role's console is, as its console server says once it started it (`None`: it
+    /// stopped), for the identity's `http_url`; until then, as the member's `console` says.
+    pub fn set_console_url(&self, url: Option<String>) {
+        lock(&self.url).served = url;
+    }
+
     /// Changes the role's member with `change`, given its members, and tells `done` once the
     /// config changed was applied (fit's `Base.Edit`): the change's own error keeps its code, a
     /// config that does not load or was not applied is a bad request. Returns at once.
@@ -351,33 +416,7 @@ impl Base {
         change: impl FnOnce(&mut Vec<(String, Value)>) -> Result<(), Error> + Send + 'static,
         done: impl FnOnce(Result<(), Error>) + Send + 'static,
     ) {
-        let own: Arc<Mutex<Option<Error>>> = Arc::default();
-        let own2 = Arc::clone(&own);
-        let role = self.role;
-        self.host.edit(
-            Box::new(move |m: &mut Value| {
-                if *m == Value::Null {
-                    *m = Value::Object(Vec::new());
-                }
-                let Value::Object(ms) = m else {
-                    return Err("the member is not an object".to_owned());
-                };
-                change(ms).map_err(|e| {
-                    let msg = e.to_string();
-                    *lock(&own2) = Some(e);
-                    msg
-                })
-            }),
-            Box::new(move |r| match r {
-                Ok(warnings) => {
-                    for w in warnings {
-                        akit_observe::warn!(Llm, "llm.{role}: {w}");
-                    }
-                    done(Ok(()));
-                }
-                Err(msg) => done(Err(lock(&own).take().unwrap_or_else(|| bad_request(msg)))),
-            }),
-        );
+        edit_member(&self.host, self.role, change, done);
     }
 
     /// Writes the role's name into its member (fit's `SetName`).
@@ -390,6 +429,42 @@ impl Base {
             done,
         );
     }
+}
+
+/// Changes role `role`'s member on `host` with `change`, given its members, and tells `done`
+/// once the config changed was applied ([`Base::edit`]).
+pub fn edit_member(
+    host: &Host,
+    role: &'static str,
+    change: impl FnOnce(&mut Vec<(String, Value)>) -> Result<(), Error> + Send + 'static,
+    done: impl FnOnce(Result<(), Error>) + Send + 'static,
+) {
+    let own: Arc<Mutex<Option<Error>>> = Arc::default();
+    let own2 = Arc::clone(&own);
+    host.edit(
+        Box::new(move |m: &mut Value| {
+            if *m == Value::Null {
+                *m = Value::Object(Vec::new());
+            }
+            let Value::Object(ms) = m else {
+                return Err("the member is not an object".to_owned());
+            };
+            change(ms).map_err(|e| {
+                let msg = e.to_string();
+                *lock(&own2) = Some(e);
+                msg
+            })
+        }),
+        Box::new(move |r| match r {
+            Ok(warnings) => {
+                for w in warnings {
+                    akit_observe::warn!(Llm, "llm.{role}: {w}");
+                }
+                done(Ok(()));
+            }
+            Err(msg) => done(Err(lock(&own).take().unwrap_or_else(|| bad_request(msg)))),
+        }),
+    );
 }
 
 fn sweep_after(

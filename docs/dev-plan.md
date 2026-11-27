@@ -232,7 +232,7 @@ Tunnel and LLM track).
 | I109 | The roles' pages: their consoles and methods, edits written back; the hub's pages (I109b, I109c split) | I103, I107, I91 | done |
 | I109b | The tunnel's node's and proxy's pages: their status, hubs, services, forwards and meta | I109 | todo |
 | I109c | The LLM roles' pages: `/api/me`, their methods (`/api/rpc`) and streams (`/api/stream`, Server-Sent Events) | I109, I106b, I108 | done |
-| I109d | The LLM roles' methods their pages call that they lack: `/mesh/*` (dial, undial, kick, listen, limits, tokens), the proxy's (`/proxy/*`: its API, keys, models, nodes, profile, stats); the identity's `http_url` | I109c | todo |
+| I109d | The LLM roles' methods their pages call that they lack: `/mesh/*` (dial, undial, kick, listen, limits, tokens), the proxy's (`/proxy/*`: its API, keys, models, nodes, profile, stats); the identity's `http_url` | I109c | done |
 
 ## Benchmark and optimization status
 
@@ -1850,4 +1850,6 @@ link with fit's (decision 038).
 - **Done when**: fit's role and proxy method tests pass ported; the pages' calls answer as fit's.
 - **Touches**: `akit-llm`.
 - **fit**: `llm/internal/role/{role,settings,tokens}.go`, `llm/proxy/{keys,nodes,stats,role}.go`.
-- **Status**: todo.
+- **Status**: done (2026-11-27). See the progress log. The console's URL is the one its console
+  server tells the role (`akit_roles::pages::Module::console_url`, decision row 64), a port chosen
+  when the console starts too.
