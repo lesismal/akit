@@ -64,8 +64,22 @@ fn pool() -> Arc<akio::Pool> {
     crate::jobs::pool("test-gpu", 2, 16)
 }
 
+/// A stand-in just written may not run yet (ETXTBSY: another test's child, forked meanwhile,
+/// holds the file open for writing until it execs, as fit's tests note): asked again then.
+fn busy(err: Option<&String>) -> bool {
+    err.is_some_and(|e| e.contains("os error 26"))
+}
+
 fn q(id: &str) -> (Vec<Device>, String, Option<String>) {
-    query(&pool(), vendor(id).unwrap())
+    let mut r = query(&pool(), vendor(id).unwrap());
+    for _ in 0..20 {
+        if !busy(r.2.as_ref()) {
+            break;
+        }
+        std::thread::yield_now();
+        r = query(&pool(), vendor(id).unwrap());
+    }
+    r
 }
 
 #[test]
@@ -322,7 +336,14 @@ fn collect_fake_tools() {
         ("system_profiler", printing(APPLE_OUT, 0)),
         ("hy-smi", printing("hygon table", 0)),
     ]);
-    let st = collect(&pool(), Options::default());
+    let mut st = collect(&pool(), Options::default());
+    for _ in 0..20 {
+        if !st.errors.iter().any(|(_, e)| busy(Some(e))) {
+            break;
+        }
+        std::thread::yield_now();
+        st = collect(&pool(), Options::default());
+    }
     let by = |id: &str| st.vendors.iter().find(|v| v.vendor.id == id).unwrap();
     let nv = by("nvidia");
     assert!(nv.installed && !nv.tool_path.is_empty());

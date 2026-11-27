@@ -147,7 +147,6 @@ pub fn pool(name: &str, threads: usize, queue: usize) -> Arc<akio::Pool> {
 }
 
 /// A job's command run: `$ <command>`, then its output.
-#[must_use]
 pub fn run_command(c: Command) -> Run {
     Box::new(move |out, kill| {
         out.write(format!("$ {}\n", c.display()).as_bytes());
@@ -156,7 +155,6 @@ pub fn run_command(c: Command) -> Run {
 }
 
 /// Commands run one after another, the first failure ending the job.
-#[must_use]
 pub fn run_commands(cs: Vec<Command>) -> Run {
     Box::new(move |out, kill| {
         for c in cs {

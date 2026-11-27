@@ -105,6 +105,7 @@ fn field(j: &str, k: &str) -> String {
 /// always; the setting followed as it changes.
 #[test]
 fn manage_access() {
+    let _ = tools();
     let (hub, node) = (free_port(), free_port());
     let roles = Roles::start(&format!(
         r#"{{"llm": {{"hub": {{"id": "hub-0000000000000011",
@@ -615,9 +616,13 @@ fn hardware_refresh() {
             .matches('x')
             .count()
     };
+    // The first read at the start; the other tests' nodes read theirs within a second or two,
+    // then only this one's refresh, 5 s on, counts.
+    until("the first read", || count() > 0);
+    std::thread::sleep(Duration::from_secs(2));
     let start = count();
     let deadline = std::time::Instant::now() + Duration::from_secs(20);
-    while count() < start + 2 {
+    while count() < start + 1 {
         assert!(
             std::time::Instant::now() < deadline,
             "the hardware not read again"
