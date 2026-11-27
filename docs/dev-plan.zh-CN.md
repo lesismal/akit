@@ -86,7 +86,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 
 ## 索引
 
-状态：`todo`、`doing` 或 `done`。下一个可用的迭代编号是 I110（为日志路线和访问控制列表路线预留的 I84 和 I88 未使用；I95 和 I96 为控制台路线预留；I97 改名了 fit 的对外名字；I98–I109、I102b、I102c、I102d、I103b、I109b 和 I109c 是隧道与 LLM 路线）。
+状态：`todo`、`doing` 或 `done`。下一个可用的迭代编号是 I110（为日志路线和访问控制列表路线预留的 I84 和 I88 未使用；I95 和 I96 为控制台路线预留；I97 改名了 fit 的对外名字；I98–I109、I102b、I102c、I102d、I103b、I109b、I109c 和 I109d 是隧道与 LLM 路线）。
 
 | ID | 迭代 | 依赖 | 状态 |
 | --- | --- | --- | --- |
@@ -221,7 +221,8 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I108 | LLM V：node 的管理：硬件、GPU、固定动作和作业 | I105 | done |
 | I109 | 角色的页面：其控制台和方法，写回的编辑；hub 的页面（拆出 I109b、I109c） | I103, I107, I91 | done |
 | I109b | 隧道 node 和 proxy 的页面：其状态、hub、服务、转发和 meta | I109 | todo |
-| I109c | LLM 角色的页面：`/api/me`、其方法（`/api/rpc`）与流（`/api/stream`，Server-Sent Events） | I109, I106b, I108 | todo |
+| I109c | LLM 角色的页面：`/api/me`、其方法（`/api/rpc`）与流（`/api/stream`，Server-Sent Events） | I109, I106b, I108 | done |
+| I109d | LLM 角色的页面调用而角色尚缺的方法：`/mesh/*`（dial、undial、kick、listen、limits、tokens）、proxy 的方法（`/proxy/*`：其 API、key、模型、node、profile、统计）；身份的 `http_url` | I109c | todo |
 
 ## 基准与优化状态
 
@@ -1540,10 +1541,20 @@ fit 的，使 akit 的角色能与 fit 的角色互连（决定 038）。
 - **做什么**：在 I109 的控制台上为 LLM 的 hub、node 和 proxy 提供 fit 的 `llm/internal/webui`：`GET /api/me`（用户、角色的身份、
   proxy 的 API URL），对角色路由器的每个方法提供 `POST /api/rpc<method>`，经 `akit_llm::local::Local`（I106b）以角色自己的
   页面身份在角色的池上调用，对其流方法提供 `POST /api/stream<method>`，以 Server-Sent Events 返回，同时至多 16 个，每帧只在
-  浏览器取走后才还给流，每次等待至多 30 秒；编辑由方法自己的 `role::Base::edit` 写回；页面调用而角色尚缺的方法：其他
-  `/mesh/*` 方法（peers、dial、listen、limits，属 I106）和 proxy 的方法（创建和删除 key、其 API 设置、其统计，属 I107）；
-  `akit run` 不再拒绝它们的 `console`。
+  浏览器取走后才还给流，每次等待至多 30 秒；编辑由方法自己的 `role::Base::edit` 写回；`akit run` 提供它们的 `console`。
 - **完成标准**：移植后的 fit `webui` 测试（`api_test.go`）在 akit 的 hub、node 和 proxy 上通过。
 - **涉及**：`akit-llm`。
 - **fit**：`llm/internal/webui`、`llm/internal/role`（`applyConsole`）。
+- **状态**：done（2026-11-27）。见进度日志。页面调用而角色尚缺的方法属于 I109d（决定第 47 行）。
+
+### I109d LLM 角色供页面使用的方法
+
+- **做什么**：fit 的 LLM 页面调用而 akit 的角色尚缺的方法：`/mesh/dial`、`/mesh/undial`、`/mesh/kick`、`/mesh/listen`、
+  `/mesh/limits/get` 和 `/set`、`/mesh/tokens/list`、`/create`、`/expiry` 和 `/revoke`（fit 的 `llm/internal/role`），以及
+  proxy 的 `/proxy/api/get` 和 `/set`、`/proxy/keys/list`、`/create` 和 `/delete`、`/proxy/models`、`/proxy/node/list`、
+  `/proxy/profile/set` 和 `/proxy/stats`（fit 的 `llm/proxy`），每个修改都用 `role::Base::edit` 写回；身份的 `http_url`，
+  即控制台的 URL。
+- **完成标准**：移植后的 fit 角色和 proxy 方法测试通过；页面的调用与 fit 的应答一致。
+- **涉及**：`akit-llm`。
+- **fit**：`llm/internal/role/{role,settings,tokens}.go`、`llm/proxy/{keys,nodes,stats,role}.go`。
 - **状态**：todo。

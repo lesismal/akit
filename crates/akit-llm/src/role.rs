@@ -57,6 +57,8 @@ pub struct Base {
     pub mesh: Mesh,
     /// The role's methods as its own pages call them.
     pub local: Local,
+    /// Its module of the pages (I109c), made once, so that its consoles keep serving it.
+    pub pages: Arc<crate::pages::LlmPages>,
     st: Arc<Mutex<State>>,
     rpc: Arc<Mutex<String>>,
     /// The sweep of expired tokens: its generation, so that only the last one armed goes on.
@@ -187,11 +189,17 @@ impl Base {
         );
         let _ = slot.set(mesh.downgrade());
         let local = Local::new(mesh.downgrade());
+        let pages = Arc::new(crate::pages::LlmPages::new(
+            role,
+            local.clone(),
+            mesh.downgrade(),
+        ));
         Base {
             role,
             host,
             mesh,
             local,
+            pages,
             st,
             rpc: lst,
             sweep: Arc::default(),

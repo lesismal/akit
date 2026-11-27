@@ -285,6 +285,10 @@ impl Role for Hub {
     fn api(&self) -> Option<Api> {
         Some(Arc::new(self.0.base.local.clone()))
     }
+
+    fn module(&self) -> Option<akit_roles::pages::ModuleRef> {
+        Some(self.0.base.pages.clone())
+    }
 }
 
 /// A node's links and their traffic, as a hub's node list shows them.

@@ -307,6 +307,10 @@ impl Roles {
             Arc::clone(&engine),
             Some(editor),
         );
+        // The roles' consoles, as `akit run` serves them (I109c).
+        roles.set_consoles(Box::new(akit_admin::console::RoleConsoles::new(
+            &akit_admin::Options::default(),
+        )));
         let errs = roles.apply(&config);
         assert!(errs.is_empty(), "{errs:?}");
         let roles = Arc::new(Mutex::new(roles));

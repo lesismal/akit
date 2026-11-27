@@ -314,8 +314,8 @@ fn roles_not_running(config: &Config) -> Result<(), Failure> {
 
 /// Refuses the `console` of the roles whose pages `akit run` does not serve yet: run, a config
 /// that sets one would say more than akit does (decision 002). The hub's pages are served
-/// (I109), so its `console_socket` carries them; the tunnel's node's and proxy's (I109b) and the
-/// LLM roles' (I109c) are to come.
+/// (I109), so its `console_socket` carries them, and the LLM roles' (I109c); the tunnel's node's
+/// and proxy's are to come (I109b).
 fn role_pages_not_served(config: &Config) -> Vec<Error> {
     ROLE_PAGES_TO_COME
         .iter()
@@ -333,13 +333,7 @@ fn role_pages_not_served(config: &Config) -> Vec<Error> {
 }
 
 /// The roles whose pages `akit run` does not serve yet, with the iteration that serves them.
-const ROLE_PAGES_TO_COME: [(&str, &str); 5] = [
-    ("tunnel.node", "I109b"),
-    ("tunnel.proxy", "I109b"),
-    ("llm.hub", "I109c"),
-    ("llm.node", "I109c"),
-    ("llm.proxy", "I109c"),
-];
+const ROLE_PAGES_TO_COME: [(&str, &str); 2] = [("tunnel.node", "I109b"), ("tunnel.proxy", "I109b")];
 
 /// Opens the access log `c` describes, its times in `zone`, as fit's `NewAccessLogFiles`: a file
 /// output through the sink `files` keeps for its path (I81), rotated as `c.rotate` says; with
@@ -1804,32 +1798,6 @@ pub fn main(akit_version: &str, modules: &[&'static [Info<HandlerParams>]]) -> E
 
 #[cfg(test)]
 mod tests {
-    /// The hub's pages are served (I109): its `console` and `console_socket` run; the node's,
-    /// the proxy's and the LLM roles' `console` are refused until their pages are.
-    #[test]
-    fn role_pages_to_come_are_refused() {
-        let hash = "$2a$04$abcdefghijklmnopqrstuuxL0bYQ4i4b4M3cY5pBGl0Q2cG0KkqyW";
-        let console = format!(
-            r#"{{"address": "127.0.0.1:1", "users": [{{"username": "a", "password_hash": "{hash}"}}]}}"#
-        );
-        let hub = format!(
-            r#"{{"tunnel": {{"hub": {{"password": "p", "console": {console}, "console_socket": {{"address": "127.0.0.1:2"}}}}}}}}"#
-        );
-        let c = akit_config::from_json(&hub, None).unwrap_or_else(|e| panic!("{hub}\n{e}"));
-        assert!(super::role_pages_not_served(&c).is_empty());
-        for (id, at) in [
-            ("tunnel.node", r#"{"tunnel": {"node": {"console": C}}}"#),
-            ("tunnel.proxy", r#"{"tunnel": {"proxy": {"console": C}}}"#),
-            ("llm.node", r#"{"llm": {"node": {"console": C}}}"#),
-        ] {
-            let doc = at.replace('C', &console);
-            let c = akit_config::from_json(&doc, None).unwrap_or_else(|e| panic!("{doc}\n{e}"));
-            let errs = super::role_pages_not_served(&c);
-            assert_eq!(errs.len(), 1, "{doc}");
-            assert_eq!(errs[0].path, format!("{id}.console"));
-        }
-    }
-
     #[test]
     fn version_names_akit_akio_and_the_platform() {
         let v = super::version();
@@ -1862,8 +1830,9 @@ mod tests {
         assert!(super::roles_not_running(&c).is_ok());
     }
 
-    /// The hub's pages are served by akit run (I109), its console_socket with them; the
-    /// tunnel's node's and proxy's are refused until I109b; a proxy's web_proxies run (I103b).
+    /// The roles' pages are served by akit run, the hub's (I109, its console_socket with them)
+    /// and the LLM roles' (I109c); the tunnel's node's and proxy's are refused until I109b serves
+    /// them; a proxy's web_proxies run (I103b).
     #[test]
     fn role_pages_are_refused_until_served() {
         let console = r#"{"address": "127.0.0.1:7100", "users": [{"username": "a", "password_hash": "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy"}]}"#;
@@ -1879,6 +1848,9 @@ mod tests {
         let paths: Vec<&str> = errs.0.iter().map(|e| e.path.as_str()).collect();
         assert_eq!(paths, ["tunnel.proxy.console"]);
         assert!(errs.0[0].msg.contains("I109b"), "{}", errs.0[0].msg);
+        let llm = format!(r#"{{"llm": {{"node": {{"console": {console}}}}}}}"#);
+        let c = akit_config::from_json(&llm, None).unwrap_or_else(|e| panic!("{llm}\n{e}"));
+        assert!(super::role_pages_not_served(&c).is_empty());
         let c = akit_config::from_json(
             r#"{"tunnel": {"proxy": {"web_proxies": [{"listen": "127.0.0.1:7103", "url": "ws://127.0.0.1:7101/", "password": "pw"}]}}}"#,
             None,

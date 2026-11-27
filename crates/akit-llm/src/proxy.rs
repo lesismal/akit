@@ -230,6 +230,19 @@ pub fn new(host: Host) -> Result<Box<dyn Role>, String> {
         policy: Mutex::new(None),
         inflight: AtomicUsize::new(0),
     });
+    // The pages' `GET /api/me` says where the agents' API is (fit's `me`).
+    let w = Arc::downgrade(&core);
+    core.base.pages.set_me(Arc::new(move || {
+        let Some(c) = w.upgrade() else {
+            return Vec::new();
+        };
+        let Some(addr) = c.api_addr() else {
+            return Vec::new();
+        };
+        let secure = !lock(&c.api_cfg).cert_file.is_empty();
+        let url = format!("{}://{addr}", if secure { "https" } else { "http" });
+        vec![("api_url", json::string(&url))]
+    }));
     let m = &core.base.mesh;
     let w = Arc::downgrade(&core);
     m.on_push(METHOD_HUB_MODELS_UPDATE, &[ROLE_HUB], move |caller, msg| {
@@ -284,6 +297,10 @@ impl Role for Proxy {
 
     fn api(&self) -> Option<akit_roles::host::Api> {
         Some(Arc::new(self.0.base.local.clone()))
+    }
+
+    fn module(&self) -> Option<akit_roles::pages::ModuleRef> {
+        Some(self.0.base.pages.clone())
     }
 }
 

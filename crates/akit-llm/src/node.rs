@@ -275,6 +275,10 @@ impl Role for Node {
     fn api(&self) -> Option<Api> {
         Some(Arc::new(self.0.base.local.clone()))
     }
+
+    fn module(&self) -> Option<akit_roles::pages::ModuleRef> {
+        Some(self.0.base.pages.clone())
+    }
 }
 
 /// The hardware a node's info carries until it was read: the host, its system and its CPUs.

@@ -408,6 +408,7 @@ dependencies = [
  "akio-ws",
  "akio-x509",
  "akit-access",
+ "akit-admin",
  "akit-config",
  "akit-observe",
  "akit-roles",

@@ -95,8 +95,8 @@ few crates as it can. fit's package of the same role is given for reference.
 
 Status: `todo`, `doing` or `done`. The next free iteration number is I110 (I84 and I88, reserved for the
 Logging and Access lists tracks, are unused; I95 and I96 are reserved for the Console track; I97
-renamed fit's external names; I98–I109, I102b, I102c, I102d, I103b, I109b and I109c are the Tunnel and
-LLM track).
+renamed fit's external names; I98–I109, I102b, I102c, I102d, I103b, I109b, I109c and I109d are the
+Tunnel and LLM track).
 
 | ID | Iteration | Depends on | Status |
 | --- | --- | --- | --- |
@@ -231,7 +231,8 @@ LLM track).
 | I108 | LLM V: the node's management: hardware, GPUs, fixed actions and jobs | I105 | done |
 | I109 | The roles' pages: their consoles and methods, edits written back; the hub's pages (I109b, I109c split) | I103, I107, I91 | done |
 | I109b | The tunnel's node's and proxy's pages: their status, hubs, services, forwards and meta | I109 | todo |
-| I109c | The LLM roles' pages: `/api/me`, their methods (`/api/rpc`) and streams (`/api/stream`, Server-Sent Events) | I109, I106b, I108 | todo |
+| I109c | The LLM roles' pages: `/api/me`, their methods (`/api/rpc`) and streams (`/api/stream`, Server-Sent Events) | I109, I106b, I108 | done |
+| I109d | The LLM roles' methods their pages call that they lack: `/mesh/*` (dial, undial, kick, listen, limits, tokens), the proxy's (`/proxy/*`: its API, keys, models, nodes, profile, stats); the identity's `http_url` | I109c | todo |
 
 ## Benchmark and optimization status
 
@@ -1830,11 +1831,23 @@ link with fit's (decision 038).
   (I106b) on the role's pool, and `POST /api/stream<method>` for its stream methods as
   Server-Sent Events, at most 16 at once, each frame released to the stream only as the browser
   takes it, 30 s at most per wait; edits written back by the methods' own `role::Base::edit`;
-  the methods the pages call that the roles lack yet: the other `/mesh/*` methods (peers, dial,
-  listen, limits, I106's) and the proxy's (keys created and deleted, its API settings, its stats,
-  I107's); `akit run` stops refusing their `console`.
+  `akit run` serves their `console`.
 - **Done when**: fit's `webui` tests (`api_test.go`) pass ported, against akit's hub, node and
   proxy.
 - **Touches**: `akit-llm`.
 - **fit**: `llm/internal/webui`, `llm/internal/role` (`applyConsole`).
+- **Status**: done (2026-11-27). See the progress log. The methods the pages call that the roles
+  lack are I109d's (decision row 47).
+
+### I109d The LLM roles' methods for their pages
+
+- **Do**: the methods fit's LLM pages call that akit's roles lack: `/mesh/dial`, `/mesh/undial`,
+  `/mesh/kick`, `/mesh/listen`, `/mesh/limits/get` and `/set`, `/mesh/tokens/list`, `/create`,
+  `/expiry` and `/revoke` (fit's `llm/internal/role`), and the proxy's `/proxy/api/get` and `/set`,
+  `/proxy/keys/list`, `/create` and `/delete`, `/proxy/models`, `/proxy/node/list`,
+  `/proxy/profile/set` and `/proxy/stats` (fit's `llm/proxy`), each change written back with
+  `role::Base::edit`; the identity's `http_url`, the console's URL.
+- **Done when**: fit's role and proxy method tests pass ported; the pages' calls answer as fit's.
+- **Touches**: `akit-llm`.
+- **fit**: `llm/internal/role/{role,settings,tokens}.go`, `llm/proxy/{keys,nodes,stats,role}.go`.
 - **Status**: todo.

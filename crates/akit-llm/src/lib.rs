@@ -24,6 +24,7 @@ pub mod local;
 pub mod mesh;
 pub mod model;
 pub mod node;
+pub mod pages;
 pub mod proxy;
 pub mod role;
 #[cfg(test)]

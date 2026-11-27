@@ -30,5 +30,9 @@ akit-config = { workspace = true }
 akit-observe = { workspace = true }
 akit-roles = { workspace = true }
 
+[dev-dependencies]
+# The roles' consoles, which serve the pages in the tests (I109c).
+akit-admin = { workspace = true }
+
 [lints]
 workspace = true
