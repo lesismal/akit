@@ -1,6 +1,6 @@
-# 039: Streaming and media auth: fit's members, akio-media's hub, fit's tokens
+# 040: Streaming and media auth: fit's members, akio-media's hub, fit's tokens
 
-[English](039-streaming-and-media-auth.md) | [简体中文](039-streaming-and-media-auth.zh-CN.md)
+[English](040-streaming-and-media-auth.md) | [简体中文](040-streaming-and-media-auth.zh-CN.md)
 
 Status: accepted in I120 (2026-11-27), waiting for review ([decisions waiting for
 review](../decisions-pending.md), rows 55–59); extended by the iterations of the Streaming and media

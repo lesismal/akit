@@ -215,8 +215,8 @@
       "zh": "由 `akit run` 基于 akio-media 的 hub 运行（I122），其监听器在监听器的引擎上；其 `webrtc` 端口从 I124 起运行，在此之前 `akit run` 拒绝它（`akit validate` 会检查它）。指标为 `akit_streaming_*`。"
     },
     "media_auth": {
-      "en": "Applied by `akit run` (I121), each policy changed in place on reload. A token's cookie is `akit_media_token`, a 401's challenge `Bearer realm=\"akit\"` (decision 037); the tokens akit signs are fit's format, taken by fit and akit alike (decision 039).",
-      "zh": "由 `akit run` 应用（I121），每个策略在重载时就地修改。token 的 cookie 为 `akit_media_token`，401 的质询为 `Bearer realm=\"akit\"`（决定 037）；akit 签发的 token 采用 fit 的格式，fit 和 akit 都接受（决定 039）。"
+      "en": "Applied by `akit run` (I121), each policy changed in place on reload. A token's cookie is `akit_media_token`, a 401's challenge `Bearer realm=\"akit\"` (decision 037); the tokens akit signs are fit's format, taken by fit and akit alike (decision 040).",
+      "zh": "由 `akit run` 应用（I121），每个策略在重载时就地修改。token 的 cookie 为 `akit_media_token`，401 的质询为 `Bearer realm=\"akit\"`（决定 037）；akit 签发的 token 采用 fit 的格式，fit 和 akit 都接受（决定 040）。"
     },
     "streaming.rtmp.auth": {
       "en": "A refusal closes the connection with akio-media's statuses until akio A263: `NetStream.Publish.Denied` for a publish (its description says when the password is still being checked: try again), `NetStream.Play.StreamNotFound` for a play.",

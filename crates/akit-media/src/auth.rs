@@ -10,7 +10,7 @@
 //! that the next check of it is at once. [`Policy::allow`] says [`Refusal::Pending`] for it
 //! rather than wait; [`Policy::check`] runs it on the pool.
 //!
-//! Tokens akit signs are fit's, byte for byte (decision 039): `fm1.<claims>.<mac>`, the claims a
+//! Tokens akit signs are fit's, byte for byte (decision 040): `fm1.<claims>.<mac>`, the claims a
 //! JSON object of the subject, the expiry and the grant in unpadded base64url, the MAC an
 //! HMAC-SHA256 of `fm1.` and the claims under a key derived from the policy's secret and name with
 //! fit's label. A token fit's `media-token` signed is taken by akit given the same secret and

@@ -2026,13 +2026,13 @@ Streaming and media auth track's: it is refused as not supported yet until that 
 fit's I115–I117 (its [streaming guide](https://github.com/lesismal/fit/blob/main/docs/streaming.md),
 its decision 030, and its packages `mediaauth`, `streaming` and `handler/mediapages`,
 `config/mediaauth.go` and `config/streaming.go`), in seven iterations
-([decision 039](decisions/039-streaming-and-media-auth.md)). `media_auth` names the policies of who
+([decision 040](decisions/040-streaming-and-media-auth.md)). `media_auth` names the policies of who
 may publish and play which streams; `streaming` runs one media hub on akio-media beside the gateway,
 on the listeners' engine, with RTMP, RTSP and SRT listeners of its own and handlers that play its
 streams over HTTP-FLV, HLS and WHEP; fit's media pages are a room call and publish and play pages
 over WHIP and WHEP. Every name akit shows is akit's (decision 037: the cookie `akit_media_token`,
 `akit media-token`, the metrics `akit_streaming_*`); the tokens akit signs are fit's format, so that
-each takes the other's (decision 039). The media protocols are the standard ones, so akit's role
+each takes the other's (decision 040). The media protocols are the standard ones, so akit's role
 and fit's interoperate through ffmpeg and standard clients. What fit added to these members later
 (I119's keyring and `media_tokens`, the media library's channels, push targets and signed URLs) is
 the Media library and channels track's, refused as not supported yet until then.

@@ -1,6 +1,6 @@
-# 039：流媒体与媒体认证：fit 的成员、akio-media 的媒体中心、fit 的 token
+# 040：流媒体与媒体认证：fit 的成员、akio-media 的媒体中心、fit 的 token
 
-[English](039-streaming-and-media-auth.md) | [简体中文](039-streaming-and-media-auth.zh-CN.md)
+[English](040-streaming-and-media-auth.md) | [简体中文](040-streaming-and-media-auth.zh-CN.md)
 
 状态：在 I120 中采纳（2026-11-27），等待评审（[等待评审的决定](../decisions-pending.zh-CN.md)第 55–59 行）；随流媒体与媒体认证
 路线（I120–I126）各次迭代落地而扩充。

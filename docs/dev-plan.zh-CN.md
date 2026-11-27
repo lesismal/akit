@@ -1700,11 +1700,11 @@ ICE ufrag 路由。它们对外显示的是 akit 的名字（决定 037：`SOFTW
 
 fit 的 I115–I117（其[流媒体指南](https://github.com/lesismal/fit/blob/main/docs/streaming.zh-CN.md)、其决定 030，以及其包
 `mediaauth`、`streaming` 和 `handler/mediapages`、`config/mediaauth.go` 和 `config/streaming.go`），分七次迭代
-（[决定 039](decisions/039-streaming-and-media-auth.zh-CN.md)）。`media_auth` 命名规定谁可以推送和播放哪些流的策略；`streaming`
+（[决定 040](decisions/040-streaming-and-media-auth.zh-CN.md)）。`media_auth` 命名规定谁可以推送和播放哪些流的策略；`streaming`
 在监听器的引擎上、与网关并列运行一个基于 akio-media 的媒体中心，带有自己的 RTMP、RTSP 和 SRT 监听器，以及通过 HTTP-FLV、HLS
 和 WHEP 播放其流的处理器；fit 的媒体页面是基于 WHIP 和 WHEP 的房间通话以及推流和播放页面。akit 对外显示的名字都是 akit 的
 （决定 037：cookie `akit_media_token`、`akit media-token`、指标 `akit_streaming_*`）；akit 签发的 token 采用 fit 的格式，使双方
-互认对方的 token（决定 039）。媒体协议都是标准协议，因此 akit 的角色与 fit 的角色可通过 ffmpeg 和标准客户端互通。fit 之后在
+互认对方的 token（决定 040）。媒体协议都是标准协议，因此 akit 的角色与 fit 的角色可通过 ffmpeg 和标准客户端互通。fit 之后在
 这些成员上新增的内容（I119 的密钥环和 `media_tokens`、媒体库的频道、推送目标和签名 URL）属于“媒体库与频道”路线，在此之前作为
 “尚不支持”拒绝。
 

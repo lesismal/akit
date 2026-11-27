@@ -1,6 +1,6 @@
 //! `akit media-token` (I121), as fit's `fit media-token`: prints a token a `media_auth` policy's
 //! secret signs, for a publisher or player to send as a bearer token or the `token` query
-//! parameter, and when it expires, on standard error. The token is fit's format (decision 039):
+//! parameter, and when it expires, on standard error. The token is fit's format (decision 040):
 //! fit takes it given the same policy name and secret, and akit takes fit's.
 
 use std::process::ExitCode;

@@ -130,7 +130,7 @@ routes:
 | `listeners` | [对象](#cfg-listeners)的列表 |  |  |
 | `llm` | [对象](#cfg-llm) |  | **akit：**像 fit 一样读取并检查（I98）。在 LLM 的迭代运行这些角色之前（I104–I109），`akit run` 拒绝设置了角色的配置。 |
 | `log` | [对象](#cfg-log) |  |  |
-| `media_auth` | [对象](#cfg-media-auth)的列表 |  | **akit：**由 `akit run` 应用（I121），每个策略在重载时就地修改。token 的 cookie 为 `akit_media_token`，401 的质询为 `Bearer realm="akit"`（决定 037）；akit 签发的 token 采用 fit 的格式，fit 和 akit 都接受（决定 039）。 |
+| `media_auth` | [对象](#cfg-media-auth)的列表 |  | **akit：**由 `akit run` 应用（I121），每个策略在重载时就地修改。token 的 cookie 为 `akit_media_token`，401 的质询为 `Bearer realm="akit"`（决定 037）；akit 签发的 token 采用 fit 的格式，fit 和 akit 都接受（决定 040）。 |
 | `media_library` | 对象的列表 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
 | `metrics` | 对象 |  |  |
 | `pprof` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
