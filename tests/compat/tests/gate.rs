@@ -2625,6 +2625,17 @@ fn supported_fields_are_read() {
             socks(r#", "idle_timeout": "1m""#),
             |c| socks_of(c).idle_timeout == std::time::Duration::from_secs(60),
         ),
+        // I151: bt_tracker takes no params; the registry finds it (akit-bittorrent).
+        (
+            "routes[].handler<bt_tracker>",
+            format!(r#"{{{L}, "routes": [{{"handler": {{"module": "bt_tracker"}}}}]}}"#),
+            |c| matches!(&c.routes.first().unwrap().handler, Handler::Module(m) if m.name == "bt_tracker"),
+        ),
+        (
+            "routes[].handler<bt_tracker>.params",
+            format!(r#"{{{L}, "routes": [{{"handler": {{"module": "bt_tracker", "params": {{}}}}}}]}}"#),
+            |c| matches!(&c.routes.first().unwrap().handler, Handler::Module(m) if m.params.is_some()),
+        ),
         ("routes[].handler<forward_proxy>", fproxy(""), |c| {
             fproxy_of(c).ports.is_empty()
         }),
@@ -3698,6 +3709,7 @@ fn akit_config_lists_match_the_inventory() {
             "model.rs FIT_HANDLERS: {h:?} is not a handler fit has"
         );
     }
+    // I151: bt_tracker, a module of akit-bittorrent's, which akit-config hands the registry.
     for h in [
         "respond",
         "static",
@@ -3707,6 +3719,7 @@ fn akit_config_lists_match_the_inventory() {
         "whip",
         "whep",
         "webrtc_proxy",
+        "bt_tracker",
     ] {
         assert!(handlers.insert(h.to_owned()), "FIT_HANDLERS lists {h}");
     }
@@ -3734,6 +3747,8 @@ fn akit_config_lists_match_the_inventory() {
         read.insert(format!("routes[].handler<{h}>"));
         read.insert(format!("routes[].handler<{h}>.params"));
     }
+    read.insert("routes[].handler<bt_tracker>".to_owned());
+    read.insert("routes[].handler<bt_tracker>.params".to_owned());
     // Middleware modules: rewrite, redirect, headers, the limits and auth, which akit reads, and
     // FIT_MIDDLEWARE, which it refuses.
     let mut middleware: BTreeSet<String> = list("FIT_MIDDLEWARE").iter().cloned().collect();

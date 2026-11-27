@@ -2771,6 +2771,15 @@ swarms; `TrackerServer::peers() -> usize`; `TrackerServer::range(|InfoHash, Scra
 **How akit would use it.** The role reads `max_peers`, sets its bounds in place on a reload, and
 lists a public tracker's torrents and its peers on its console.
 
+Also, so that the role can use `TrackerServer::http()` and `udp()` as they are (I151 answers both
+with its own code on `TrackerServer::announce` and `stats`, a stopgap recorded in
+[progress](progress.md)): the answers as fib's (a request's `compact` on unless `0`, a missing
+`left` a leecher, 50 peers when `numwant` is missing or -1, `min interval`, `external ip`,
+`peers6`, `tracker is full`, a UDP answer within 1,400 bytes, a UDP request with a connection ID
+that is not the client's dropped rather than answered, fib's failure reasons for a bad query), and
+hooks for an info hash allowed and a request authorized (`TrackerConfig::allow_fn`,
+`authorize`), whose refusals are the failure reasons.
+
 ## A286 A torrent's own storage directory for a magnet link
 
 **Status.** Requested by I150 (2026-11-27) for I153.

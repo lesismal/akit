@@ -642,3 +642,5 @@ config	added	supported	bittorrent.tracker.max_scrape
 config	added	supported	bittorrent.tracker.max_torrents
 config	added	supported	bittorrent.tracker.min_interval
 config	added	supported	bittorrent.tracker.peer_ttl
+config	added	supported	routes[].handler<bt_tracker>
+config	added	supported	routes[].handler<bt_tracker>.params

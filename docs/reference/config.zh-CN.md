@@ -14,7 +14,7 @@ akit 配置的每个字段：配置的每一部分是做什么的、一个示例
 akit 与 fit 不同之处，在表格中以 **akit：** 标出。
 
 <!-- BEGIN GENERATED: summary -->
-fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **1042** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 161 个对象，下文各有一张表。
+fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **1044** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 161 个对象，下文各有一张表。
 <!-- END GENERATED -->
 
 字段说明来自 fit 代码中的 `doc` 标签，是英文的，所以每个字段的完整说明在[英文版](config.md)的同一张表中；本页的表格给出每个字段的
@@ -56,7 +56,7 @@ fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../co
 - [LLM](#llm)：[`llm.hub`](#cfg-llm-hub)、[`llm.node`](#cfg-llm-node)、[`llm.proxy`](#cfg-llm-proxy)
 - [WebRTC](#webrtc)：[`webrtc.turn`](#cfg-webrtc-turn)、[`webrtc.media`](#cfg-webrtc-media)、[`webrtc.proxy`](#cfg-webrtc-proxy)
 - [BitTorrent](#bittorrent)：[`bittorrent.client`](#cfg-bittorrent-client)、[`bittorrent.tracker`](#cfg-bittorrent-tracker)
-- [处理器](#处理器)：[`respond`](#respond)、[`static`](#static)、[`proxy`](#proxy)、[`fastcgi`](#fastcgi)、[`forward_proxy`](#forward_proxy)、[`whip`](#whip)、[`whep`](#whep)、[`webrtc_proxy`](#webrtc_proxy)
+- [处理器](#处理器)：[`respond`](#respond)、[`static`](#static)、[`proxy`](#proxy)、[`bt_tracker`](#bt_tracker)、[`fastcgi`](#fastcgi)、[`forward_proxy`](#forward_proxy)、[`whip`](#whip)、[`whep`](#whep)、[`webrtc_proxy`](#webrtc_proxy)
 - [中间件](#中间件)：[`basic_auth`](#basic_auth)、[`body_limit`](#body_limit)、[`cache`](#cache)、[`circuit_breaker`](#circuit_breaker)、[`client_cert`](#client_cert)、[`compress`](#compress)、[`concurrency_limit`](#concurrency_limit)、[`forward_auth`](#forward_auth)、[`headers`](#headers)、[`jwt`](#jwt)、[`rate_limit`](#rate_limit)、[`redirect`](#redirect)、[`rewrite`](#rewrite)、[`wasm`](#wasm)
 - [akit 的扩展](#akit-的扩展)
 - [akit 尚不读取的部分](#akit-尚不读取的部分)
@@ -2995,7 +2995,7 @@ bittorrent {
 | --- | --- |
 | `bt_publish` | **尚不支持**：按名称拒绝 |
 | `bt_stream` | **尚不支持**：按名称拒绝 |
-| `bt_tracker` | **尚不支持**：按名称拒绝 |
+| `bt_tracker` | 已支持：[参数](#cfg-routes-handler-bt-tracker-params) |
 | `fastcgi` | 已支持：[参数](#cfg-routes-handler-fastcgi-params) |
 | `forward_proxy` | 已支持：[参数](#cfg-routes-handler-forward-proxy-params) |
 | `hls` | **尚不支持**：按名称拒绝 |
@@ -3169,6 +3169,20 @@ route {
 | `budget_ratio` | 数，0 到 1 | `0.2` |  |
 | `statuses` | 整数的列表 |  |  |
 <!-- END GENERATED -->
+
+### `bt_tracker`
+
+[`bittorrent.tracker`](#cfg-bittorrent-tracker) 角色的 HTTP announce 和 scrape（BEP 3、23、7 和 48）：
+路径最后一段以 `announce` 开头的请求是 announce，以 `scrape` 开头的是 scrape，前面是什么都可以，因此
+`/announce` 和 `/tracker/announce` 都可用；其他路径得到 404。拒绝（不在允许列表中的种子、被 tracker 的
+`access` 拒绝的客户端、已满的存储）以 200 和 failure reason 应答，如 BEP 3 所述；角色未运行时 503。它
+没有参数：由路由的匹配决定 tracker 在哪里，路由的监听器、TLS 和中间件与其他处理器一样适用。
+
+```fit
+route tracker { match { path /tracker/* }; handler bt_tracker }
+```
+
+<a id="cfg-routes-handler-bt-tracker-params"></a>
 
 ### `fastcgi`
 

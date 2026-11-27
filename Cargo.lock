@@ -27,6 +27,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "akio-bittorrent"
+version = "1.0.0-rc.1"
+source = "git+https://github.com/lesismal/akio?rev=d8d51f61679cf8a285eeb6a7c8cd10711a0b5ce4#d8d51f61679cf8a285eeb6a7c8cd10711a0b5ce4"
+dependencies = [
+ "akio",
+ "akio-core",
+ "akio-crypto",
+ "akio-http",
+ "akio-pool",
+ "akio-sys",
+]
+
+[[package]]
 name = "akio-brotli"
 version = "1.0.0-rc.1"
 source = "git+https://github.com/lesismal/akio?rev=d8d51f61679cf8a285eeb6a7c8cd10711a0b5ce4#d8d51f61679cf8a285eeb6a7c8cd10711a0b5ce4"
@@ -331,6 +344,7 @@ name = "akit"
 version = "0.0.1"
 dependencies = [
  "akio",
+ "akio-bittorrent",
  "akio-crypto",
  "akio-deflate",
  "akio-h3",
@@ -339,6 +353,7 @@ dependencies = [
  "akio-sys",
  "akio-x509",
  "akit-admin",
+ "akit-bittorrent",
  "akit-cache",
  "akit-config",
  "akit-handler",
@@ -383,6 +398,20 @@ dependencies = [
  "akit-roles",
  "akit-runtime",
  "akit-tls",
+]
+
+[[package]]
+name = "akit-bittorrent"
+version = "0.0.1"
+dependencies = [
+ "akio",
+ "akio-bittorrent",
+ "akio-crypto",
+ "akio-http",
+ "akit-access",
+ "akit-config",
+ "akit-roles",
+ "akit-runtime",
 ]
 
 [[package]]

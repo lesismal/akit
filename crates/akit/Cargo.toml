@@ -42,9 +42,13 @@ akit-tunnel = { workspace = true }
 akit-llm = { workspace = true }
 # fit's WebRTC: the TURN server, WHIP and WHEP, the media proxy (I110-I114).
 akit-webrtc = { workspace = true }
+# fit's BitTorrent roles and the bt_tracker handler (I151).
+akit-bittorrent = { workspace = true }
 akit-tls = { workspace = true }
 
 [dev-dependencies]
+# Torrents the BitTorrent tests make and the clients they drive (I151).
+akio-bittorrent = { workspace = true }
 akio-deflate = { workspace = true }
 akio-h3 = { workspace = true }
 akio-quic = { workspace = true }

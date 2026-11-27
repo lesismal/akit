@@ -1,0 +1,26 @@
+[package]
+name = "akit-bittorrent"
+description = "fit's BitTorrent roles on akio-bittorrent: a tracker over HTTP and UDP, and a client that downloads and seeds."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+# The tracker's UDP binding on the listeners' engine.
+akio = { workspace = true }
+# The tracker's store and codecs, the client (decision 042).
+akio-bittorrent = { workspace = true }
+# HMAC-SHA256 of the UDP connection IDs, SHA-256 of the files read, random secrets.
+akio-crypto = { workspace = true }
+# The bt_tracker handler and the roles' pages.
+akio-http = { workspace = true }
+akit-access = { workspace = true }
+akit-config = { workspace = true }
+akit-roles = { workspace = true }
+akit-runtime = { workspace = true }
+
+[lints]
+workspace = true

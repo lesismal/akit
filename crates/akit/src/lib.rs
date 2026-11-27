@@ -24,6 +24,7 @@ pub use cli::main;
 
 // akit's own module crates, which `STANDARD` lists and a build's generated `main` names through
 // these, and the module traits and registry a module crate builds on.
+pub use akit_bittorrent;
 pub use akit_cache;
 pub use akit_handler;
 pub use akit_middleware;
@@ -48,6 +49,8 @@ pub const STANDARD: &[&[Info<HandlerParams>]] = &[
     akit_plugin::MODULES,
     akit_proxy::MODULES,
     akit_webrtc::MODULES,
+    // I151: bt_tracker.
+    akit_bittorrent::MODULES,
 ];
 
 /// The roles of fit's config that akit runs (I100: the host; the tunnel's and the LLM feature's
@@ -65,4 +68,6 @@ pub const ROLES: &[akit_roles::host::Info] = &[
     // I111: the TURN server; I113: the media server of whip and whep.
     akit_webrtc::TURN,
     akit_webrtc::MEDIA,
+    // I151: the BitTorrent tracker.
+    akit_bittorrent::TRACKER,
 ];

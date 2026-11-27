@@ -2222,6 +2222,12 @@ akio-bittorrent 的 `Client`（它自己的 I/O 线程，TCP 和 UDP 同一个�
 
 **akit 的用法。** 角色读取 `max_peers`，重载时原地设置上限，并在其控制台上列出公开 tracker 的种子和 peer 数。
 
+另外，为了让角色能直接使用 `TrackerServer::http()` 和 `udp()`（I151 在 `TrackerServer::announce` 和 `stats` 之上用自己的
+代码应答两者，这一临时做法记录在[进度](progress.zh-CN.md)中）：应答与 fib 一致（请求的 `compact` 除非为 `0` 都视为开启、缺少
+`left` 视为 leecher、缺少 `numwant` 或为 -1 时给 50 个 peer、`min interval`、`external ip`、`peers6`、`tracker is full`、UDP
+应答不超过 1,400 字节、连接 ID 不属于该客户端的 UDP 请求被丢弃而非应答、错误查询使用 fib 的 failure reason），以及允许 info
+hash 和授权请求的钩子（`TrackerConfig::allow_fn`、`authorize`），其拒绝即 failure reason。
+
 ## A286 磁力链接的种子使用自己的存储目录
 
 **状态。** 由 I150 为 I153 提出（2026-11-27）。

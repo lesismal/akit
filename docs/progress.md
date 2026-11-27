@@ -170,6 +170,37 @@ done and where the work differs from the plan.
   `RtcServer`; I114, WHIP and WHEP proxied. I115–I119 are reserved for the track. Its benchmark
   row names what to measure.
 
+### 2026-11-27: I151, the BitTorrent tracker
+
+- `bittorrent.tracker` (`akit_bittorrent::tracker`, a new crate, [decision 042](decisions/042-bittorrent.md))
+  run by `akit run` on akio-bittorrent's `TrackerServer` as its store: HTTP announces and scrapes
+  through the routes' `bt_tracker` handler (now read by akit-config and found in the registry;
+  503 while the role does not run), UDP (BEP 15) on its `listen`, a binding on the listeners'
+  engine with the role's access at akio's filter, moved by a reload (a port taken leaves the one
+  before). The answers are fib's (decision row 78): the query read as fib reads it with its
+  failure reasons, `unregistered torrent`, `tracker is full`, `min interval`, `external ip`,
+  `peers6` and the compact or dictionary peer lists, 50 peers by default and `max_numwant` at
+  most, a UDP answer within 1,400 bytes, `max_scrape` and 74 for UDP, connection IDs an HMAC of
+  the minute and the address under a secret kept across reloads, a forged ID dropped. The
+  allow-list inline and in files (each read on the control thread, watched as `-watch-certs`
+  watches certificates, a bad line refusing the reload); HTTP refused by the role's access with
+  the failure `refused`, counted; statistics (announces, scrapes, refusals by reason); the
+  console's `/api/stats`, `/api/torrents` (the allow-list's), `/api/torrents/<hash>`.
+- A request reads the role's snapshot from a board keyed by the engine, through a cache of each
+  thread's refreshed when an apply changes it: no lock or shared reference count per request.
+- Stopgaps until akio's A285: akit's own HTTP and UDP sides (row 78); new bounds make a new store
+  (row 77); no peer count, and a public tracker's torrents not listed (row 79).
+- `akit-bittorrent` joins `STANDARD` (`akit build -without akit-bittorrent` leaves it out).
+- Tests: `tracker::tests` (fit's tracker tests: announces and scrapes over HTTP and UDP with
+  akio-bittorrent's tracker client, bad queries and bounds, the store's bounds, the allow-list
+  and its files, access, UDP written by hand (junk, forged IDs, the 1,400-byte answer, 74
+  hashes), reloads, a byte-at-a-time client, cut clients, the role stopped, the console's routes,
+  two akio-bittorrent clients finding each other through it); akit's `tests/bittorrent.rs`: the
+  tracker under `akit run`, and with fit's binary (`AKIT_FIT_BIN`, built from fit's source) two of
+  fit's clients finding each other only through akit's tracker, one over HTTP and one over UDP,
+  the file downloaded whole.
+- Decisions waiting for review: rows 77–79.
+
 ### 2026-11-27: I150, `bittorrent` in the config
 
 - `bittorrent.client` and `bittorrent.tracker` read as strictly as the rest

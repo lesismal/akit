@@ -1855,7 +1855,7 @@ mod tests {
         let e = e.to_string();
         assert!(
             e.contains("bittorrent.client: akit run does not run this role yet (I152)")
-                && e.contains("bittorrent.tracker: akit run does not run this role yet (I151)"),
+                && !e.contains("bittorrent.tracker"),
             "{e}"
         );
         let c = akit_config::from_json(r#"{"bittorrent": {}}"#, None).unwrap();

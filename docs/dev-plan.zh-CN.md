@@ -232,7 +232,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I114 | WebRTC V：代理的 WHIP 和 WHEP：`webrtc_proxy` 和 `webrtc.proxy` | I113, I14 | todo |
 | I150 | BitTorrent I：配置中的 `bittorrent.client` 和 `bittorrent.tracker`，fit 的字段、检查和冲突；后续迭代才运行的内容以"尚不支持"拒绝 | I98 | todo |
 | I150 | BitTorrent I：配置中的 `bittorrent.client` 和 `bittorrent.tracker`，fit 的字段、检查和冲突；后续迭代才运行的内容以"尚不支持"拒绝 | I98 | done |
-| I151 | BitTorrent II：基于 akio-bittorrent 的 `TrackerServer` 的 tracker 角色和 `bt_tracker`：HTTP 和 UDP、允许列表、访问控制、上限、统计、其控制台 | I150, I100 | todo |
+| I151 | BitTorrent II：基于 akio-bittorrent 的 `TrackerServer` 的 tracker 角色和 `bt_tracker`：HTTP 和 UDP、允许列表、访问控制、上限、统计、其控制台 | I150, I100 | done |
 | I152 | BitTorrent III：基于 akio-bittorrent 的 `Client` 的客户端角色：`data_dir` 中的状态、不经校验恢复、原地或以新客户端重载、其 API 和控制台 | I150, I151 | todo |
 | I153 | BitTorrent IV：通过 URL 和 `watch_dir` 添加、分类、队列、磁盘检查 | I152 | todo |
 | I154 | BitTorrent V：`alt_speed` 时间表、单个种子的限制、客户端的 `access` 和连接限制（akio A284） | I152 | todo |
@@ -1722,6 +1722,7 @@ fit 的 I196–I210（其 [BitTorrent 指南](https://github.com/lesismal/fit/bl
   akit 的 tracker announce，两个 fit 客户端经由它互相找到。
 - **涉及**：`akit-bittorrent`（新）、`akit-config`、`akit`。
 - **fit**：`bittorrent/tracker`；I201、I209。
+- **状态**：done（2026-11-27）。见进度日志。在 akio 的 A285 之前的临时做法：决定第 77–79 行。
 
 ### I152 BitTorrent III：客户端角色
 

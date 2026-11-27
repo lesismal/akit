@@ -242,7 +242,7 @@ Tunnel and LLM track; I110–I114 are the WebRTC track, and I115–I119 are rese
 | I114 | WebRTC V: WHIP and WHEP proxied: `webrtc_proxy` and `webrtc.proxy` | I113, I14 | todo |
 | I150 | BitTorrent I: `bittorrent.client` and `bittorrent.tracker` in the config, fit's fields, checks and clashes; what later iterations run refused as not supported yet | I98 | todo |
 | I150 | BitTorrent I: `bittorrent.client` and `bittorrent.tracker` in the config, fit's fields, checks and clashes; what later iterations run refused as not supported yet | I98 | done |
-| I151 | BitTorrent II: the tracker role and `bt_tracker` on akio-bittorrent's `TrackerServer`: HTTP and UDP, the allow-list, access, bounds, statistics, its console | I150, I100 | todo |
+| I151 | BitTorrent II: the tracker role and `bt_tracker` on akio-bittorrent's `TrackerServer`: HTTP and UDP, the allow-list, access, bounds, statistics, its console | I150, I100 | done |
 | I152 | BitTorrent III: the client role on akio-bittorrent's `Client`: the state in `data_dir`, restore without a check, reloads in place or by a new client, its API and console | I150, I151 | todo |
 | I153 | BitTorrent IV: adding by URL and `watch_dir`, categories, the queue, disk checks | I152 | todo |
 | I154 | BitTorrent V: `alt_speed` schedules, per-torrent limits, the client's `access` and connection limits (akio A284) | I152 | todo |
@@ -2053,6 +2053,8 @@ waits for the Cluster management track.
   each other through it.
 - **Touches**: `akit-bittorrent` (new), `akit-config`, `akit`.
 - **fit**: `bittorrent/tracker`; I201, I209.
+- **Status**: done (2026-11-27). See the progress log. Stopgaps until akio's A285: decision rows
+  77–79.
 
 ### I152 BitTorrent III: the client role
 

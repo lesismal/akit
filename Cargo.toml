@@ -24,6 +24,7 @@ members = [
     "crates/akit-tunnel",
     "crates/akit-llm",
     "crates/akit-webrtc",
+    "crates/akit-bittorrent",
     "tests/compat",
 ]
 
@@ -50,6 +51,8 @@ akio-crypto = { git = "https://github.com/lesismal/akio", rev = "d8d51f61679cf8a
 # HTTP/3 listeners (akit-listener): akio-h3 serves akio-http's services over akio-quic.
 akio-h3 = { git = "https://github.com/lesismal/akio", rev = "d8d51f61679cf8a285eeb6a7c8cd10711a0b5ce4" }
 akio-quic = { git = "https://github.com/lesismal/akio", rev = "d8d51f61679cf8a285eeb6a7c8cd10711a0b5ce4" }
+# BitTorrent: the client and tracker roles (akit-bittorrent, I151, decision 042).
+akio-bittorrent = { git = "https://github.com/lesismal/akio", rev = "d8d51f61679cf8a285eeb6a7c8cd10711a0b5ce4" }
 # WebSockets: the LLM mesh's links (akit-llm, I104).
 akio-ws = { git = "https://github.com/lesismal/akio", rev = "d8d51f61679cf8a285eeb6a7c8cd10711a0b5ce4" }
 # WebRTC (akit-webrtc, I111-I114): the TURN server, and WHIP and WHEP's PeerConnections.
@@ -96,6 +99,7 @@ akit-roles = { path = "crates/akit-roles" }
 akit-tunnel = { path = "crates/akit-tunnel" }
 akit-llm = { path = "crates/akit-llm" }
 akit-webrtc = { path = "crates/akit-webrtc" }
+akit-bittorrent = { path = "crates/akit-bittorrent" }
 
 [workspace.lints.rust]
 # No unsafe in akit (rules.md rule 14); every crate also says #![forbid(unsafe_code)].

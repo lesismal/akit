@@ -17,7 +17,7 @@ so in a note marked **akit:**; nine defaults that name the gateway are akit's, `
 say `fit` ([decision 037](../decisions/037-akit-names.md)).
 
 <!-- BEGIN GENERATED: summary -->
-akit reads **1042** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 161 objects akit reads, each has its table below.
+akit reads **1044** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 161 objects akit reads, each has its table below.
 <!-- END GENERATED -->
 
 How to read the tables:
@@ -62,7 +62,7 @@ is not there, a plugin that does not compile are errors.
 - [LLM](#llm): [`llm.hub`](#cfg-llm-hub), [`llm.node`](#cfg-llm-node), [`llm.proxy`](#cfg-llm-proxy)
 - [WebRTC](#webrtc): [`webrtc.turn`](#cfg-webrtc-turn), [`webrtc.media`](#cfg-webrtc-media), [`webrtc.proxy`](#cfg-webrtc-proxy)
 - [BitTorrent](#bittorrent): [`bittorrent.client`](#cfg-bittorrent-client), [`bittorrent.tracker`](#cfg-bittorrent-tracker)
-- [Handlers](#handlers): [`respond`](#respond), [`static`](#static), [`proxy`](#proxy), [`fastcgi`](#fastcgi), [`forward_proxy`](#forward_proxy), [`whip`](#whip), [`whep`](#whep), [`webrtc_proxy`](#webrtc_proxy)
+- [Handlers](#handlers): [`respond`](#respond), [`static`](#static), [`proxy`](#proxy), [`bt_tracker`](#bt_tracker), [`fastcgi`](#fastcgi), [`forward_proxy`](#forward_proxy), [`whip`](#whip), [`whep`](#whep), [`webrtc_proxy`](#webrtc_proxy)
 - [Middleware](#middleware): [`basic_auth`](#basic_auth), [`body_limit`](#body_limit), [`cache`](#cache), [`circuit_breaker`](#circuit_breaker), [`client_cert`](#client_cert), [`compress`](#compress), [`concurrency_limit`](#concurrency_limit), [`forward_auth`](#forward_auth), [`headers`](#headers), [`jwt`](#jwt), [`rate_limit`](#rate_limit), [`redirect`](#redirect), [`rewrite`](#rewrite), [`wasm`](#wasm)
 - [akit's extensions](#akits-extensions)
 - [What akit does not read yet](#what-akit-does-not-read-yet)
@@ -2837,7 +2837,7 @@ the same way, its params checked by the module.
 | --- | --- |
 | `bt_publish` | **not supported yet**: refused by name |
 | `bt_stream` | **not supported yet**: refused by name |
-| `bt_tracker` | **not supported yet**: refused by name |
+| `bt_tracker` | supported: [params](#cfg-routes-handler-bt-tracker-params) |
 | `fastcgi` | supported: [params](#cfg-routes-handler-fastcgi-params) |
 | `forward_proxy` | supported: [params](#cfg-routes-handler-forward-proxy-params) |
 | `hls` | **not supported yet**: refused by name |
@@ -3007,6 +3007,22 @@ route {
 | `budget_ratio` | number, 0 to 1 | `0.2` | Retries may add at most this share of the requests the proxy takes, so that retries cannot multiply the load on an upstream already failing; 0.2 when left out. |
 | `statuses` | list of integer |  | Statuses of the upstream's, 5xx ones, that have a request of an idempotent method sent again, as 502, 503 and 504; none when left out, so that only requests that got no response are. |
 <!-- END GENERATED -->
+
+### `bt_tracker`
+
+The [`bittorrent.tracker`](#cfg-bittorrent-tracker) role's HTTP announces and scrapes (BEP 3, 23, 7
+and 48): a request whose path's last segment begins with `announce` is an announce, one beginning
+with `scrape` a scrape, whatever comes before, so that `/announce` and `/tracker/announce` both
+work; another path gets 404. Refusals (a torrent not on the allow-list, a client the tracker's
+`access` refuses, a full store) are answered 200 with a failure reason, as BEP 3 has them; 503
+while the role does not run. It takes no params: the route's match decides where the tracker
+lives, and the route's listeners, TLS and middleware apply as to any handler.
+
+```fit
+route tracker { match { path /tracker/* }; handler bt_tracker }
+```
+
+<a id="cfg-routes-handler-bt-tracker-params"></a>
 
 ### `fastcgi`
 

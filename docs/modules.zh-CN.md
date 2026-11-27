@@ -69,7 +69,7 @@ akit build -with akit-hello=crates/akit/tests/testdata/hello-module -o akit-hell
 | --- | --- |
 | `-o file` | 要写出的可执行文件；省略时为 `akit` |
 | `-with crate` | 要构建进去的 crate，每个重复一次：`name`、`name@version`（crates.io）、源码在 `dir` 中的 `name=dir`，或在 git 仓库中的 `name=git+url#reference`（提交、标签 `v…` 或分支；没有 `#` 时为默认分支） |
-| `-without crate` | 去掉 akit 自带的一个模块 crate，每个重复一次：`akit-handler`（`respond`、`static`、`fastcgi`、`forward_proxy`）、`akit-middleware`（除 `cache` 外的所有中间件）、`akit-cache`（`cache`）、`akit-proxy`（`proxy`）或 `akit-webrtc`（`whip`、`whep`、`webrtc_proxy`） |
+| `-without crate` | 去掉 akit 自带的一个模块 crate，每个重复一次：`akit-handler`（`respond`、`static`、`fastcgi`、`forward_proxy`）、`akit-middleware`（除 `cache` 外的所有中间件）、`akit-cache`（`cache`）、`akit-proxy`（`proxy`）、`akit-webrtc`（`whip`、`whep`、`webrtc_proxy`）或 `akit-bittorrent`（`bt_tracker`） |
 | `-akit v` | 构建所基于的 akit：`github.com/lesismal/akit` 的一个修订（提交，或标签 `v…`）、它的另一个仓库 `git+url#reference`，或存放其源码的目录（检出的根目录或其 `crates/akit`）；省略时为构建本 akit 所用的源码 |
 | `-keep dir` | 在 `dir` 中生成包并保留；否则使用临时目录并在结束后删除 |
 

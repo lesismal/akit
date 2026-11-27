@@ -2435,7 +2435,6 @@ const MODULE_FIELDS: &[&str] = &["module", "params"];
 const FIT_HANDLERS: &[&str] = &[
     "bt_publish",
     "bt_stream",
-    "bt_tracker",
     "hls",
     "httpflv",
     "media_pages",

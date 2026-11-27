@@ -129,6 +129,30 @@
   akio-turn 所缺钩子（A256–A258）的 TURN 服务器；I113，WHIP 和 WHEP，基于 akio-webrtc `RtcServer` 的 SFU；I114，
   代理的 WHIP 和 WHEP。I115–I119 为该路线预留。其基准测试行写明要测量的内容。
 
+### 2026-11-27：I151，BitTorrent tracker
+
+- `bittorrent.tracker`（`akit_bittorrent::tracker`，新 crate，[决定 042](decisions/042-bittorrent.zh-CN.md)）由
+  `akit run` 运行，以 akio-bittorrent 的 `TrackerServer` 作为存储：HTTP 的 announce 和 scrape 经由路由的 `bt_tracker`
+  处理器（现由 akit-config 读取并在注册表中找到；角色未运行时 503），UDP（BEP 15）在其 `listen` 上，是监听器引擎上的
+  一个绑定，角色的访问控制在 akio 的过滤器处执行，随重载移动（端口被占用时保留原来的）。应答与 fib 相同（决定第 78 行）：
+  按 fib 的方式读取查询及其 failure reason、`unregistered torrent`、`tracker is full`、`min interval`、`external ip`、
+  `peers6` 以及紧凑或字典形式的 peer 列表、默认 50 个 peer、至多 `max_numwant`、UDP 应答不超过 1,400 字节、`max_scrape`
+  及 UDP 的 74 个、连接 ID 是以跨重载保留的密钥对分钟和地址计算的 HMAC、伪造的 ID 被丢弃。允许列表可内联也可在文件中
+  （在控制线程上读取，像 `-watch-certs` 监视证书一样被监视，错误的行拒绝重载）；HTTP 被角色的访问控制以 failure
+  `refused` 拒绝并计数；统计（announce、scrape、按原因计的拒绝）；控制台的 `/api/stats`、`/api/torrents`（允许列表的）、
+  `/api/torrents/<hash>`。
+- 请求从以引擎为键的公告板读取角色的快照，经由每个线程自己的缓存，仅在应用配置改变它时刷新：每个请求没有锁，也不触及
+  共享的引用计数。
+- 在 akio 的 A285 之前的临时做法：akit 自己的 HTTP 和 UDP 实现（第 78 行）；新的上限建立新存储（第 77 行）；没有 peer
+  计数，公开 tracker 的种子不列出（第 79 行）。
+- `akit-bittorrent` 加入 `STANDARD`（`akit build -without akit-bittorrent` 不包含它）。
+- 测试：`tracker::tests`（fit 的 tracker 测试：用 akio-bittorrent 的 tracker 客户端经 HTTP 和 UDP announce 和 scrape、
+  错误查询和上限、存储的上限、允许列表及其文件、访问控制、手写的 UDP（垃圾数据、伪造 ID、1,400 字节的应答、74 个
+  hash）、重载、逐字节发送的客户端、中断的客户端、角色停止、控制台路由、两个 akio-bittorrent 客户端经由它互相找到）；
+  akit 的 `tests/bittorrent.rs`：`akit run` 下的 tracker，以及使用 fit 的二进制（`AKIT_FIT_BIN`，从 fit 源码构建）时
+  两个 fit 客户端只经由 akit 的 tracker 互相找到，一个经 HTTP、一个经 UDP，文件完整下载。
+- 待审查的决定：第 77–79 行。
+
 ### 2026-11-27：I150，配置中的 `bittorrent`
 
 - `bittorrent.client` 和 `bittorrent.tracker` 与其余部分一样严格读取（`akit_config::bittorrent`），字段、默认值、上限和检查与 fit

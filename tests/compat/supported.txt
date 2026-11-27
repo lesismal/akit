@@ -1298,3 +1298,6 @@ bittorrent.tracker.access.allow
 bittorrent.tracker.access.deny
 bittorrent.tracker.access.allow_files
 bittorrent.tracker.access.deny_files
+# I151: the bt_tracker handler (akit-bittorrent's module), which takes no params.
+routes[].handler<bt_tracker>
+routes[].handler<bt_tracker>.params
