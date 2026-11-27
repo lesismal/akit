@@ -129,7 +129,9 @@
   之间大小和时间不变后才被采用，分类的子目录，`.done`、带 `.error` 的 `.failed`，以后可能添加的留下；队列（`max_active_downloads`、
   `max_active_seeds`、列表顺序、`set_queue_position`、状态 `queued`）；磁盘（`min_free_bytes`，默认 1 GiB，akio 的 `fs::space`：
   只有剩余待下载量加 `min_free_bytes` 可用时才开始下载，运行中的下载低于它时被挂起（`disk`），有空间后自行重新开始）。
-- 角色的管理线程像 fit 一样每秒查看一次，磁力链接的元数据到达时立即查看；API 调用立即执行队列和磁盘检查。以某分类添加的磁力
+- 角色的管理线程由它记下的客户端每个事件（完成、做种限制、校验结束、磁力链接的元数据）唤醒，因此下一个排队的种子在事件发生时
+  即开始；API 调用立即执行队列和磁盘检查；没有事件时它像 fit 一样每秒查看一次，处理没有事件的内容（磁盘的空闲空间、`watch_dir`、
+  `alt_speed` 的时间表）。以从不计时查看的管理线程测试（`the_queue_moves_on_the_completion_not_the_tick`）。以某分类添加的磁力
   链接在元数据到达后被放入其目录（akio 的 A286 的临时做法，决定 042）：从客户端移除后以其 .torrent 重新添加，删除其在客户端目录
   下写下的内容；它会重新拨号其 peer（测试中约 30 秒）。
 - 状态：`category`、`held`、`queue_position`；控制台的 JSON 包含它们。

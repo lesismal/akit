@@ -174,8 +174,11 @@ done and where the work differs from the plan.
   (`min_free_bytes`, 1 GiB by default, akio's `fs::space`: a download started only with what it
   still has to download and `min_free_bytes` free, one running held, `disk`, below it, started
   again once there is room).
-- The role's manager thread looks every second, as fit's, and at once when a magnet link's
-  metadata comes; API calls apply the queue and the disk at once. A magnet link added in a
+- The role's manager thread is woken by each of the client's events it notes (a completion, a
+  seed limit, a check ended, a magnet link's metadata), so the next queued torrent starts on the
+  event; API calls apply the queue and the disk at once; with no event it looks every second,
+  as fit's, for what has none (the disk's free space, `watch_dir`, `alt_speed`'s schedules).
+  Tested with a manager that never ticks (`the_queue_moves_on_the_completion_not_the_tick`). A magnet link added in a
   category is placed into its directory once its metadata comes (the stopgap for akio's A286,
   decision 042): removed from the client and added again from its .torrent, what it wrote below
   the client's directory removed; it dials its peers again (some 30 s in the test).

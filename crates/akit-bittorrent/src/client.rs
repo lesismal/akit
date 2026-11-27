@@ -62,8 +62,17 @@ fn is_set(c: &Config) -> bool {
 
 #[allow(clippy::unnecessary_wraps)]
 fn new_role(h: Host) -> Result<Box<dyn Role>, String> {
-    Ok(Box::new(ClientRole::new(h)))
+    Ok(Box::new(ClientRole::new(h, manage::LOOK)))
 }
+
+/// The role with a manager that never ticks (an hour): for tests that what follows an event
+/// does not wait for the tick.
+#[cfg(test)]
+pub(crate) const CLIENT_NO_TICK: Info = Info {
+    id: ID,
+    set: is_set,
+    new: |h| Ok(Box::new(ClientRole::new(h, Duration::from_secs(3600)))),
+};
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(PoisonError::into_inner)
@@ -269,6 +278,7 @@ enum Note {
     Metadata,
     Completed,
     SeedLimit,
+    Checked,
 }
 
 /// The most events noted between two saves; past it, the saver looks at every torrent.
@@ -284,8 +294,11 @@ struct Shared {
     notes: Mutex<Vec<(InfoHash, Note)>>,
     /// Notes were dropped past [`MAX_NOTES`]: every torrent is looked at.
     overflow: AtomicBool,
-    /// The manager's channel, which an event that cannot wait for the next look wakes.
+    /// The manager's channel, which each event noted wakes.
     wake: Mutex<Option<SyncSender<SaverMsg>>>,
+    /// How often the manager looks with no event: what has none (the disk's free space,
+    /// `watch_dir`, the schedules of `alt_speed`).
+    tick: Duration,
 }
 
 impl fmt::Debug for Shared {
@@ -412,6 +425,8 @@ fn make_client(cfg: &BitTorrentClient, shared: &Arc<Shared>) -> Result<Client, S
             TorrentEvent::MetadataReceived => Note::Metadata,
             TorrentEvent::Completed => Note::Completed,
             TorrentEvent::SeedLimitReached => Note::SeedLimit,
+            // A check that ended: the torrent is complete or still downloads.
+            TorrentEvent::Checked { .. } => Note::Checked,
             _ => return,
         };
         if let Some(s) = weak.upgrade() {
@@ -422,12 +437,12 @@ fn make_client(cfg: &BitTorrentClient, shared: &Arc<Shared>) -> Result<Client, S
                 s.overflow.store(true, Ordering::Relaxed);
             }
             drop(n);
-            if note == Note::Metadata {
-                // A magnet link's torrent is placed into its own directory before it writes
-                // much below the client's (akio's A286): the manager looks now, not in a second.
-                if let Some(tx) = lock(&s.wake).as_ref() {
-                    let _ = tx.try_send(SaverMsg::Wake);
-                }
+            // The manager looks now, not at its next tick: a completion, a seed limit or a
+            // check moves the queue at once, and a magnet link's torrent is placed into its own
+            // directory before it writes much below the client's (akio's A286). A wake already
+            // waiting covers this one.
+            if let Some(tx) = lock(&s.wake).as_ref() {
+                let _ = tx.try_send(SaverMsg::Wake);
             }
         }
     }));
@@ -772,7 +787,7 @@ impl Run {
 }
 
 impl ClientRole {
-    fn new(host: Host) -> ClientRole {
+    fn new(host: Host, tick: Duration) -> ClientRole {
         let shared = Arc::new(Shared {
             run: Mutex::new(None),
             engine: Arc::clone(&host.engine),
@@ -780,6 +795,7 @@ impl ClientRole {
             notes: Mutex::new(Vec::new()),
             overflow: AtomicBool::new(false),
             wake: Mutex::new(None),
+            tick,
         });
         ClientRole {
             pages: Arc::new(pages::Pages::new(ClientApi(Arc::clone(&shared)))),

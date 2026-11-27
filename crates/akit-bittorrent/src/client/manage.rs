@@ -1,9 +1,11 @@
 //! The client's manager (I153, fit's `bittorrent/manage.go`): a thread of the role's own that
-//! looks every second, as fit's manager does, at what the client's events noted (completions,
-//! seed limits, a magnet link's metadata), at the queue and the disk, and at `watch_dir` when its
-//! interval came, and saves the state when something changed. The queue and the disk are also
-//! looked at in each API call that changes the list, so that an add, a pause or a removal takes
-//! effect at once.
+//! looks at what the client's events noted (completions, seed limits, checks ended, a magnet
+//! link's metadata), at the queue and the disk, and at `watch_dir` when its interval came, and
+//! saves the state when something changed. Each event wakes it, so that what follows one (the
+//! next queued torrent starting) does not wait; each API call that changes the list (an add, a
+//! pause, a removal, a reorder) applies the queue and the disk itself. With no event it looks
+//! every second, as fit's manager does, for what has none: the disk's free space, `watch_dir`,
+//! the schedules of `alt_speed`.
 //!
 //! The queue goes by the list's order: past `max_active_downloads` (or `max_active_seeds`) a
 //! torrent is held paused, `queued`, and the first held starts when one finishes, is paused or
@@ -25,8 +27,8 @@ use akio_bittorrent::client::{AddOptions, FileStorage, Torrent, TorrentStatus};
 
 use super::{Run, SaverMsg, Shared, lock};
 
-/// How often the manager looks: fit's second.
-const LOOK: Duration = Duration::from_secs(1);
+/// How often the manager looks with no event: fit's second.
+pub(crate) const LOOK: Duration = Duration::from_secs(1);
 
 /// Why the role holds a torrent paused.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -237,7 +239,7 @@ impl Shared {
 /// stops.
 pub(crate) fn manager(shared: &Arc<Shared>, rx: &Receiver<SaverMsg>) {
     loop {
-        match rx.recv_timeout(LOOK) {
+        match rx.recv_timeout(shared.tick) {
             Ok(SaverMsg::Stop) | Err(RecvTimeoutError::Disconnected) => return,
             Ok(SaverMsg::Wake) | Err(RecvTimeoutError::Timeout) => shared.look(false),
         }

@@ -39,9 +39,12 @@ and a client with fast resume, wire compatible with libtorrent and aria2.
 4. **Tests stay on loopback**: two akio-bittorrent clients, fit's own binary (`AKIT_FIT_BIN`),
    aria2c where installed; the DHT and LSD off; never a public tracker or DHT router.
 
-5. **I153, as fit's I198**: the manager is a thread of the role's own that looks every second,
-   as fit's does, and at once when a magnet link's metadata comes; the queue and the disk check
-   are also applied in each API call that changes the list. Every torrent is added paused and
+5. **I153, as fit's I198**: the manager is a thread of the role's own that each of the client's
+   events it notes wakes (a completion, a seed limit, a check ended, a magnet link's metadata),
+   so that what follows an event (the next queued torrent starting) does not wait; each API call
+   that changes the list applies the queue and the disk check itself. With no event it looks
+   every second, as fit's does, for what has none: the disk's free space, `watch_dir`, the
+   schedules of `alt_speed`. Every torrent is added paused and
    started by the schedule. `min_free_bytes` reads akio's `fs::space` (`available`, a process
    that is not root) of the torrent's directory or its nearest ancestor; where it cannot be
    told, it is not checked. A .torrent URL is fetched on akio's HTTP client on the listeners'

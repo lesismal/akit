@@ -839,3 +839,54 @@ fn limits_and_alt_speed() {
         .unwrap_err();
     assert!(e.contains("time_zone"), "{e}");
 }
+
+/// What follows an event does not wait for the manager's tick (the no-timer rule): with a
+/// manager that never ticks, past max_active_downloads the second torrent is queued, and starts
+/// and completes once the first completes, on the completion's event alone.
+#[test]
+fn the_queue_moves_on_the_completion_not_the_tick() {
+    let p1 = data(512 << 10, 51);
+    let p2 = data(512 << 10, 52);
+    let (seed, mi1, id1) = seeder("evq-seed", &p1);
+    std::fs::write(seed.downloads().join("two.bin"), &p2).unwrap();
+    let mi2 = named("two.bin", &p2);
+    let id2 = seed
+        .api()
+        .add(Source::Torrent(mi2.to_bytes()), AddRequest::default())
+        .unwrap()
+        .id;
+    let sapi = seed.api();
+    wait_for("the second seed", 20, || {
+        sapi.get(&id2).is_ok_and(|s| s.state == "seeding")
+    });
+    let peer = sapi.listen_addr().unwrap();
+    let dir = tmp("evq-leech");
+    let engine = akio::Engine::builder().client_threads(1).build().unwrap();
+    engine.start().unwrap();
+    let engine = Arc::new(engine);
+    let mut roles = Manager::new(&[super::CLIENT_NO_TICK], Arc::clone(&engine), None);
+    let doc = member(
+        &dir,
+        free_port(),
+        r#", "limits": {"max_active_downloads": 1, "min_free_bytes": 1}"#,
+    );
+    assert!(
+        roles
+            .apply(&akit_config::from_json(&doc, None).unwrap())
+            .is_empty()
+    );
+    let api = ClientApi::of(&roles.api(super::ID).unwrap()).unwrap();
+    let req = || AddRequest {
+        peers: vec![peer],
+        ..AddRequest::default()
+    };
+    api.add(Source::Torrent(mi1.to_bytes()), req()).unwrap();
+    api.add(Source::Torrent(mi2.to_bytes()), req()).unwrap();
+    assert_eq!(api.get(&id2).unwrap().held, "queued");
+    wait_for("the first, then the second on its completion", 60, || {
+        api.get(&id1).is_ok_and(|s| s.complete) && api.get(&id2).is_ok_and(|s| s.complete)
+    });
+    roles.stop(Duration::ZERO);
+    engine.shutdown();
+    engine.wait();
+}
