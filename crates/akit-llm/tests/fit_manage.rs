@@ -28,18 +28,32 @@ impl Drop for Fit {
     }
 }
 
-/// A directory of its own for `tag`, with a stand-in `ollama` that says what it was asked.
+/// The stand-in `ollama`, which says what it was asked: written once, before any test of this
+/// binary starts a process (each calls this first), so that no child forked meanwhile holds it
+/// open for writing; fit's node finds it first on its `PATH`, akit's node through
+/// `exec::tools_in`.
+fn stand_ins() -> &'static PathBuf {
+    static BIN: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+    BIN.get_or_init(|| {
+        use std::os::unix::fs::PermissionsExt;
+        let bin = std::path::Path::new(env!("CARGO_TARGET_TMPDIR"))
+            .join(format!("akit-llm-fit-manage-{}", std::process::id()));
+        std::fs::create_dir_all(&bin).unwrap();
+        let tool = bin.join("ollama");
+        std::fs::write(&tool, "#!/bin/sh\necho \"listed $1\"\n").unwrap();
+        std::fs::set_permissions(&tool, std::fs::Permissions::from_mode(0o755)).unwrap();
+        bin
+    })
+}
+
+/// A directory of its own for `tag`: fit's config and log.
 fn dir(tag: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!(
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!(
         "akit-llm-fit-manage-{tag}-{}-{}",
         std::process::id(),
         akit_roles::linktoken::unix_now()
     ));
-    std::fs::create_dir_all(dir.join("bin")).unwrap();
-    let tool = dir.join("bin/ollama");
-    std::fs::write(&tool, "#!/bin/sh\necho \"listed $1\"\n").unwrap();
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::set_permissions(&tool, std::fs::Permissions::from_mode(0o755)).unwrap();
+    std::fs::create_dir_all(&dir).unwrap();
     dir
 }
 
@@ -52,10 +66,7 @@ fn fit(tag: &str, config: &str) -> Fit {
     let child = Command::new(bin)
         .args(["run", "-c"])
         .arg(&path)
-        .env(
-            "PATH",
-            format!("{}:/usr/bin:/bin", dir.join("bin").display()),
-        )
+        .env("PATH", format!("{}:/usr/bin:/bin", stand_ins().display()))
         .stdout(Stdio::null())
         .stderr(log)
         .spawn()
@@ -70,6 +81,7 @@ fn json(s: &str) -> akit_config::value::Value {
 #[test]
 #[ignore = "needs fit's binary in AKIT_FIT_BIN"]
 fn akit_hub_manages_fit_node() {
+    let _ = stand_ins();
     let hub_port = free_port();
     let roles = Roles::start(&format!(
         r#"{{"llm": {{"hub": {{"id": "hub-akit000000000011",
@@ -200,8 +212,7 @@ fn console(port: u16, path: &str, cookie: &str, csrf: &str, body: &str) -> (u16,
 #[ignore = "needs fit's binary in AKIT_FIT_BIN"]
 fn fit_hub_manages_akit_node() {
     // The stand-in `ollama` on akit's lookups, so the job runs no real tool.
-    let tools = dir("akit-tools");
-    akit_llm::exec::tools_in(Some(tools.join("bin")));
+    akit_llm::exec::tools_in(Some(stand_ins().clone()));
     let (hub_port, console_port) = (free_port(), free_port());
     // The bcrypt hash of "secret".
     let hash = "$2b$10$VF3oqQjY3UmazI3yLOspje5eihWk5sQc05lgEHVxOZSbpOgdQqDPa";
@@ -277,6 +288,4 @@ fn fit_hub_manages_akit_node() {
     assert!(roles.member("llm.node").contains(r#""name":"m2""#));
     let (st, _, e) = nc("/node/settings/set", "{}");
     assert_ne!(st, 200, "a pages-only method relayed: {e}");
-    akit_llm::exec::tools_in(None);
-    let _ = std::fs::remove_dir_all(&tools);
 }

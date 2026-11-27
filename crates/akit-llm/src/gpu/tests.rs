@@ -8,71 +8,16 @@
     clippy::arithmetic_side_effects
 )]
 
-use std::path::PathBuf;
-
 use super::*;
 
-/// A directory of stand-ins: name -> script body; used by this thread's lookups until dropped.
-struct Fake(PathBuf);
-
-impl Drop for Fake {
-    fn drop(&mut self) {
-        exec::tools_on_thread(None);
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
-
-fn fake_tools(tools: &[(&str, String)]) -> Fake {
-    use std::os::unix::fs::PermissionsExt;
-    static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-    let dir = std::env::temp_dir().join(format!(
-        "akit-llm-gpu-{}-{}",
-        std::process::id(),
-        N.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
-    ));
-    std::fs::create_dir_all(&dir).unwrap();
-    for (name, body) in tools {
-        let p = dir.join(name);
-        std::fs::write(&p, format!("#!/bin/sh\n{body}\n")).unwrap();
-        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
-    }
-    exec::tools_on_thread(Some(dir.clone()));
-    Fake(dir)
-}
-
-/// A script body printing `out` as it is (the shell's own `printf`) and exiting with `code`.
-fn printing(out: &str, code: i32) -> String {
-    format!("printf '%s' '{}'\nexit {code}", out.replace('\'', r"'\''"))
-}
-
-const NVIDIA_OUT: &str = "0, NVIDIA A10, GPU-a, 550.1, 24564, 100, 5, 40, 20.5, 150.00, 100.00, 150.00, 150.00, 210, 405, 1695, 6251, 30, P8, Enabled, Default\n";
-const ROCM_OUT: &str =
-    r#"{"card0": {"Card Series": "MI210"}, "system": {"Driver version": "6.7.0"}}"#;
-const APPLE_OUT: &str =
-    r#"{"SPDisplaysDataType": [{"sppci_model": "Apple M2", "sppci_cores": "10"}]}"#;
-const XPU_DISC: &str = r#"{"device_list": [{"device_id": 0, "device_name": "Arc A770", "uuid": "u0"}, {"device_id": 1, "device_name": "Arc A380", "uuid": "u1"}]}"#;
-const XPU_STATS: &str = r#"{"device_level": [{"metrics_type": "XPUM_STATS_POWER", "value": 35}]}"#;
+use crate::stand_ins::{NVIDIA_OUT, setup, use_case};
 
 fn pool() -> Arc<akio::Pool> {
     crate::jobs::pool("test-gpu", 2, 16)
 }
 
-/// A stand-in just written may not run yet (ETXTBSY: another test's child, forked meanwhile,
-/// holds the file open for writing until it execs, as fit's tests note): asked again then.
-fn busy(err: Option<&String>) -> bool {
-    err.is_some_and(|e| e.contains("os error 26"))
-}
-
 fn q(id: &str) -> (Vec<Device>, String, Option<String>) {
-    let mut r = query(&pool(), vendor(id).unwrap());
-    for _ in 0..20 {
-        if !busy(r.2.as_ref()) {
-            break;
-        }
-        std::thread::yield_now();
-        r = query(&pool(), vendor(id).unwrap());
-    }
-    r
+    query(&pool(), vendor(id).unwrap())
 }
 
 #[test]
@@ -149,6 +94,7 @@ fn command_validation() {
 
 #[test]
 fn wrap_sudo() {
+    setup();
     exec::init_euid();
     let got = Options { use_sudo: true }.wrap(vec!["nvidia-smi".into(), "-pm".into(), "1".into()]);
     if is_root() {
@@ -170,6 +116,7 @@ fn wrap_sudo() {
 
 #[test]
 fn catalog() {
+    setup();
     let mut seen = Vec::new();
     let known = ["{index}", "{value}", "{min}", "{max}", "{display}"];
     for v in VENDORS {
@@ -218,7 +165,7 @@ fn catalog() {
     assert!(cat.contains(r#""id":"apple","name":"Apple Silicon","pci_vendors":null"#));
     assert!(cat.contains(r#""settings":null,"description":"mthreads-gmi"#));
     // Collect does not fail on a machine without any GPU tool.
-    let _f = fake_tools(&[]);
+    let _f = use_case("none");
     let st = collect(&pool(), Options::default());
     assert_eq!(st.vendors.len(), VENDORS.len());
     assert!(st.vendors.iter().all(|v| !v.installed));
@@ -226,13 +173,14 @@ fn catalog() {
 
 #[test]
 fn query_fake_tools() {
+    setup();
     {
-        let _f = fake_tools(&[("nvidia-smi", printing(NVIDIA_OUT, 0))]);
+        let _f = use_case("nvidia");
         let (devs, raw, err) = q("nvidia");
         assert!(err.is_none() && raw.is_empty() && devs.len() == 1 && devs[0].name == "NVIDIA A10");
     }
     {
-        let _f = fake_tools(&[("nvidia-smi", printing("NVIDIA-SMI has failed", 9))]);
+        let _f = use_case("nvidia-fail");
         let (devs, raw, err) = q("nvidia");
         assert!(
             err.is_some() && devs.is_empty() && raw == "NVIDIA-SMI has failed",
@@ -240,34 +188,29 @@ fn query_fake_tools() {
         );
     }
     {
-        let _f = fake_tools(&[("rocm-smi", printing(ROCM_OUT, 0))]);
+        let _f = use_case("rocm");
         let (devs, _, err) = q("amd");
         assert!(err.is_none() && devs.len() == 1 && devs[0].driver == "6.7.0");
     }
     {
         // rocm-smi exits non-zero when one of its many values is missing, yet prints them.
-        let _f = fake_tools(&[("rocm-smi", printing(ROCM_OUT, 2))]);
+        let _f = use_case("rocm-exit2");
         let (devs, _, err) = q("amd");
         assert!(err.is_none() && devs.len() == 1);
     }
     {
-        let _f = fake_tools(&[("rocm-smi", printing("no driver", 2))]);
+        let _f = use_case("rocm-fail");
         let (_, raw, err) = q("amd");
         assert!(err.is_some() && raw == "no driver");
     }
     {
-        let _f = fake_tools(&[("rocm-smi", printing("{not json", 0))]);
+        let _f = use_case("rocm-bad");
         let (_, raw, err) = q("amd");
         assert!(err.is_some() && raw == "{not json");
     }
     {
         // Device 1's stats fail: it is listed with unknown values.
-        let script = format!(
-            "case \"$1 $3\" in\n\"discovery \") {} ;;\n\"stats 0\") {} ;;\n*) exit 1 ;;\nesac",
-            printing(XPU_DISC, 0),
-            printing(XPU_STATS, 0)
-        );
-        let _f = fake_tools(&[("xpu-smi", script)]);
+        let _f = use_case("xpu");
         let (devs, raw, err) = q("intel");
         assert!(
             err.is_none() && raw.is_empty() && devs.len() == 2,
@@ -281,31 +224,27 @@ fn query_fake_tools() {
         assert!((devs[1].power_draw + 1.0).abs() < 1e-9);
     }
     {
-        let _f = fake_tools(&[("xpu-smi", printing("no device", 1))]);
+        let _f = use_case("xpu-fail");
         let (_, raw, err) = q("intel");
         assert!(err.is_some() && raw == "no device");
     }
     {
-        let _f = fake_tools(&[("xpu-smi", printing("[", 0))]);
+        let _f = use_case("xpu-bad");
         let (_, raw, err) = q("intel");
         assert!(err.unwrap().contains("discovery") && raw == "[");
     }
     {
-        let _f = fake_tools(&[("system_profiler", printing(APPLE_OUT, 0))]);
+        let _f = use_case("apple");
         let (devs, _, err) = q("apple");
         assert!(err.is_none() && devs.len() == 1 && devs[0].name == "Apple M2 (10 cores)");
     }
     {
-        let _f = fake_tools(&[("system_profiler", printing("denied", 1))]);
+        let _f = use_case("apple-fail");
         let (_, raw, err) = q("apple");
         assert!(err.is_some() && raw == "denied");
     }
     {
-        let _f = fake_tools(&[
-            ("hy-smi", printing("hygon table", 0)),
-            ("npu-smi", printing("ascend table", 0)),
-            ("mthreads-gmi", printing("mthreads table", 3)),
-        ]);
+        let _f = use_case("raw");
         for (id, want) in [
             ("hygon", "hygon table"),
             ("ascend", "ascend table"),
@@ -322,21 +261,9 @@ fn query_fake_tools() {
 
 #[test]
 fn collect_fake_tools() {
-    let _f = fake_tools(&[
-        ("nvidia-smi", printing(NVIDIA_OUT, 0)),
-        ("nvidia-settings", "exit 0".to_owned()),
-        ("rocm-smi", printing("rocm down", 1)),
-        ("system_profiler", printing(APPLE_OUT, 0)),
-        ("hy-smi", printing("hygon table", 0)),
-    ]);
-    let mut st = collect(&pool(), Options::default());
-    for _ in 0..20 {
-        if !st.errors.iter().any(|(_, e)| busy(Some(e))) {
-            break;
-        }
-        std::thread::yield_now();
-        st = collect(&pool(), Options::default());
-    }
+    setup();
+    let _f = use_case("collect");
+    let st = collect(&pool(), Options::default());
     let by = |id: &str| st.vendors.iter().find(|v| v.vendor.id == id).unwrap();
     let nv = by("nvidia");
     assert!(nv.installed && !nv.tool_path.is_empty());

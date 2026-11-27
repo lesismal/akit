@@ -88,6 +88,7 @@ fn field(j: &str, k: &str) -> String {
 /// fit's `TestCommandSudoAndString`.
 #[test]
 fn command_sudo_and_display() {
+    crate::stand_ins::setup();
     let c = Command {
         argv: vec!["sh".into(), "-c".into(), "set -e\necho hi\n".into()],
         env: vec!["A=1".into()],
@@ -118,6 +119,7 @@ fn command_sudo_and_display() {
 /// fit's `TestOutBuf`.
 #[test]
 fn out_buf() {
+    crate::stand_ins::setup();
     let o = OutBuf::with_limit(100);
     let woke = Arc::new(AtomicUsize::new(0));
     let w2 = Arc::clone(&woke);
@@ -156,6 +158,7 @@ fn out_buf() {
 /// fit's `TestJobsBound`: at most MAX_RUNNING jobs run; one more is refused.
 #[test]
 fn jobs_bound() {
+    crate::stand_ins::setup();
     let js = jobs();
     let mut ids = Vec::new();
     for _ in 0..MAX_RUNNING {
@@ -190,6 +193,7 @@ fn jobs_bound() {
 /// the timeout fails the job.
 #[test]
 fn jobs_lifecycle() {
+    crate::stand_ins::setup();
     let js = jobs();
     let changes = Arc::new(AtomicUsize::new(0));
     let c2 = Arc::clone(&changes);
@@ -305,6 +309,7 @@ fn jobs_lifecycle() {
 /// fit's `TestJobsPrune`.
 #[test]
 fn jobs_prune() {
+    crate::stand_ins::setup();
     let js = jobs();
     for _ in 0..MAX_JOBS + 20 {
         let j = js

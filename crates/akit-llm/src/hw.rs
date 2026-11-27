@@ -592,6 +592,7 @@ mod tests {
     /// fit's `TestCollectHW`: this machine read, on macOS and Linux alike, without root.
     #[test]
     fn collect_this_machine() {
+        crate::stand_ins::setup();
         let pool = crate::jobs::pool("test-hw", 2, 16);
         let h = collect(&pool);
         assert_eq!(h.os, goos());
@@ -605,6 +606,7 @@ mod tests {
 
     #[test]
     fn parsers() {
+        crate::stand_ins::setup();
         let g = parse_nvidia_smi("0, NVIDIA A10, 24564, 100, 5, 40, 550.1, 20.5, 150.00\n1, x\n");
         assert_eq!(g.len(), 1);
         assert_eq!((g[0].memory_mb, g[0].driver.as_str()), (24564, "550.1"));

@@ -26,5 +26,7 @@ pub mod model;
 pub mod node;
 pub mod proxy;
 pub mod role;
+#[cfg(test)]
+mod stand_ins;
 pub mod tls;
 pub mod wire;
