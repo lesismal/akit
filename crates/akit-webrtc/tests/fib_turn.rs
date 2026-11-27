@@ -40,6 +40,8 @@ fn echo() -> SocketAddr {
     addr
 }
 
+/// A port free now, for fib's binary, whose config must name it before it starts: another
+/// process may take it meanwhile.
 fn free_port(udp: bool) -> u16 {
     if udp {
         UdpSocket::bind("127.0.0.1:0")
@@ -188,8 +190,8 @@ fn fib_client_against_akit_and_fit() {
     let (cert, key) = tls_files(&dir);
     let peer = echo();
 
-    // akit's server, on an engine of its own, as akit run runs it.
-    let (udp, tcp, tls) = (free_port(true), free_port(false), free_port(false));
+    // akit's server, on an engine of its own, as akit run runs it, on port 0: where it listens
+    // is asked of the engine, UDP, then TCP and TLS in the member's order.
     let engine = akio::Engine::builder()
         .client_threads(1)
         .udp_client_threads(2)
@@ -200,10 +202,14 @@ fn fib_client_against_akit_and_fit() {
     let mut roles = Manager::new(&[akit_webrtc::TURN], Arc::clone(&engine), None);
     let doc = format!(
         r#"{{"webrtc": {{"turn": {}}}}}"#,
-        member(udp, tcp, tls, &cert, &key, peer)
+        member(0, 0, 0, &cert, &key, peer)
     );
     let errs = roles.apply(&akit_config::from_json(&doc, None).unwrap());
     assert!(errs.is_empty(), "{errs:?}");
+    let ls = engine.listeners();
+    let udp = ls.iter().find(|l| l.udp).unwrap().local_addr.port();
+    let mut streams = ls.iter().filter(|l| !l.udp).map(|l| l.local_addr.port());
+    let (tcp, tls) = (streams.next().unwrap(), streams.next().unwrap());
     let akit = scenarios(udp, tcp, tls, peer);
     for (name, (out, code)) in &akit {
         let refused = name.contains("wrong") || name.contains("another");

@@ -1070,7 +1070,9 @@ impl Media {
         let mut addr = crate::turn::listen_addr(&m.listen)
             .ok_or_else(|| format!("listen: {:?} is not an address to listen on", m.listen))?;
         if addr.port() == 0 {
-            // The answers name the port: a free one is found first.
+            // The answers name the port: a free one is found first, and bound after, which
+            // another process may take meanwhile; akio's A304 would bind first and name the
+            // candidates after.
             let probe = UdpSocket::bind(SocketAddr::new(addr.ip(), 0))
                 .map_err(|e| format!("listen on {}: {e}", m.listen))?;
             let port = probe

@@ -209,12 +209,8 @@ fn http_edges() {
 /// that changes it ends them (fit's `TestReload`).
 #[test]
 fn reload() {
-    let port = std::net::UdpSocket::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port();
-    let listen = format!(r#""listen": "127.0.0.1:{port}""#);
+    // `listen` on port 0, kept as written by the first reload; the second writes another.
+    let listen = r#""listen": "127.0.0.1:0""#;
     let mut akit = Akit::start(&format!("{{{listen}}}"));
     let c = Client::new();
     let p = session(&akit, &c, "/whip/a", Direction::SendOnly)
@@ -230,7 +226,7 @@ fn reload() {
         503
     );
     assert!(akit.metrics().contains("akit_webrtc_media_streams 1"));
-    akit.apply(r#"{"listen": "127.0.0.1:0"}"#);
+    akit.apply(r#"{"listen": "0.0.0.0:0"}"#);
     wait_for(&p.rx, "the session ended by the restart", |g| {
         matches!(g, Got::Closed)
     });

@@ -114,7 +114,9 @@ fn member(extra: &str) -> String {
     out
 }
 
-/// A UDP port free now on loopback.
+/// A UDP port free now on loopback, for what a test must name before akit binds it: a relay
+/// port range, and an address the server restarts on. Another process may take it meanwhile;
+/// the other listeners bind port 0.
 fn free_port() -> u16 {
     UdpSocket::bind("127.0.0.1:0")
         .unwrap()
