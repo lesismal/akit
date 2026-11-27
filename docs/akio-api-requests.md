@@ -111,12 +111,12 @@ first; its status here records the branch, then the akio commit akit pins.
 | A247 | The process's effective user (`akio_sys::process::euid`) | on akio's main and pinned (since `a8171fda`), used by the LLM node | 14 | I108 |
 | A248 | A signal to a process group (`akio_sys::process::kill_group`) | on akio's main and pinned (since `a8171fda`), used by the LLM node's jobs | 1, 14 | I108 |
 | A249 | A file system's size and space free (`akio_sys::fs::space`) | on akio's main and pinned (since `a8171fda`), used by the LLM node's disks | 1, 14 | I108 |
-| A256 | akio-turn's static settings fit's TURN role sets: the relayed sockets bound in a port range, the nonces' key from a secret servers share, and a stream client's largest message | requested (I111): `port_min`/`port_max` refused at run time, `nonce_secret` and `max_stream_message` not applied (decision 039) | 4, 11 | I111, I112 |
-| A257 | akio-turn's hooks for an embedding server: each relayed datagram's username, direction and size, with a say in whether it goes (a username's bandwidth); the server's events (allocated, refreshed, freed, refused, credentials failed); whether an address is one of its relayed ones; its permissions, channels and pending allocations counted | requested (I111): `user_bandwidth` not enforced, the server's own addresses reached on listed ports alone, events and bytes not counted (decision 039) | 1, 11 | I111, I112 |
-| A258 | akio-turn's settings changed on a running server (credentials, quotas, caps, lifetimes) and a drain: no new allocation while those held run out | requested (I111): a change of the quotas, caps or lifetimes starts a new server; the server a reload replaced keeps serving for the drain (decision 039) | 10, 11 | I111, I112 |
-| A259 | A peer's own configuration on an `RtcServer` (`accept_offer_with`): the codecs of one session, as an SFU answers a publisher with the codec it picked of each kind and its viewers with the same | requested (I111, for I113); stopgap planned: the server's configuration closure reading the session's codecs set beside the call | 12 | I113 |
-| A260 | RTP forwarding in akio-webrtc for an SFU: a received packet written on another peer's sending line, its SSRC, payload type, sequence and timestamp rewritten, its header extensions mapped | requested (I111, for I113); stopgap planned: frames forwarded (`on_media_data` to `write_media`), depacketized and packetized again | 13 | I113 |
-| A261 | A receiver's bitrate cap told to the remote sender as REMB, and the ICE consent timeout set per peer | requested (I111, for I113); stopgap planned: `max_bitrate` enforced by dropping past two seconds' burst, not told; akio's consent timeout | 10, 11 | I113 |
+| A256 | akio-turn's static settings fit's TURN role sets: the relayed sockets bound in a port range, the nonces' key from a secret servers share, and a stream client's largest message | on akio's main and pinned (since `d8d51f61`, akio's ADR-186): `TurnConfig::relay_ports`, `nonce_secret`, `max_stream_message` | 4, 11 | I111, I112 |
+| A257 | akio-turn's hooks for an embedding server: each relayed datagram's username, direction and size, with a say in whether it goes (a username's bandwidth); the server's events (allocated, refreshed, freed, refused, credentials failed); whether an address is one of its relayed ones; its permissions, channels and pending allocations counted | on akio's main and pinned (since `d8d51f61`, akio's ADR-186 update 1): `TurnConfig::on_relay`, `on_event`, `TurnServer::holds_relay`, `TurnStats`' new counters | 1, 11 | I111, I112 |
+| A258 | akio-turn's settings changed on a running server (credentials, quotas, caps, lifetimes) and a drain: no new allocation while those held run out | on akio's main and pinned (since `d8d51f61`, akio's ADR-186 update 2): `TurnServer::set_limits`, `set_auth`, `drain` | 10, 11 | I111, I112 |
+| A259 | A peer's own configuration on an `RtcServer` (`accept_offer_with`): the codecs of one session, as an SFU answers a publisher with the codec it picked of each kind and its viewers with the same | on akio's main and pinned (since `d8d51f61`, akio's ADR-187): `RtcServer::accept_offer_with` | 12 | I113 |
+| A260 | RTP forwarding in akio-webrtc for an SFU: a received packet written on another peer's sending line, its SSRC, payload type, sequence and timestamp rewritten, its header extensions mapped | on akio's main and pinned (since `d8d51f61`, akio's ADR-187): `Peer::write_rtp` | 13 | I113 |
+| A261 | A receiver's bitrate cap told to the remote sender as REMB, and the ICE consent timeout set per peer | on akio's main and pinned (since `d8d51f61`, akio's ADR-187): `Peer::set_receive_bitrate_cap`, `RtcConfig::set_ice_timeouts` | 10, 11 | I113 |
 
 ## A1 TCP listeners on a running engine
 
@@ -2522,6 +2522,8 @@ connection may go without its link's stream after the handshake stays the hub's 
 
 ## A256 akio-turn's static settings: a relay port range, a shared nonce key, a stream's largest message
 
+**Done.** On akio's main and pinned (since `d8d51f61`, akio's ADR-186): `TurnConfig::relay_ports`, `nonce_secret`, `max_stream_message`.
+
 **Status.** Requested by I111 (2026-11-27). The TURN role refuses `port_min` and `port_max` at run
 time (`akit validate` takes them), and says when its server starts that `nonce_secret` and
 `max_stream_message` are not applied (decision 039).
@@ -2548,6 +2550,8 @@ exhausted range answered 508), `nonce_secret(&[u8])` (the nonce key derived from
 refusal and warnings (I112).
 
 ## A257 akio-turn's hooks for an embedding server: relayed bytes by username, events, its relayed addresses
+
+**Done.** On akio's main and pinned (since `d8d51f61`, akio's ADR-186 update 1): `TurnConfig::on_relay`, `on_event`, `TurnServer::holds_relay`, `TurnStats`' new counters.
 
 **Status.** Requested by I111 (2026-11-27). `user_bandwidth` is not enforced (a warning when the
 server starts); the server's own addresses (`relay_ip`, `public_ip`) are reached on the ports
@@ -2582,6 +2586,8 @@ and reaches its own addresses on its relayed ports (I112).
 
 ## A258 akio-turn's settings changed on a running server, and a drain
 
+**Done.** On akio's main and pinned (since `d8d51f61`, akio's ADR-186 update 2): `TurnServer::set_limits`, `set_auth`, `drain`.
+
 **Status.** Requested by I111 (2026-11-27). The users, secret and peer rules change in place
 already (akit's `AuthFn` and peer filter read them); a change of the quotas, caps or lifetimes
 starts a new server, ending the old one's allocations when the two share an address; the server a
@@ -2610,6 +2616,8 @@ static key and sets them in place; a server a reload replaced drains, refusing n
 
 ## A259 A peer's own configuration on an `RtcServer`
 
+**Done.** On akio's main and pinned (since `d8d51f61`, akio's ADR-187): `RtcServer::accept_offer_with`.
+
 **Status.** Requested by I111 (2026-11-27), for I113. Nothing runs on it yet; I113's planned
 stopgap: the server's configuration closure reads the codecs of the session being answered, set on
 the calling thread beside `accept_offer` (which builds the peer's configuration synchronously).
@@ -2633,6 +2641,8 @@ argument.
 picked codecs, and its viewers with the same, without the closure's thread-local.
 
 ## A260 RTP forwarding in akio-webrtc for an SFU
+
+**Done.** On akio's main and pinned (since `d8d51f61`, akio's ADR-187): `Peer::write_rtp`.
 
 **Status.** Requested by I111 (2026-11-27), for I113. I113's planned stopgap: each publisher's
 frames (`on_media_data`) written to each viewer with `write_media`, depacketized once and packetized
@@ -2658,6 +2668,8 @@ replaced), header extensions mapped by URI; NACK and RTX answered from what it s
 to the viewers of its stream, in place of the frames.
 
 ## A261 A receiver's bitrate cap told as REMB, and the ICE consent timeout per peer
+
+**Done.** On akio's main and pinned (since `d8d51f61`, akio's ADR-187): `Peer::set_receive_bitrate_cap`, `RtcConfig::set_ice_timeouts`.
 
 **Status.** Requested by I111 (2026-11-27), for I113. I113's planned stopgap: `max_bitrate` enforced
 by dropping a publisher's media past two seconds' burst, without telling the publisher; peers left

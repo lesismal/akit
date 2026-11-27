@@ -20,6 +20,15 @@ done and where the work differs from the plan.
 
 ## Log
 
+### 2026-11-27: akio pinned at `d8d51f61`: A256-A261
+
+- akio: `d8d51f61` on akio's main, with A256-A258 in akio-turn (ADR-186: a relay port range, the
+  nonce secret, the stream message bound; `on_relay`, `on_event`, `holds_relay` and more counters;
+  limits and credentials set on a running server, a drain) and A259-A261 in akio-webrtc and
+  akio-rtp (ADR-187: `accept_offer_with`, `Peer::write_rtp`, `set_receive_bitrate_cap`,
+  `set_ice_timeouts`). akit's `rev` and `akit_runtime::AKIO_REV` move with it; akit builds unchanged.
+  I112 and I113 take them up.
+
 ### 2026-11-27: the WebRTC track stops after I111; I113's akio requests
 
 - The track stops after I111 in this run: I112 waits on akio's A256-A258; I113 (WHIP and WHEP, the

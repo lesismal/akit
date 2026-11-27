@@ -110,12 +110,12 @@
 | A247 | 进程的有效用户（`akio_sys::process::euid`） | 已进入 akio 的 main 并锁定（自 `a8171fda` 起），LLM node 使用 | 14 | I108 |
 | A248 | 向进程组发送信号（`akio_sys::process::kill_group`） | 已进入 akio 的 main 并锁定（自 `a8171fda` 起），LLM node 的作业使用 | 1, 14 | I108 |
 | A249 | 文件系统的大小与可用空间（`akio_sys::fs::space`） | 已进入 akio 的 main 并锁定（自 `a8171fda` 起），LLM node 的磁盘信息使用 | 1, 14 | I108 |
-| A256 | fit 的 TURN 角色设置的 akio-turn 静态设置：中继套接字绑定在端口范围内、nonce 的密钥来自服务器之间共享的 secret、流客户端的最大消息 | 已提出（I111）：运行时拒绝 `port_min`/`port_max`，`nonce_secret` 和 `max_stream_message` 不生效（决定 039） | 4, 11 | I111, I112 |
-| A257 | akio-turn 供嵌入它的服务器使用的钩子：每个中继数据报的用户名、方向和大小，并能决定是否放行（用户名的带宽）；服务器的事件（分配、刷新、释放、拒绝、凭据失败）；某地址是否为其中继地址之一；其 permission、channel 和待定 allocation 的计数 | 已提出（I111）：`user_bandwidth` 不强制执行，服务器自身地址只能在列出的端口上访问，事件和字节数不计数（决定 039） | 1, 11 | I111, I112 |
-| A258 | 在运行中的 akio-turn 服务器上修改设置（凭据、配额、上限、生存期），以及排空：在已有 allocation 自然结束期间不再接受新的 allocation | 已提出（I111）：配额、上限或生存期的变化启动新服务器；被重新加载替换的服务器在排空期间继续服务（决定 039） | 10, 11 | I111, I112 |
-| A259 | `RtcServer` 上每个 peer 自己的配置（`accept_offer_with`）：一个会话的编解码器，如同 SFU 以其为每类媒体选定的编解码器应答发布者，并以同样的编解码器应答其观看者 | 已提出（I111，为 I113）；计划的临时方案：服务器的配置闭包读取调用前设置的会话编解码器 | 12 | I113 |
-| A260 | akio-webrtc 中供 SFU 使用的 RTP 转发：收到的包写到另一个 peer 的发送媒体行上，改写其 SSRC、负载类型、序号和时间戳，映射其头部扩展 | 已提出（I111，为 I113）；计划的临时方案：转发帧（`on_media_data` 到 `write_media`），解包后重新打包 | 13 | I113 |
-| A261 | 接收方的码率上限以 REMB 告知远端发送方，以及按 peer 设置的 ICE consent 超时 | 已提出（I111，为 I113）；计划的临时方案：`max_bitrate` 以超出两秒突发量即丢弃的方式强制执行，但不告知；使用 akio 的 consent 超时 | 10, 11 | I113 |
+| A256 | fit 的 TURN 角色设置的 akio-turn 静态设置：中继套接字绑定在端口范围内、nonce 的密钥来自服务器之间共享的 secret、流客户端的最大消息 | 已进入 akio 的 main 并锁定（自 `d8d51f61` 起，akio 的 ADR-186）：`TurnConfig::relay_ports`、`nonce_secret`、`max_stream_message` | 4, 11 | I111, I112 |
+| A257 | akio-turn 供嵌入它的服务器使用的钩子：每个中继数据报的用户名、方向和大小，并能决定是否放行（用户名的带宽）；服务器的事件（分配、刷新、释放、拒绝、凭据失败）；某地址是否为其中继地址之一；其 permission、channel 和待定 allocation 的计数 | 已进入 akio 的 main 并锁定（自 `d8d51f61` 起，akio 的 ADR-186 更新 1）：`TurnConfig::on_relay`、`on_event`、`TurnServer::holds_relay`、`TurnStats` 的新计数 | 1, 11 | I111, I112 |
+| A258 | 在运行中的 akio-turn 服务器上修改设置（凭据、配额、上限、生存期），以及排空：在已有 allocation 自然结束期间不再接受新的 allocation | 已进入 akio 的 main 并锁定（自 `d8d51f61` 起，akio 的 ADR-186 更新 2）：`TurnServer::set_limits`、`set_auth`、`drain` | 10, 11 | I111, I112 |
+| A259 | `RtcServer` 上每个 peer 自己的配置（`accept_offer_with`）：一个会话的编解码器，如同 SFU 以其为每类媒体选定的编解码器应答发布者，并以同样的编解码器应答其观看者 | 已进入 akio 的 main 并锁定（自 `d8d51f61` 起，akio 的 ADR-187）：`RtcServer::accept_offer_with` | 12 | I113 |
+| A260 | akio-webrtc 中供 SFU 使用的 RTP 转发：收到的包写到另一个 peer 的发送媒体行上，改写其 SSRC、负载类型、序号和时间戳，映射其头部扩展 | 已进入 akio 的 main 并锁定（自 `d8d51f61` 起，akio 的 ADR-187）：`Peer::write_rtp` | 13 | I113 |
+| A261 | 接收方的码率上限以 REMB 告知远端发送方，以及按 peer 设置的 ICE consent 超时 | 已进入 akio 的 main 并锁定（自 `d8d51f61` 起，akio 的 ADR-187）：`Peer::set_receive_bitrate_cap`、`RtcConfig::set_ice_timeouts` | 10, 11 | I113 |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -2029,6 +2029,8 @@ node 的池上运行的 `kill -KILL -- -<pgid>` 处理（记录在[进度](progr
 
 ## A256 akio-turn 的静态设置：中继端口范围、共享的 nonce 密钥、流的最大消息
 
+**完成。** 已进入 akio 的 main 并锁定（自 `d8d51f61` 起，akio 的 ADR-186）：`TurnConfig::relay_ports`、`nonce_secret`、`max_stream_message`。
+
 **状态。** 由 I111 提出（2026-11-27）。TURN 角色在运行时拒绝 `port_min` 和 `port_max`（`akit validate` 接受它们），
 并在服务器启动时说明 `nonce_secret` 和 `max_stream_message` 不生效（决定 039）。
 
@@ -2048,6 +2050,8 @@ A55 和 A57。
 **akit 如何使用。** `akit_webrtc::turn` 按成员设置这三项，并去掉其拒绝和警告（I112）。
 
 ## A257 akio-turn 供嵌入它的服务器使用的钩子：按用户名的中继字节、事件、其中继地址
+
+**完成。** 已进入 akio 的 main 并锁定（自 `d8d51f61` 起，akio 的 ADR-186 更新 1）：`TurnConfig::on_relay`、`on_event`、`TurnServer::holds_relay`、`TurnStats` 的新计数。
 
 **状态。** 由 I111 提出（2026-11-27）。`user_bandwidth` 不强制执行（服务器启动时给出警告）；服务器自身的地址
 （`relay_ip`、`public_ip`）只能在 `allowed_peers` 随之列出的端口上访问，因此同一服务器的两个客户端不会经由对方的中继
@@ -2074,6 +2078,8 @@ peer、字节数；返回 false 则丢弃）、`on_event(Arc<dyn Fn(&TurnEvent) 
 
 ## A258 在运行中的 akio-turn 服务器上修改设置，以及排空
 
+**完成。** 已进入 akio 的 main 并锁定（自 `d8d51f61` 起，akio 的 ADR-186 更新 2）：`TurnServer::set_limits`、`set_auth`、`drain`。
+
 **状态。** 由 I111 提出（2026-11-27）。用户、secret 和 peer 规则已经就地修改（akit 的 `AuthFn` 和 peer 过滤器读取
 它们）；配额、上限或生存期的变化启动新服务器，两者共享地址时结束旧服务器的 allocation；被重新加载替换的服务器在
 `-shutdown-timeout` 内继续服务（包括新客户端），然后关闭（决定 039）。
@@ -2095,6 +2101,8 @@ peer、字节数；返回 false 则丢弃）、`on_event(Arc<dyn Fn(&TurnEvent) 
 
 ## A259 `RtcServer` 上每个 peer 自己的配置
 
+**完成。** 已进入 akio 的 main 并锁定（自 `d8d51f61` 起，akio 的 ADR-187）：`RtcServer::accept_offer_with`。
+
 **状态。** 由 I111 提出（2026-11-27），供 I113 使用。尚无代码依赖它；I113 计划的临时方案：服务器的配置闭包读取正在
 应答的会话的编解码器，该值在 `accept_offer` 之前于调用线程上设置（`accept_offer` 同步构建 peer 的配置）。
 
@@ -2115,6 +2123,8 @@ Result<(Peer, String), Error>`，像闭包的配置一样在 `config` 之上设�
 
 ## A260 akio-webrtc 中供 SFU 使用的 RTP 转发
 
+**完成。** 已进入 akio 的 main 并锁定（自 `d8d51f61` 起，akio 的 ADR-187）：`Peer::write_rtp`。
+
 **状态。** 由 I111 提出（2026-11-27），供 I113 使用。I113 计划的临时方案：把每个发布者的帧（`on_media_data`）用
 `write_media` 写给每个观看者，解包一次，为每个观看者重新打包。
 
@@ -2133,6 +2143,8 @@ Result<(Peer, String), Error>`，像闭包的配置一样在 `config` 之上设�
 **akit 如何使用。** `akit_webrtc::media` 以 RTP 模式运行发布者，把每个包写给其流的观看者，取代帧。
 
 ## A261 接收方的码率上限以 REMB 告知，以及按 peer 设置的 ICE consent 超时
+
+**完成。** 已进入 akio 的 main 并锁定（自 `d8d51f61` 起，akio 的 ADR-187）：`Peer::set_receive_bitrate_cap`、`RtcConfig::set_ice_timeouts`。
 
 **状态。** 由 I111 提出（2026-11-27），供 I113 使用。I113 计划的临时方案：`max_bitrate` 以丢弃发布者超出两秒突发量
 的媒体来强制执行，但不告知发布者；无论 `ice_timeout` 如何，peer 都使用 akio 的 consent 超时。

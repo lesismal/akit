@@ -19,6 +19,13 @@
 
 ## 日志
 
+### 2026-11-27：akio 锁定在 `d8d51f61`：A256-A261
+
+- akio：akio main 上的 `d8d51f61`，akio-turn 中有 A256-A258（ADR-186：中继端口范围、nonce secret、流消息上限；`on_relay`、
+  `on_event`、`holds_relay` 和更多计数；在运行中的服务器上设置限制和凭据、排空），akio-webrtc 和 akio-rtp 中有 A259-A261
+  （ADR-187：`accept_offer_with`、`Peer::write_rtp`、`set_receive_bitrate_cap`、`set_ice_timeouts`）。akit 的 `rev` 与
+  `akit_runtime::AKIO_REV` 随之移动；akit 无需改动即可构建。I112 和 I113 采用它们。
+
 ### 2026-11-27：WebRTC 路线在 I111 之后暂停；I113 的 akio 请求
 
 - 本次工作中该路线在 I111 之后暂停：I112 等待 akio 的 A256-A258；I113（WHIP 和 WHEP，基于 akio-webrtc `RtcServer` 的
