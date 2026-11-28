@@ -137,6 +137,7 @@
 | A301 | `H2Client` 在引擎优雅关闭时结束其连接（`GOAWAY`；没有打开的流时立即关闭，否则在最后一个流结束后关闭），如同 HTTP/1 客户端关闭其空闲连接 | 已进入 akio 的 main 并锁定（自 `db34bfd7` 起）：`H2Acceptor::on_shutdown`；akit 的权宜做法（`EngineSlot::shutdown`）已去掉 | 4, 10 | I18, I18b |
 | A302 | io_uring 上的 `Conn::close` 像 epoll 上一样重置一个收到了未交付数据的 TCP 连接（或提供以重置方式关闭的 `Conn::abort`）：目前进行中的接收在 shutdown 之后取走数据，面对零窗口的对端永远收不到重置 | 已进入 akio 的 main 并锁定（自 `5893a0ed` 起）：建议 (a)，akio 的 ADR-188（未交付输入时以 `SO_LINGER` 0 关闭；`akio_sys::reset_on_close`）；fastcgi.rs 的 `cut_connections` 在 io_uring 上通过 | — | I75 |
 | A303 | 在工作窃取（ADR-104）下依然成立的联动背压：暂停的上游读取（akio-http 的 `ResponseBody::hold_reads`，akit 的 `Download::hold_reads` 在其上）与写满的下游（`BodyStream::queued_bytes`、`on_drain`）像在事件循环上一样限制流式转发占用的内存 | 已提出；权宜做法：akit 的 TCP 监听器选择 `Scheduling::EventLoops`（`akit_runtime::scheduled`，决定 91），除非设置了 `AKIO_DEFAULT_SCHEDULING` | 8, 11 | I16, I17, I18b |
+| A305 | 普通（plain）WebSocket 的迟到队列（其处理器的批次打开期间其他线程发送的内容）计入 `WsSender::queued_bytes` 并由 `on_drain` 等待，以连接的 `max_queued_bytes` 而不是固定的 4 MiB 为上限，并且在批次结束时绝不静默丢弃 | 已提出；akit 在发送被拒时结束加密的 WebSocket，而不是跳过一条消息的编号（其间 console.rs 的 `large_transfers_both_ways` 仍会偶尔失败） | 8, 9 | I103b |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -2588,3 +2589,30 @@ HTTP/1.1 客户端发送 64 MiB，采样进程的常驻内存，上限 `MAX_RISE
 之间转发、内存有界的测试可以保持这一点。
 
 **akit 如何使用。** `akit_runtime::scheduled` 连同决定 91 一起去掉：akit 的监听器重新采用 akio 的默认调度，`stream_download` 在其下通过。
+
+## A305 节奏控制看得见的 WebSocket 迟到队列
+
+**状态。** 已提出（2026-11-28）。没有能让传输继续的权宜做法：akit 在发送被拒时结束加密的 WebSocket，而不是跳过一条消息的编号，
+使失败如实说明原因；在 akio 实现之前，akit-tunnel 的 `tests/console.rs` 中的 `large_transfers_both_ways` 仍会偶尔失败。
+
+**问题。** 在 akio-ws 中，基于 TCP 且没有压缩的服务端 WebSocket 是“普通的”（plain，`session.rs`，自 `26b811df` 起）：当其 I/O 线程
+处于 `on_data` 中时，其他线程发送的内容进入迟到队列（`TxShared::late`），在批次结束时发给连接。节奏控制看不见这个队列：
+`WsSender::queued_bytes` 和 `on_drain` 只报告连接自己的发送队列，而它此时往往是空的。按 `queued_bytes` 为生产者控制节奏的转发
+（规则 8；akit 的控制台套接字把控制台连接读到的内容加密后送入 WebSocket，`queued_bytes` 超过 256 KiB 时暂停其读取）永远不会暂停，
+而迟到队列一旦超过 `LATE_MAX`（4 MiB），发送就以 `Overloaded` 失败，远早于连接自己的上限（64 MiB）。加密通道不能丢失消息：
+每条消息的编号就是它的 AES-GCM nonce，对端此后的消息都无法解开。此外，`end_batch` 用 `let _ = self.conn.send(..)` 发送迟到的字节：
+如果连接拒绝它们（超过 `max_queued_bytes`），发送时返回了 `Ok` 的消息会被悄无声息地丢弃。
+
+**证据。** gpu51（Linux，16 核），`large_transfers_both_ways`（24 MiB 经 web 代理到回显控制台再回来，两个方向同时进行），同时运行
+六份测试，每个后端 240 次，临时记录 hub 发送失败和代理解密失败。在 akit `c5945e48`（akio `d8d51f61`）上：io_uring 240 次中 25 次失败，
+epoll 240 次中 17 次。在 akit `b654b361`（akio `db34bfd7`）上：io_uring 240 次中 20 次，epoll 240 次中 6 次。在 akit `deabe4bd`
+（akio `5893a0ed`）上：io_uring 240 次中 21 次，epoll 240 次中 13 次；单独运行时 50 次中 3 次和 50 次中 1 次。所以不是这一范围内的
+akio 改动带来的（akio-ws 的迟到队列更早就有）。每次失败中，hub 的 `WsSender::send_binary` 都返回了 `Overloaded`，而 `queued_bytes()`
+为 0（迟到队列已满，连接的队列为空），随后代理记录了一条无法解开的消息；通过的运行中没有被拒的发送。
+
+**建议的 API。** 不需要新 API：在普通会话上，`queued_bytes` 包含迟到队列的字节，`on_drain` 在迟到队列和连接的队列都为空后才运行
+（批次持有迟到字节时不立即运行）；迟到队列的上限是连接的 `max_queued_bytes` 剩下的部分，使按 `queued_bytes` 控制节奏的发送者永远
+碰不到它；`end_batch` 无法排入队列的迟到字节使连接失败（如同 abort），而不是消失。
+
+**akit 如何使用。** akit 不需要改动：控制台套接字的闸门（`akit-tunnel/src/pace.rs`）届时会在迟到队列填满时暂停控制台的读取，
+`large_transfers_both_ways` 在负载下也能通过。发送失败的处理保留，用于其他原因导致的发送失败。

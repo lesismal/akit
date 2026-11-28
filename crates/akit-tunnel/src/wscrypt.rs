@@ -7,7 +7,8 @@
 //! direction then has a key of its own, HKDF-SHA256 of the password's PBKDF2 under both sets of
 //! bytes, and numbers its messages from zero, the number being the GCM nonce. A message that does
 //! not open under the next number (forged, replayed, reordered, or sealed under another password)
-//! ends the session.
+//! ends the session; so does one a side seals and then cannot send, whose number would otherwise be
+//! skipped.
 
 use akio_crypto::gcm::AesGcm;
 use akio_crypto::hash::Sha256;

@@ -8,7 +8,9 @@
 //! connections at once per web proxy; the WebSocket's dial and handshake within
 //! [`DIAL_TIMEOUT`]. A WebSocket that fails (a hello or a message that does not open) is ended at
 //! once, what is queued dropped (`WsSender::abort`, akio's A238), as fit aborts it; one whose local
-//! connection closed gets a close frame behind what is queued, as fit's.
+//! connection closed gets a close frame behind what is queued, as fit's. So is one a sealed message
+//! could not be sent on (a send akio refuses, as `Overloaded`, A305): that message's number would
+//! be skipped, and nothing after it would open.
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -250,13 +252,29 @@ impl WebProxy {
 
 impl ProxyConn {
     /// Sealed, a message per piece, and sent in the order of the messages' numbers: under the
-    /// connection's lock.
-    fn send_sealed(st: &mut ConnSt, data: &[u8]) -> bool {
+    /// connection's lock. A message not sent leaves its number unused, and nothing after it
+    /// would open: the caller ends the WebSocket ([`ProxyConn::send_failed`]).
+    fn send_sealed(st: &mut ConnSt, data: &[u8]) -> Result<(), akio::Error> {
         let (Some(ws), Some(sess)) = (st.ws.as_ref(), st.sess.as_mut()) else {
-            return false;
+            return Err(akio::Error::Closed);
         };
-        data.chunks(SEAL_CHUNK)
-            .all(|chunk| ws.send_binary(&sess.seal(chunk)).is_ok())
+        for chunk in data.chunks(SEAL_CHUNK) {
+            ws.send_binary(&sess.seal(chunk))?;
+        }
+        Ok(())
+    }
+
+    /// A message to the hub was not sent: the WebSocket ends, as it would at the hub on the
+    /// next message, which would not open.
+    fn send_failed(&self, ws: &WsSender, e: &akio::Error) {
+        if !matches!(e, akio::Error::Closed) {
+            akit_observe::warn!(
+                Tunnel,
+                "tunnel.proxy: web proxy {}: a message could not be sent ({e}); the WebSocket is ended",
+                self.listen
+            );
+        }
+        ws.abort();
     }
 
     /// What the local connection sends: sealed once the session is up.
@@ -276,10 +294,14 @@ impl ProxyConn {
             st.pending.push(data.to_vec());
             return;
         }
-        Self::send_sealed(&mut st, data);
+        let sent = Self::send_sealed(&mut st, data);
         let ws = st.ws.clone();
         drop(st);
         if let Some(ws) = ws {
+            if let Err(e) = sent {
+                self.send_failed(&ws, &e);
+                return;
+            }
             self.lgate.pace(&ws);
         }
     }
@@ -328,16 +350,23 @@ impl ProxyConn {
                     return;
                 }
             };
-            let _ = ws.send_binary(&hello);
             // An empty message proves the password at once, so that the hub keeps the WebSocket
             // while the browser sends nothing yet.
-            let _ = ws.send_binary(&sess.seal(&[]));
+            let mut sent = ws
+                .send_binary(&hello)
+                .and_then(|()| ws.send_binary(&sess.seal(&[])));
             st.sess = Some(sess);
             for b in std::mem::take(&mut st.pending) {
-                Self::send_sealed(&mut st, &b);
+                if sent.is_ok() {
+                    sent = Self::send_sealed(&mut st, &b);
+                }
             }
             st.pending_bytes = 0;
             drop(st);
+            if let Err(e) = sent {
+                self.send_failed(ws, &e);
+                return;
+            }
             self.lgate.release();
             self.lgate.pace(ws);
             return;

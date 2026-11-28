@@ -21,6 +21,20 @@
 
 ## 日志
 
+### 2026-11-28：加密的控制台 WebSocket 在发送被拒时结束（akio 的 A305）
+
+- akit-tunnel 的 `tests/console.rs` 中的 `large_transfers_both_ways` 在 gpu51 上偶尔失败（“a message failed to decrypt”，随后
+  连接被重置）。加日志后看到，每次失败中 hub 的 `WsSender::send_binary` 都以 `Overloaded` 被拒，而 `queued_bytes()` 为 0：控制台
+  套接字的 WebSocket 是 akio-ws 的普通（plain）会话，当 WebSocket 的线程处于 `on_data` 中时，控制台连接加密的内容进入 akio-ws 的
+  迟到队列，节奏控制看不见它，超过 4 MiB 时它拒绝发送。hub 随后继续发送下一条消息，其编号（AES-GCM nonce）比代理期望的大一，
+  此后的消息都无法解开。这不是锁定到 `db34bfd7` 和 `5893a0ed` 才出现的：c5945e48（akio `d8d51f61`）在同样负载下失败得一样多。
+- 控制台套接字和 web 代理现在在任何一条无法发送的加密消息上结束 WebSocket（除非 WebSocket 已经关闭，否则记录警告），而不是跳过
+  它的编号；web 代理的问候和密码证明也同样检查。测试：`hub::socket::tests` 和 `proxy::web::tests` 中的
+  `a_message_not_sent_ends_the_websocket`（WebSocket 的队列上限小于一条消息：此前客户端会一直等待一个不再发送任何内容的
+  WebSocket，或收到一条无法解开的消息）。
+- akio API 请求 A305 要求迟到队列计入 `queued_bytes` 和 `on_drain`，受连接的上限约束，并且绝不丢弃；在此之前
+  `large_transfers_both_ways` 在负载下仍会偶尔失败，现在报告的是 “could not be sent (overloaded)”。
+
 ### 2026-11-28：akio 锁定在 `5893a0ed`：A302 与 A301 的优雅关闭后续
 
 - akio：akio main 上的 `5893a0ed`（自 `db34bfd7` 起）。akit 的 `rev` 与 `akit_runtime::AKIO_REV` 随之移动；akit 无需改动即可构建。

@@ -301,3 +301,50 @@ fn conn_closed() {
     engine.shutdown();
     engine.wait();
 }
+
+/// A sealed message the WebSocket refuses (here its queue bounded below one message, so the send
+/// fails with `Overloaded`, as akio refuses one past its bound, A305) ends the WebSocket and the
+/// local connection: its number is not skipped, so the socket never gets a message that does not
+/// open, nor waits on a WebSocket that sends nothing more.
+#[test]
+fn a_message_not_sent_ends_the_websocket() {
+    let engine = Arc::new(akio::Engine::builder().client_threads(2).build().unwrap());
+    engine.start().unwrap();
+    let (ws_port, rx) = ws_server(&engine);
+    let env = Env::start(&[crate::PROXY], &proxy_to(ws_port));
+    let port = web_port(&env);
+
+    let mut local = TcpStream::connect(("127.0.0.1", port)).unwrap();
+    let ws = open(&rx);
+    let server_hello = crate::wscrypt::hello();
+    ws.send_binary(&server_hello).unwrap();
+    let client_hello = msg(&rx);
+    let mut srv = Session::new(&Secret::new("sock"), &server_hello, &client_hello, true).unwrap();
+    assert_eq!(srv.open(&msg(&rx)).unwrap(), b"");
+    // The proxy's end of the WebSocket, its queue bounded below a message of 4 KiB.
+    let api = env.roles.api("tunnel.proxy").unwrap();
+    let core = &api.downcast_ref::<ProxyApi>().unwrap().0;
+    let proxy = Arc::clone(&super::lock(&core.webs.list)[0]);
+    let conn = super::lock(&proxy.inner)
+        .conns
+        .values()
+        .next()
+        .cloned()
+        .unwrap();
+    let sender = super::lock(&conn.st).ws.clone().unwrap();
+    sender.set_max_queued_bytes(Some(64)).unwrap();
+    // Refused; then one small enough to go, were the first one's number skipped.
+    local.write_all(&[7u8; 4 << 10]).unwrap();
+    let _ = local.write_all(b"x");
+    loop {
+        match next(&rx) {
+            Event::Msg(m) => assert!(srv.open(&m).is_ok(), "a message that does not open"),
+            Event::Close => break,
+            Event::Open(_) => panic!("another WebSocket"),
+        }
+    }
+    assert_eq!(read_to_end(&mut local), b"");
+    drop(env);
+    engine.shutdown();
+    engine.wait();
+}

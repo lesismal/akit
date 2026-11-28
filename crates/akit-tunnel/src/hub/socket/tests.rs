@@ -165,6 +165,45 @@ fn unauthenticated() {
     assert!(plain.starts_with(b"HTTP/1.1 200"), "{plain:?}");
 }
 
+/// A sealed message the WebSocket refuses (here its queue bounded below one message, so the send
+/// fails with `Overloaded`, as akio's late queue refuses one past its bound, A305) ends the
+/// WebSocket and the console's connection: its number is not skipped, so the client never gets a
+/// message that does not open, nor waits on a WebSocket that sends nothing more.
+#[test]
+fn a_message_not_sent_ends_the_websocket() {
+    use std::io::{Read, Write};
+    use std::sync::atomic::{AtomicBool, Ordering};
+    // A console that, given a byte, writes 64 KiB and waits for its connection's end.
+    let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let con = l.local_addr().unwrap().port();
+    let ended = Arc::new(AtomicBool::new(false));
+    let ended2 = Arc::clone(&ended);
+    std::thread::spawn(move || {
+        let Ok((mut s, _)) = l.accept() else { return };
+        let _ = s.read(&mut [0u8; 1]);
+        let _ = s.write_all(&[7u8; 64 << 10]);
+        let _ = s.read_to_end(&mut Vec::new());
+        ended2.store(true, Ordering::SeqCst);
+    });
+    let socket = r#", "console_socket": {"address": "127.0.0.1:0", "password": "s"}"#;
+    let env = Env::start(&[crate::HUB], &hub_doc(con, socket));
+    let c = core(&env);
+    let w = WsClient::dial(&env.engine, &url(&c));
+    let mut sess = w.session("s");
+    let st = state(&c);
+    wait_for("the WebSocket", || st.conns() == 1);
+    let ws = lock(&st.inner).conns.values().next().unwrap().ws.clone();
+    ws.set_max_queued_bytes(Some(64)).unwrap();
+    w.send(&sess.seal(b"g"));
+    assert_eq!(w.wait_closed(), Some(1006));
+    for m in w.received() {
+        assert!(sess.open(&m).is_ok(), "a message that does not open");
+    }
+    wait_for("the console's connection to end", || {
+        ended.load(Ordering::SeqCst)
+    });
+}
+
 /// fit's `TestSocketAborts`: a message that does not open aborts its WebSocket, and so does the
 /// socket's removal every WebSocket it has: ended without a close frame (1006, akio's A238).
 #[test]

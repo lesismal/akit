@@ -176,6 +176,11 @@ impl WsClient {
             .expect("the WebSocket did not close")
     }
 
+    /// The messages that arrived and were not taken yet, in order.
+    pub(crate) fn received(&self) -> Vec<Vec<u8>> {
+        self.msgs.try_iter().collect()
+    }
+
     pub(crate) fn is_closed(&self) -> bool {
         self.closed.try_recv().is_ok()
     }

@@ -138,6 +138,7 @@ first; its status here records the branch, then the akio commit akit pins.
 | A301 | `H2Client` ends its connection at the engine's graceful shutdown (`GOAWAY`; closed now with no stream open, else after its last), as the HTTP/1 client closes its idle ones | on akio's main and pinned (since `db34bfd7`): `H2Acceptor::on_shutdown`; akit's stopgap (`EngineSlot::shutdown`) removed | 4, 10 | I18, I18b |
 | A302 | `Conn::close` on io_uring resets a TCP connection whose received data it did not deliver, as on epoll (or a `Conn::abort` that closes with a reset): today a receive in flight takes the data after the shutdown, so the peer, facing a zero window, is never reset | on akio's main and pinned (since `5893a0ed`): suggestion (a), akio's ADR-188 (`SO_LINGER` 0 when input was not delivered; `akio_sys::reset_on_close`); fastcgi.rs `cut_connections` passes on io_uring | — | I75 |
 | A303 | Linked backpressure that holds under work stealing (ADR-104): a held upstream read (akio-http's `ResponseBody::hold_reads`, under akit's `Download::hold_reads`) and a full downstream write (`BodyStream::queued_bytes`, `on_drain`) bound what a streamed relay holds, as on event loops | requested; stopgap: akit's TCP listeners choose `Scheduling::EventLoops` (`akit_runtime::scheduled`, decision 91) unless `AKIO_DEFAULT_SCHEDULING` is set | 8, 11 | I16, I17, I18b |
+| A305 | A plain WebSocket's late queue (what other threads send while its handler's batch is open) counted in `WsSender::queued_bytes` and waited for by `on_drain`, bounded by the connection's `max_queued_bytes` rather than a fixed 4 MiB, and never dropped silently when the batch ends | requested; akit ends a sealed WebSocket on a refused send instead of skipping a message's number (console.rs `large_transfers_both_ways` still fails now and then meanwhile) | 8, 9 | I103b |
 
 ## A1 TCP listeners on a running engine
 
@@ -3260,3 +3261,44 @@ relay between two connections on different workers, its memory bounded, would ke
 
 **How akit would use it.** `akit_runtime::scheduled` goes, with decision 91: akit's listeners
 take akio's default scheduling again, and `stream_download` passes under it.
+
+## A305 A WebSocket's late queue seen by pacing
+
+**Status.** Requested (2026-11-28). No stopgap that keeps the transfer going: akit ends a sealed
+WebSocket whose send is refused rather than skip a message's number, so the failure says what it
+is; akit-tunnel's `tests/console.rs` `large_transfers_both_ways` still fails now and then until
+this is in akio.
+
+**Problem.** A server-side WebSocket over TCP without compression is "plain" in akio-ws
+(`session.rs`, since `26b811df`): while its I/O thread is inside `on_data`, what other threads
+send goes to a late queue (`TxShared::late`), sent to the connection when the batch ends. That
+queue is invisible to pacing: `WsSender::queued_bytes` and `on_drain` report the connection's send
+queue alone, which is often empty meanwhile. A relay that paces a producer on `queued_bytes` (rule
+8; akit's console socket seals a console connection's reads into the WebSocket, its reads held
+while `queued_bytes` is past 256 KiB) never holds it, and once the late queue passes `LATE_MAX`
+(4 MiB) a send fails with `Overloaded`, long before the connection's own bound (64 MiB). A sealed
+channel cannot lose a message: each one's number is its AES-GCM nonce, so the peer cannot open
+anything after it. Also, `end_batch` sends the late bytes with `let _ = self.conn.send(..)`: if the
+connection refuses them (past `max_queued_bytes`), messages whose sends returned `Ok` are dropped
+without a word.
+
+**Evidence.** gpu51 (Linux, 16 cores), `large_transfers_both_ways` (24 MiB through a web proxy to
+an echo console and back, both ways at once), six copies of the test at once, 240 runs per backend,
+with temporary logging of the hub's failed sends and the proxy's failed opens. At akit `c5945e48`
+(akio `d8d51f61`): io_uring 25 of 240 failed, epoll 17 of 240. At akit `b654b361` (akio
+`db34bfd7`): io_uring 20 of 240, epoll 6 of 240. At akit `deabe4bd` (akio `5893a0ed`): io_uring 21
+of 240, epoll 13 of 240; alone, 3 of 50 and 1 of 50. So no akio change in that range brought it
+(akio-ws's late queue is older). In every failed run the hub's `WsSender::send_binary` returned
+`Overloaded` with `queued_bytes()` 0 (the late queue full, the connection's queue empty), and then
+the proxy logged one message that did not open; no passing run had a refused send.
+
+**Suggested API.** No new API: on a plain session, `queued_bytes` includes the late queue's bytes,
+and `on_drain` runs once both the late queue and the connection's queue are empty (not at once
+while the batch holds late bytes); the late queue's bound is what the connection's
+`max_queued_bytes` leaves, so a sender paced on `queued_bytes` never meets it; and the late bytes
+`end_batch` cannot queue fail the connection (as an abort) rather than vanish.
+
+**How akit would use it.** Nothing changes in akit: the console socket's gate
+(`akit-tunnel/src/pace.rs`) then holds the console's reads while the late queue fills, and
+`large_transfers_both_ways` passes under load. The send-failure handling stays, for a send that
+fails for any other reason.

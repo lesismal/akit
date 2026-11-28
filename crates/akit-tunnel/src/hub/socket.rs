@@ -13,7 +13,8 @@
 //!
 //! A WebSocket refused or failed is ended at once, what is queued dropped, as fit aborts it
 //! (`WsSender::abort`, akio's A238); one whose console connection closed gets a close frame behind
-//! what is queued, as fit's.
+//! what is queued, as fit's. So is one a sealed message could not be sent on (a send akio refuses,
+//! as `Overloaded`, A305): that message's number would be skipped, and nothing after it would open.
 
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
@@ -351,10 +352,20 @@ impl SockConn {
         }
         let Some(sess) = st.sess.as_mut() else { return };
         // Sealed and sent under the lock, so that the messages go out in the order of their
-        // numbers.
+        // numbers. One that is not sent leaves its number unused, and nothing after it would
+        // open: the WebSocket ends there.
         for chunk in data.chunks(SEAL_CHUNK) {
-            if self.ws.send_binary(&sess.seal(chunk)).is_err() {
-                break;
+            if let Err(e) = self.ws.send_binary(&sess.seal(chunk)) {
+                drop(st);
+                if !matches!(e, akio::Error::Closed) {
+                    akit_observe::warn!(
+                        Tunnel,
+                        "tunnel.hub: console socket: a message to {} could not be sent ({e}); the WebSocket is ended",
+                        self.peer
+                    );
+                }
+                self.abort();
+                return;
             }
         }
         let gate = st.up_gate.clone();

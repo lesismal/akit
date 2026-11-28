@@ -22,6 +22,26 @@ done and where the work differs from the plan.
 
 ## Log
 
+### 2026-11-28: a sealed console WebSocket ends on a refused send (akio's A305)
+
+- akit-tunnel's `tests/console.rs` `large_transfers_both_ways` failed now and then on gpu51
+  ("a message failed to decrypt", then a reset). Logged, every failed run had the hub's
+  `WsSender::send_binary` refused with `Overloaded` while `queued_bytes()` was 0: the console
+  socket's WebSocket is a plain akio-ws session, and what the console's connection seals while
+  the WebSocket's thread is inside `on_data` goes to akio-ws's late queue, which pacing does not
+  see and which refuses a send past 4 MiB. The hub then went on with the next message, its number
+  (the AES-GCM nonce) one past the proxy's, so nothing after it opened. Not new with the pins to
+  `db34bfd7` and `5893a0ed`: c5945e48 (akio `d8d51f61`) failed as often under the same load.
+- The console socket and the web proxies now end the WebSocket on any sealed message they cannot
+  send (warned unless the WebSocket was already closed), instead of skipping its number; the web
+  proxy checks its hello and proof of the password too. Tests: `hub::socket::tests` and
+  `proxy::web::tests` `a_message_not_sent_ends_the_websocket` (the WebSocket's queue bounded
+  below one message: before, the client waited on a WebSocket that sent nothing more, or got a
+  message that did not open).
+- akio API request A305 asks for the late queue to count in `queued_bytes` and `on_drain`, under
+  the connection's bound, and never dropped; until then `large_transfers_both_ways` still fails
+  now and then under load, now with "could not be sent (overloaded)".
+
 ### 2026-11-28: akio pinned at `5893a0ed`: A302 and the shutdown follow-ups of A301
 
 - akio: `5893a0ed` on akio's main (from `db34bfd7`). akit's `rev` and `akit_runtime::AKIO_REV` move
