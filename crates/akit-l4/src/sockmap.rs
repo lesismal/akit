@@ -16,7 +16,10 @@
 //!   to either side but what the client sent before (its ClientHello on a listener routing by
 //!   server name, a read that came before the hold) and the service's PROXY header: those are
 //!   written to the upstream's socket first, directly, once both sockets are in the map and
-//!   before the kernel relays any byte (akio's [`akio::ebpf::Relay::tunnel`]);
+//!   before the kernel relays any byte (akio's [`akio::ebpf::Relay::tunnel`]). The upstream is
+//!   dialed once the callback that took the connection is over (on the client's thread), so
+//!   what a layer below hands over after it (the rest of the read that brought a PROXY header)
+//!   is among them;
 //! - neither connection has a transport layer (TLS, which a `tcp` listener never terminates);
 //! - the relay has room ([`akio::ebpf::DEFAULT_PAIRS`] pairs).
 //!

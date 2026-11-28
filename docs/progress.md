@@ -22,6 +22,37 @@ done and where the work differs from the plan.
 
 ## Log
 
+### 2026-11-28: the sockmap relay's splice races, fixed
+
+- `akit-listener/tests/sockmap.rs` `client_proxy_header_spliced` and `sni_passthrough_spliced`,
+  taken for load-flaky, failed alone on gpu51 (kernel 7.0): before the fix, 100 runs each per
+  backend gave `sni_passthrough_spliced` 6 failures on epoll and 1 on io_uring, and an earlier
+  50 gave `client_proxy_header_spliced` 5 on epoll; `proxy_header_goes_first` never failed. Two
+  causes, both akit's (akit-l4's relay), none akio's:
+  - A connection whose listener reads a PROXY header was dialed from the callback that took it,
+    which runs inside akio-mux's `ProxyProtocol`; that layer hands the rest of the read that
+    brought the header (the client's first bytes, sent with it) to the handler after that
+    callback returns. When the upstream opened first, on another I/O thread, it spliced with
+    those bytes counted as read but not yet among what goes first: they then reached a spliced
+    connection, which closes both sides rather than reorder the stream (`Tunnel::late_payload`),
+    and the client read an EOF. A 5 ms pause before those bytes reach the relay made it fail 8
+    times in 10 on each backend. Such a connection now dials on the client's thread once the
+    callback is over (`Conn::run_on_loop`), its reads held: the rest is kept by then and written
+    first (the same pause: 20 of 20 on each backend). A dial dropped unrun, the client closed
+    first, ends the side that never opened. Relays the kernel cannot splice dial as before.
+  - `Service::spliced` was counted after `Relay::tunnel` returned, but the kernel relays from
+    inside it: a client could read the echo of a spliced connection before the count (the
+    fallback's connection of `sni_passthrough_spliced`, whose bytes go first straight to the
+    upstream). It now counts before the splice, and a splice that fails is uncounted before any
+    of its bytes go through userspace.
+- `client_proxy_header_spliced` also sends a header and the first bytes in one write.
+- Tests: `make check` on macOS (the sockmap tests relay in userspace there); on gpu51 clippy,
+  akit-l4's and akit-listener's tests on epoll and io_uring, and the three tests alone as root
+  with `AKIO_TEST_EXPECT_EBPF=1`, 100 times and then 50 more on each backend: all passed (also 20 times
+  `client_proxy_header_spliced` with a 3 ms pause after the client's reads are held, to look for
+  a read io_uring still had in flight: none was seen, likely because the ring's deferred task
+  work runs at the loop's next entry, after the cancel it submits).
+
 ### 2026-11-28: the tests' listeners bind port 0; four load-only failures
 
 - Tests failed under load with "Address already in use" (akit-llm's

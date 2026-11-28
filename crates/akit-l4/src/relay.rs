@@ -169,8 +169,44 @@ fn start(
         c.set_relayed(true);
     }
     r.s.add(&r);
-    Relay::dial(&r);
+    if r.kernel.is_none() {
+        Relay::dial(&r);
+        return Some(r);
+    }
+    // A connection the kernel may splice dials once the callback that took it is over: a layer
+    // below (the listener's PROXY header) hands the rest of the read that brought its header to
+    // the client's handler after this. The splice counts those bytes as read, so they must be
+    // among what the upstream's opening writes first; had the upstream opened (on another
+    // thread) before they came, they would come to a spliced connection, which closes both
+    // sides rather than reorder the stream. Dialed on the client's thread after the callback,
+    // they are kept by then, and its reads are held: nothing more comes from it in userspace.
+    let dial = DialOnLoop(Some(Arc::clone(&r)));
+    if c.run_on_loop(move |_, _| dial.run()).is_err() {
+        // Closed already: `dial`, dropped unrun, ends the side that never opened.
+        c.close();
+    }
     Some(r)
+}
+
+/// The first dial of a relay the kernel may splice, run on the client's thread
+/// ([`Conn::run_on_loop`]). Dropped unrun (the client closed first), it ends the upstream's side,
+/// which will not open, so the relay lets go of its place once the client's side ends too.
+struct DialOnLoop(Option<Arc<Relay>>);
+
+impl DialOnLoop {
+    fn run(mut self) {
+        if let Some(r) = self.0.take() {
+            Relay::dial(&r);
+        }
+    }
+}
+
+impl Drop for DialOnLoop {
+    fn drop(&mut self) {
+        if let Some(r) = self.0.take() {
+            r.side_ended();
+        }
+    }
 }
 
 /// A TCP connection whose ClientHello is still being read, before a service takes it.
@@ -461,10 +497,13 @@ impl Relay {
         first: Vec<Vec<u8>>,
     ) -> Vec<Vec<u8>> {
         let first = first.concat();
+        // Counted before the kernel relays the first byte, which may reach the client before
+        // `tunnel` returns: whoever sees a byte the kernel relayed sees the connection counted.
+        // A splice that fails is uncounted before any of its bytes go through userspace.
+        self.s.spliced.fetch_add(1, Ordering::Relaxed);
         match k.tunnel(&self.client, up, &first) {
             Ok(t) => {
                 let _ = self.tunnel.set(t);
-                self.s.spliced.fetch_add(1, Ordering::Relaxed);
                 // Its bytes no longer reach akio, which would close it as idle: the service's
                 // sweep keeps its idle timeout by the sockets' counters instead.
                 let _ = self.client.set_idle_timeout(None);
@@ -473,10 +512,13 @@ impl Relay {
                 self.s.arm_sweep();
                 Vec::new()
             }
-            Err(e) => match first.get(e.written..) {
-                Some(rest) if !rest.is_empty() => vec![rest.to_vec()],
-                _ => Vec::new(),
-            },
+            Err(e) => {
+                self.s.spliced.fetch_sub(1, Ordering::Relaxed);
+                match first.get(e.written..) {
+                    Some(rest) if !rest.is_empty() => vec![rest.to_vec()],
+                    _ => Vec::new(),
+                }
+            }
         }
     }
 

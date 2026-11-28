@@ -209,7 +209,9 @@ impl Service {
     }
 
     /// How many of its connections have been spliced in the kernel (`sockmap`, I51b), those
-    /// closed since too.
+    /// closed since too. A connection counts before the kernel relays its first byte (for as
+    /// long as a splice that then fails takes: it is uncounted before its bytes go through
+    /// userspace).
     #[must_use]
     pub fn spliced(&self) -> u64 {
         self.0.spliced.load(Ordering::Relaxed)

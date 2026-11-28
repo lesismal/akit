@@ -413,9 +413,9 @@ fn client_proxy_header_spliced() {
         "",
         &up,
     ));
+    const HEADER: &[u8] = b"PROXY TCP4 203.0.113.9 198.51.100.1 5555 443\r\n";
     let mut c = a.dial();
-    c.write_all(b"PROXY TCP4 203.0.113.9 198.51.100.1 5555 443\r\n")
-        .unwrap();
+    c.write_all(HEADER).unwrap();
     assert_eq!(round_trip(&mut c, b"via a proxy"), b"via a proxy");
     let more = pattern(256 << 10, 7);
     assert!(
@@ -423,6 +423,20 @@ fn client_proxy_header_spliced() {
         "the echo came back otherwise"
     );
     assert_eq!(a.spliced("svc"), if_kernel(1));
+
+    // The header and the first bytes in one write: the read that brings the header brings
+    // them too, after the listener took the connection, and they go to the upstream ahead of
+    // what the kernel relays.
+    let mut c = a.dial();
+    c.write_all(&[HEADER, b"in one write"].concat()).unwrap();
+    let mut got = [0u8; 12];
+    c.read_exact(&mut got).unwrap();
+    assert_eq!(&got, b"in one write");
+    assert!(
+        round_trip(&mut c, &more) == more,
+        "the echo came back otherwise"
+    );
+    assert_eq!(a.spliced("svc"), if_kernel(2));
 }
 
 /// A TLS connection routed by the server name of its ClientHello is spliced once its upstream

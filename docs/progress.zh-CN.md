@@ -21,6 +21,31 @@
 
 ## 日志
 
+### 2026-11-28：sockmap 转发的拼接竞态已修复
+
+- `akit-listener/tests/sockmap.rs` 的 `client_proxy_header_spliced` 和 `sni_passthrough_spliced`
+  曾被当作负载下的偶发失败，但在 gpu51（内核 7.0）上单独运行也会失败：修复前每个后端各跑 100 次，
+  `sni_passthrough_spliced` 在 epoll 上失败 6 次、在 io_uring 上失败 1 次；更早的 50 次中
+  `client_proxy_header_spliced` 在 epoll 上失败 5 次；`proxy_header_goes_first` 从未失败。原因有两个，
+  都在 akit（akit-l4 的转发），不在 akio：
+  - 监听器读取 PROXY 头的连接，是在接手它的回调里拨号的，而这个回调运行在 akio-mux 的
+    `ProxyProtocol` 之内；该层在回调返回之后，才把带来 PROXY 头的那次读取的剩余部分（客户端随头一起
+    发送的首批字节）交给处理器。若上游先在另一个 I/O 线程上打开，拼接时这些字节已计为已读，却不在
+    先写出的内容里：它们随后到达一个已拼接的连接，该连接宁可关闭两侧也不让字节流乱序
+    （`Tunnel::late_payload`），客户端读到 EOF。在这些字节到达转发之前暂停 5 ms，两个后端上各 10 次
+    失败 8 次。现在这样的连接在回调结束后、于客户端的线程上拨号（`Conn::run_on_loop`），其读取保持
+    暂停：此时剩余部分已经保存，并先写出（同样暂停：两个后端各 20 次全部通过）。拨号任务若未运行就被
+    丢弃（客户端先关闭），则结束那一侧从未打开的连接。内核不能拼接的转发照旧拨号。
+  - `Service::spliced` 是在 `Relay::tunnel` 返回之后才计数的，而内核在它内部就开始转发：客户端可能
+    在计数之前就读到已拼接连接的回显（`sni_passthrough_spliced` 中后备服务的连接，其字节直接先写给
+    上游）。现在拼接之前就计数，拼接失败则在其任何字节经用户态发送之前撤销计数。
+- `client_proxy_header_spliced` 还会在一次写入中发送 PROXY 头和首批字节。
+- 测试：macOS 上的 `make check`（那里 sockmap 测试在用户态转发）；gpu51 上的 clippy、akit-l4 和
+  akit-listener 在 epoll 与 io_uring 下的测试，以及以 root 并设置 `AKIO_TEST_EXPECT_EBPF=1` 单独运行三个
+  测试，每个后端先 100 次再 50 次：全部通过（另在客户端读取暂停之后暂停
+  3 ms，跑 `client_proxy_header_spliced` 20 次，寻找 io_uring 仍在进行中的读取：未发现，可能是因为环的延迟任务
+  在事件循环下一次进入内核时才执行，排在它提交的取消之后）。
+
 ### 2026-11-28：测试的监听器绑定端口 0；四个只在负载下出现的失败
 
 - 一些测试在负载下以 "Address already in use" 失败（akit-llm 的 `a_dead_upstream_and_a_direct_node` 和 `mesh_methods`，
