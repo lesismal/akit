@@ -131,7 +131,7 @@ first; its status here records the branch, then the akio commit akit pins.
 | A287 | A reader of a torrent's bytes that waits for their pieces and asks for them first, and file priorities | requested | 1 | I155 |
 | A288 | A torrent's trackers with their announces, its peer sources and web seeds' state, and a recheck in place (fib's A87, A88); a builder of chosen files that stops | requested | — | I157, I156 |
 | A277 | A client response's peer certificate chain, and a client TLS verifier that keeps a certificate it refused for the caller to see | requested by I132; a recorded stopgap (a probe of the member's certificate) | 1, 15 | I132–I139c |
-| A301 | `H2Client` ends its connection at the engine's graceful shutdown (`GOAWAY`; closed now with no stream open, else after its last), as the HTTP/1 client closes its idle ones | requested; stopgap: `EngineSlot::shutdown`, which `akit run` calls before the engine's shutdown, closes the pools' idle h2 connections | 4, 10 | I18, I18b |
+| A301 | `H2Client` ends its connection at the engine's graceful shutdown (`GOAWAY`; closed now with no stream open, else after its last), as the HTTP/1 client closes its idle ones | on akio's main and pinned (since `db34bfd7`): `H2Acceptor::on_shutdown`; akit's stopgap (`EngineSlot::shutdown`) removed | 4, 10 | I18, I18b |
 | A302 | `Conn::close` on io_uring resets a TCP connection whose received data it did not deliver, as on epoll (or a `Conn::abort` that closes with a reset): today a receive in flight takes the data after the shutdown, so the peer, facing a zero window, is never reset | requested; no stopgap (fastcgi.rs `cut_connections` fails on io_uring meanwhile) | — | I75 |
 
 ## A1 TCP listeners on a running engine
@@ -3098,6 +3098,8 @@ deadline thread.
 
 
 ## A301 `H2Client` ended by the engine's graceful shutdown
+
+**Done.** On akio's main and pinned (since `db34bfd7`, akio's `39663e59`): an `H2Client` connection's acceptor ends it at the engine's graceful shutdown (`GOAWAY(NO_ERROR)`, `is_open` false, waiting and new requests refused with `ClientError::Refused`, closed at once when idle, else after its last stream). akit's stopgap (`EngineSlot::shutdown`, its list of h2 pools and its call in `akit run`) is removed; the tests stay and pass on akio's work.
 
 **Status.** Requested (2026-11-28). Stopgap in akit: `akit_upstream::EngineSlot::shutdown`, which
 `akit run` calls before it shuts its engine down, closes the pools' idle h2 connections (recorded

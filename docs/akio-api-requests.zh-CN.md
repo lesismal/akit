@@ -130,7 +130,7 @@
 | A287 | 等待分片并优先请求它们的种子字节读取器，以及文件优先级 | 已提出 | 1 | I155 |
 | A288 | 种子的 tracker 及其 announce、peer 来源和 web seed 的状态，以及原地重新校验（fib 的 A87、A88）；构建选定文件、可停止的构建器 | 已提出 | — | I157, I156 |
 | A277 | 客户端响应所在连接的对端证书链，以及能把被拒绝的证书留给调用方查看的客户端 TLS 校验 | I132 提出；有记录在案的权宜做法（探测成员的证书） | 1, 15 | I132–I139c |
-| A301 | `H2Client` 在引擎优雅关闭时结束其连接（`GOAWAY`；没有打开的流时立即关闭，否则在最后一个流结束后关闭），如同 HTTP/1 客户端关闭其空闲连接 | 已提出；权宜做法：`akit run` 在关闭引擎前调用的 `EngineSlot::shutdown` 关闭池的空闲 h2 连接 | 4, 10 | I18, I18b |
+| A301 | `H2Client` 在引擎优雅关闭时结束其连接（`GOAWAY`；没有打开的流时立即关闭，否则在最后一个流结束后关闭），如同 HTTP/1 客户端关闭其空闲连接 | 已进入 akio 的 main 并锁定（自 `db34bfd7` 起）：`H2Acceptor::on_shutdown`；akit 的权宜做法（`EngineSlot::shutdown`）已去掉 | 4, 10 | I18, I18b |
 | A302 | io_uring 上的 `Conn::close` 像 epoll 上一样重置一个收到了未交付数据的 TCP 连接（或提供以重置方式关闭的 `Conn::abort`）：目前进行中的接收在 shutdown 之后取走数据，面对零窗口的对端永远收不到重置 | 已提出；没有权宜做法（其间 fastcgi.rs 的 `cut_connections` 在 io_uring 上会失败） | — | I75 |
 
 ## A1 运行中引擎上的 TCP 监听器
@@ -2466,6 +2466,8 @@ akio 的 HTTP 客户端给出的响应不带其连接握手时看到的证书链
 
 
 ## A301 引擎优雅关闭时结束 `H2Client`
+
+**完成。** 已进入 akio 的 main 并锁定（自 `db34bfd7` 起，akio 的 `39663e59`）：`H2Client` 连接的 acceptor 在引擎优雅关闭时结束它（`GOAWAY(NO_ERROR)`，`is_open` 为 false，等待中的和新的请求以 `ClientError::Refused` 被拒绝，空闲时立即关闭，否则在最后一个流结束后关闭）。akit 的权宜做法（`EngineSlot::shutdown`、它遍历的 h2 池列表及其在 `akit run` 中的调用）已去掉；测试保留，并在 akio 的实现上通过。
 
 **状态。** 已提出（2026-11-28）。akit 中的权宜做法：`akit run` 在关闭引擎前调用 `akit_upstream::EngineSlot::shutdown`，
 关闭池的空闲 h2 连接（记录在[进度](progress.zh-CN.md)中）。

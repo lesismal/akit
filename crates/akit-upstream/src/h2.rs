@@ -120,11 +120,8 @@ pub(crate) struct Conns {
 }
 
 impl Conns {
-    /// Closes the connections that carry no stream (`GOAWAY`, then closed): the pool is closed,
-    /// or the engine shuts down. With `retire`, the others take no more streams and close once
-    /// their last is over (the pool is closed); without, they go on taking streams and close
-    /// once they carry none ([`crate::EngineSlot::shutdown`]).
-    pub(crate) fn close_idle(&self, retire: bool) {
+    /// Closes the connections that carry no stream: the pool is closed.
+    pub(crate) fn close_idle(&self) {
         let closing: Vec<H2Client> = {
             let mut st = lock(&self.state);
             let mut out = Vec::new();
@@ -133,7 +130,7 @@ impl Conns {
                     out.extend(c.client.take());
                     false
                 } else {
-                    c.retiring |= retire;
+                    c.retiring = true;
                     true
                 }
             });
@@ -322,8 +319,6 @@ impl Inner {
                 return self.dialed(backend, id, Err(Error::Client(ClientError::Io(e))));
             }
         };
-        // From now on the engine's shutdown closes the pool's idle connections.
-        self.engine.add_h2_pool(self);
         let me = Arc::clone(self);
         // akio resolves a name off this thread, and dials its addresses, each within the
         // upstream's connect timeout (`t.opts.happy_eyeballs`).
@@ -421,7 +416,6 @@ impl Inner {
                     || !c.open()
                     || idle >= max_idle
                     || self.closing.load(Ordering::SeqCst)
-                    || self.engine.is_shutting_down()
                 {
                     close = st.list.swap_remove(i).client;
                 } else {

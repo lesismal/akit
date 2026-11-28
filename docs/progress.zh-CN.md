@@ -21,6 +21,17 @@
 
 ## 日志
 
+### 2026-11-28：去掉 A301 的权宜做法
+
+- akio 的 h2 客户端在引擎优雅关闭时自行结束其连接（A301，自 `db34bfd7` 起锁定），因此 akit 的权宜做法去掉：`EngineSlot::shutdown`、
+  它遍历的 h2 池弱引用列表（每个池在首次拨号时加入），以及 `akit run` 在 `akit_listener::shutdown` 之前对它的调用。保留的是 akit 自己的修复：
+  重载淘汰的池关闭其 HTTP/1 客户端的空闲连接（`Client::close_idle`，A10）及其空闲的 h2 连接。
+- 与权宜做法的一点不同：关闭时的 `GOAWAY` 之后，忙碌的 h2 连接不再接受新流（akio 以 `ClientError::Refused` 拒绝，如同收到服务器的
+  `GOAWAY` 之后），而权宜做法让它在变为空闲之前继续接受新流。
+- 测试除去掉的调用外不变：`akit-upstream` 的 `an_idle_connection_does_not_hold_the_engine_shutdown` 和
+  `a_busy_connection_closes_after_its_last_stream_at_shutdown`（现在等待池放下已关闭的连接，因为响应可能先于 akio 的关闭到达该连接）、
+  `a_closed_pool_closes_its_idle_connections`，以及 `akit` 的 `shutdown`。
+
 ### 2026-11-28：akio 锁定在 `db34bfd7`：A301
 
 - akio：akio main 上的 `db34bfd7`（自 `d8d51f61` 起）。akit 的 `rev` 与 `akit_runtime::AKIO_REV` 随之移动；akit 无需改动即可构建。

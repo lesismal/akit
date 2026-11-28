@@ -510,11 +510,10 @@ fn engine_timed(timeout: Duration) -> Arc<Engine> {
     Arc::new(e)
 }
 
-/// The engine's graceful shutdown as `akit run` does it: the pools told first
-/// ([`EngineSlot::shutdown`]), then the engine shut down and waited for. How long it took.
-fn shut_down(slot: &EngineSlot, e: &Engine) -> Duration {
+/// The engine's graceful shutdown as `akit run` does it: shut down and waited for. How long it
+/// took.
+fn shut_down(e: &Engine) -> Duration {
     let start = Instant::now();
-    slot.shutdown();
     e.shutdown();
     e.wait();
     start.elapsed()
@@ -522,19 +521,19 @@ fn shut_down(slot: &EngineSlot, e: &Engine) -> Duration {
 
 /// A graceful shutdown of the engine the pool dials through ends once its own work is done: the
 /// pool's idle h2c connection does not hold it until `shutdown_timeout`, as an HTTP/1 one does
-/// not (fit's upstream connections, on an engine of their own, never hold its listeners').
+/// not (fit's upstream connections, on an engine of their own, never hold its listeners'):
+/// akio's h2 client ends it at the shutdown (`GOAWAY`, akio API request A301).
 #[test]
 fn an_idle_connection_does_not_hold_the_engine_shutdown() {
     const TIMEOUT: Duration = Duration::from_secs(20);
     let up = Upstream::start();
     let e = engine_timed(TIMEOUT);
-    let slot = EngineSlot::with(e.clone());
-    let pool = Pool::new(&upstream(&[up.addr()], ""), slot.clone());
+    let pool = Pool::new(&upstream(&[up.addr()], ""), EngineSlot::with(e.clone()));
     let rx = send(&pool, "/a", 0..1);
     assert_eq!(body(&rx.recv().unwrap().1), "h2 /a/0");
     // The connection stays for the next request.
     assert_eq!(up.connections(), 1);
-    let took = shut_down(&slot, &e);
+    let took = shut_down(&e);
     assert!(
         took < TIMEOUT,
         "the shutdown waited {took:?} for the idle upstream connection"
@@ -556,15 +555,13 @@ fn a_busy_connection_closes_after_its_last_stream_at_shutdown() {
         }
     });
     let e = engine_timed(TIMEOUT);
-    let slot = EngineSlot::with(e.clone());
     let pool = Pool::new(
         &upstream(&[up.local_addrs()[0].to_string()], ""),
-        slot.clone(),
+        EngineSlot::with(e.clone()),
     );
     let rx = send(&pool, "/hold", 0..1);
     let d = held.recv_timeout(TIMEOUT).unwrap();
     let start = Instant::now();
-    slot.shutdown();
     e.shutdown();
     // The stream is still under way: its connection stays.
     assert_eq!(pool.h2_connections(0), Some((1, 1)));
@@ -573,7 +570,11 @@ fn a_busy_connection_closes_after_its_last_stream_at_shutdown() {
     let took = start.elapsed();
     assert_eq!(body(&rx.recv_timeout(TIMEOUT).unwrap().1), "released");
     assert!(took < TIMEOUT, "the shutdown waited {took:?}");
-    assert_eq!(pool.h2_connections(0), Some((0, 0)));
+    // The pool lets the connection go at its stream's end, or, had the response come before
+    // akio's shutdown reached the connection, once it finds it closed while idle.
+    eventually("its connection is gone", || {
+        pool.h2_connections(0) == Some((0, 0))
+    });
     up.shutdown();
 }
 

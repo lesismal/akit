@@ -22,6 +22,22 @@ done and where the work differs from the plan.
 
 ## Log
 
+### 2026-11-28: the A301 stopgap removed
+
+- akio's h2 client ends its connections at the engine's graceful shutdown itself (A301, pinned
+  since `db34bfd7`), so akit's stopgap goes: `EngineSlot::shutdown`, the weak list of h2 pools it
+  walked (each added at its first dial) and its call in `akit run` before
+  `akit_listener::shutdown`. What stays is akit's own: a pool a reload retires closes its HTTP/1
+  client's idle connections (`Client::close_idle`, A10) and its idle h2 ones.
+- One difference from the stopgap: after the shutdown's `GOAWAY` a busy h2 connection takes no
+  new stream (akio refuses them with `ClientError::Refused`, as after a server's `GOAWAY`), where
+  the stopgap let it take streams until it went idle.
+- Tests unchanged but for the removed call: `akit-upstream`'s
+  `an_idle_connection_does_not_hold_the_engine_shutdown` and
+  `a_busy_connection_closes_after_its_last_stream_at_shutdown` (which now waits for the pool to
+  let the closed connection go, as the response may come before akio's shutdown reaches the
+  connection), `a_closed_pool_closes_its_idle_connections`, and `akit`'s `shutdown`.
+
 ### 2026-11-28: akio pinned at `db34bfd7`: A301
 
 - akio: `db34bfd7` on akio's main (from `d8d51f61`). akit's `rev` and `akit_runtime::AKIO_REV` move
