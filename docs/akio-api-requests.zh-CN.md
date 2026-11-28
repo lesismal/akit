@@ -139,6 +139,7 @@
 | A303 | 在工作窃取（ADR-104）下依然成立的联动背压：暂停的上游读取（akio-http 的 `ResponseBody::hold_reads`，akit 的 `Download::hold_reads` 在其上）与写满的下游（`BodyStream::queued_bytes`、`on_drain`）像在事件循环上一样限制流式转发占用的内存 | 已进入 akio 的 main 并锁定（自 `2575a253` 起）：原因不是背压，而是 akio-buf 的每线程缓存，现在每个线程每个大小类最多保留 256 KiB（akio 的 ADR-190）；akit 的权宜做法（`akit_runtime::scheduled`，决定 91）已去掉：akit 的监听器采用 akio 的默认调度 | 8, 11 | I16, I17, I18b |
 | A305 | 普通（plain）WebSocket 的迟到队列（其处理器的批次打开期间其他线程发送的内容）计入 `WsSender::queued_bytes` 并由 `on_drain` 等待，以连接的 `max_queued_bytes` 而不是固定的 4 MiB 为上限，并且在批次结束时绝不静默丢弃 | 已进入 akio 的 main 并锁定（自 `2575a253` 起）：akio 的 ADR-189；`large_transfers_both_ways` 在负载下通过；加密的 WebSocket 在发送被拒时仍会结束 | 8, 9 | I103b |
 | A306 | 由 `akio_http::Service` 回答在进程内构造的请求：用方法、路径、头字段和请求体构造请求来运行其处理器，其回答（或分离后的回答）交给回调 | 已请求；临时方案：成员的 Admin API 经由到自己回环监听的一跳回答其链接上的调用 | 93 | I139b |
+| A311 | akio-http 为 Go 的 `net/http` 命名的每个状态码给出原因短语：现在 412、428、422、410、416 等发出的是 `Unknown` | 已请求；没有功能依赖它（客户端只看状态码） | — | I163 |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -2647,3 +2648,18 @@ akio 改动带来的（akio-ws 的迟到队列更早就有）。每次失败中�
 （或同样的 `Context::local`）：处理器像对完整读到的请求那样运行，`ctx.body()` 即给出的请求体，`ctx.respond` 以及分离后回答的
 `respond` 只调用一次 `reply`，既不回答也不分离的处理器像现在一样以 500 回答。流式请求体（`BodyMode::Stream`）可以把整个请求体作为
 一个分块再加结束交付。
+
+## A311 每个状态码的原因短语
+
+**状态。** 已请求（2026-11-28，I163）。没有功能依赖它。
+
+**问题。** `akio_http::message::reason` 认识 34 个状态码，其余写作 `Unknown`。akit 的 Admin API 对过期的 `If-Match` 回答
+`412 Unknown`，对缺少它的 reconcile 回答 `428 Unknown`，助手被拒绝的应用回答 `422 Unknown`；fit（Go 的 `net/http`）写的是
+`412 Precondition Failed`、`428 Precondition Required` 和 `422 Unprocessable Entity`。客户端读的是状态码，所以没有东西坏掉；
+浏览器开发者工具和日志显示 `Unknown`。
+
+**建议。** 采用 Go 的 `http.StatusText` 的表（RFC 9110 及已登记的扩展）：增加 102、103、203、205、207、208、226、300、305、402、
+406、407、410、412、416、418、421、422、423、424、425、428、451、506、507、508、510 和 511；只有 Go 也不命名的状态码才写 `Unknown`。
+
+**akit 如何使用。** akit 无需改动。
+

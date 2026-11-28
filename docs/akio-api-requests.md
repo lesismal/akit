@@ -140,6 +140,7 @@ first; its status here records the branch, then the akio commit akit pins.
 | A303 | Linked backpressure that holds under work stealing (ADR-104): a held upstream read (akio-http's `ResponseBody::hold_reads`, under akit's `Download::hold_reads`) and a full downstream write (`BodyStream::queued_bytes`, `on_drain`) bound what a streamed relay holds, as on event loops | on akio's main and pinned (since `2575a253`): not backpressure but akio-buf's per-thread caches, now at most 256 KiB of a size class a thread (akio's ADR-190); akit's stopgap (`akit_runtime::scheduled`, decision 91) removed: akit's listeners take akio's default scheduling | 8, 11 | I16, I17, I18b |
 | A305 | A plain WebSocket's late queue (what other threads send while its handler's batch is open) counted in `WsSender::queued_bytes` and waited for by `on_drain`, bounded by the connection's `max_queued_bytes` rather than a fixed 4 MiB, and never dropped silently when the batch ends | on akio's main and pinned (since `2575a253`): akio's ADR-189; `large_transfers_both_ways` passes under load; a sealed WebSocket still ends on a refused send | 8, 9 | I103b |
 | A306 | A request made in process answered by an `akio_http::Service`: its handler run with a request built from a method, a path, header fields and a body, its answer (or its detached one) given to a callback | requested; stopgap: a member's Admin API answers its link's calls through a hop to its own listener on loopback | 93 | I139b |
+| A311 | akio-http's reason phrases for every status Go's `net/http` names: today 412, 428, 422, 410, 416 and others go out as `Unknown` | requested; nothing waits for it (clients read the status code) | — | I163 |
 
 ## A1 TCP listeners on a running engine
 
@@ -3350,3 +3351,20 @@ runs as for a request read whole, `ctx.body()` is the body given, `ctx.respond` 
 reply's `respond` call `reply` once, and a handler that neither responds nor detaches is answered
 500 as now. Streamed bodies (`BodyMode::Stream`) may deliver the whole body as one chunk and the
 end.
+
+## A311 Reason phrases for every status
+
+**Status.** Requested (2026-11-28, I163). Nothing waits for it.
+
+**Problem.** `akio_http::message::reason` knows 34 codes and writes `Unknown` for the rest. akit's
+Admin API answers a stale `If-Match` `412 Unknown`, a reconcile without one `428 Unknown`, and the
+assistant's refused apply `422 Unknown`, where fit (Go's `net/http`) writes `412 Precondition
+Failed`, `428 Precondition Required` and `422 Unprocessable Entity`. Clients read the code, so
+nothing breaks; a browser's developer tools and logs show `Unknown`.
+
+**Suggestion.** The table of Go's `http.StatusText` (RFC 9110 and the registered extensions): 102,
+103, 203, 205, 207, 208, 226, 300, 305, 402, 406, 407, 410, 412, 416, 418, 421, 422, 423, 424, 425,
+428, 451, 506, 507, 508, 510 and 511 added; `Unknown` only for a code Go does not name either.
+
+**How akit would use it.** Nothing changes in akit.
+
