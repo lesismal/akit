@@ -20,15 +20,25 @@
 //!                           store with the keys named (an empty one removed); 409 without a
 //!                           store, 412 for a version not the one in use, 400 with each error at
 //!                           its path
+//! POST /api/providers/test  {"provider", "key", "model", "models_only"}: the provider, saved or
+//!                           not, tried: its model list (15 s), then a short call (30 s);
+//!                           4 at once
 //! ```
 //!
 //! Nothing here blocks an I/O thread (rule 1): what writes the store runs on a pool of the
 //! assistant's own, one write at a time.
 
 pub mod json;
+pub mod model;
 pub mod settings;
+mod test;
+
+pub use test::{CALL_WAIT, MAX_TESTS, MODELS_WAIT};
+#[cfg(any(test, feature = "stand-ins"))]
+pub mod standin;
 
 use std::collections::BTreeMap;
+use std::sync::atomic::AtomicUsize;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use akio::{Pool, PoolConfig};
@@ -70,6 +80,9 @@ pub type Log = Arc<dyn Fn(String) + Send + Sync>;
 /// The running config, as JSON: whose `llm.proxy` an `llm_proxy` provider calls.
 pub type Running = Arc<dyn Fn() -> String + Send + Sync>;
 
+/// Where `llm.proxy`'s agents' API listens, its port as bound; `None` while it does not run.
+pub type ProxyAddr = Arc<dyn Fn() -> Option<std::net::SocketAddr> + Send + Sync>;
+
 /// What an [`Assistant`] needs.
 pub struct Options {
     /// `admin.assistant` as akit started with it, which turned the assistant on.
@@ -84,6 +97,17 @@ pub struct Options {
     pub running: Option<Running>,
     /// Says what users changed.
     pub log: Log,
+    /// The running engine whose connections the model calls take (the listeners'); without
+    /// one, nothing is called.
+    pub engine: Option<Arc<akio::Engine>>,
+    /// The CAs an https provider's certificate is checked against: the system's, read once on
+    /// the control plane; akio's own lazy read without them.
+    pub roots: Option<akio::tls::RootCerts>,
+    /// The model client's bounds.
+    pub limits: model::Limits,
+    /// Where `llm.proxy`'s API is bound, which an `llm_proxy` provider calls; the running
+    /// config's address without it.
+    pub proxy_addr: Option<ProxyAddr>,
 }
 
 impl std::fmt::Debug for Options {
@@ -110,6 +134,10 @@ struct Inner {
     state: Mutex<State>,
     /// Where the store's writes run.
     pool: Arc<Pool>,
+    /// The model client, with an engine.
+    client: Option<model::Client>,
+    /// The provider tests under way.
+    tests: AtomicUsize,
 }
 
 impl Assistant {
@@ -159,11 +187,31 @@ impl Assistant {
         cfg.min_threads = 0;
         cfg.max_threads = 1;
         cfg.queue_capacity = MAX_WRITES_WAITING;
+        let client = o.engine.as_ref().map(|e| {
+            let mut lim = o.limits;
+            lim.max_stream_bytes = state.settings.limits.stream_bytes();
+            model::Client::new(Arc::clone(e), lim, o.roots.clone())
+        });
         Assistant(Arc::new(Inner {
             o,
             state: Mutex::new(state),
             pool: Pool::new(cfg),
+            client,
+            tests: AtomicUsize::new(0),
         }))
+    }
+
+    /// The model client, when the assistant has an engine to call with.
+    #[must_use]
+    pub fn client(&self) -> Option<&model::Client> {
+        self.0.client.as_ref()
+    }
+
+    /// Closes the model client: calls after it fail.
+    pub fn close(&self) {
+        if let Some(c) = &self.0.client {
+            c.close();
+        }
     }
 
     /// The console module the assistant is served as.
@@ -311,6 +359,8 @@ impl Module for Assistant {
             }
             ("/api/settings", Method::Put) => self.put(ctx, user),
             ("/api/settings", _) => ctx.respond(not_allowed("GET, PUT")),
+            ("/api/providers/test", Method::Post) => self.test(ctx),
+            ("/api/providers/test", _) => ctx.respond(not_allowed("POST")),
             _ => ctx.respond(pages::no_endpoint()),
         }
     }

@@ -290,7 +290,7 @@ Tunnel and LLM track; I110–I114 are the WebRTC track, and I115–I119 are rese
 | I139c | Cluster XII: metrics, logs and certificates across members; `akit cluster` | I138 | todo |
 | **After 1.0: AI assistant** | | | |
 | I160 | The assistant I: `admin.assistant` in the config, its settings and keys in the store, the module `ai` | I93c, I91 | done |
-| I161 | The assistant II: the model client and the provider test | I160, I107 | todo |
+| I161 | The assistant II: the model client and the provider test | I160, I107 | done |
 | I162 | The assistant III: the chat and the read tools | I161 | todo |
 | I163 | The assistant IV: proposals, levels and the audit log | I162 | todo |
 | I164 | The assistant V: skills | I162 | todo |
@@ -2723,7 +2723,8 @@ of the model APIs on port 0, never to a real API or with a real key.
   oversized stream is bounded and failed; a key appears in no error.
 - **Touches**: `akit-assistant`, `akit-admin`, `docs`.
 - **fit**: `assistant/model`, `assistant/internal/fakeapi`; I124.
-- **Status**: todo.
+- **Status**: done (2026-11-28). `akit_assistant::model`, `akit_assistant::standin`; an
+  `llm_proxy` provider is called at the port `llm.proxy`'s API is bound to. See the progress log.
 
 ### I162 The assistant III: the chat and the read tools
 

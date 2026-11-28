@@ -19,9 +19,53 @@ done and where the work differs from the plan.
 | akio requests | A1–A24, A29, A30, A32, A33, A35–A38, A45, A48, A49, A51–A54, A57, A58, A63–A66, A75, A78, A79, A90–A94, A105, A108, A109, A111–A113, A117, A132–A135, A148, A165–A172, A180, A200, A214, A215, A220, A230–A238, A245 and A247–A249 on akio's main and pinned; A225 (an external review, L15) requested ([akio API requests](akio-api-requests.md)) |
 | Streaming and media auth | [I120–I126](dev-plan.md#streaming-and-media-auth), fit's I115–I117 (decision 040): I120 (`media_auth` and `streaming` in the config), I121 (the policies, the checks, `akit media-token`), I122 (the role's hub, RTMP, RTSP and SRT), I123 (`httpflv`, `hls`), I124 (the WebRTC port, `stream_whip`, `stream_whep`), I125 (`media_pages`) and I126 (`auth` on `whip`, `whep` and `webrtc_proxy`) done; the media library's `libraries`, `vod` and `channels` wait for its track; akio requests A263–A268 |
 | Media library and channels | [I140–I149](dev-plan.md#media-library-and-channels), fit's I131–I139 and I119 (decision 043): I140 (`media_library` in the config) I141 (the catalog, the role `media_library`, `/media/library`) I142 (`vod`), I143 (`keys`, `media_tokens`), I144 (`url_signing`), I145 (channels), I146 (push targets), I147 (encrypted segments), I148 (the video site) and I149 (the console's media pages, the files managed) done: the track is done; akio requests A295–A298 |
-| AI assistant | [I160–I169](dev-plan.md#ai-assistant), fit's I124–I130 and I152–I154 (decision 044): I160 (`admin.assistant`, the module `ai`, its settings and keys in the store) done; I161 next |
+| AI assistant | [I160–I169](dev-plan.md#ai-assistant), fit's I124–I130 and I152–I154 (decision 044): I160 (`admin.assistant`, the module `ai`, its settings and keys in the store) and I161 (the model client, the provider test) done; I162 next |
 
 ## Log
+
+### 2026-11-28: I161, the assistant II: the model client and the provider test
+
+- `akit_assistant::model`, fit's `assistant/model` on akio-http's asynchronous client
+  (`Client::request_with`), on the listeners' engine (`akit_admin::Options::assistant_engine`,
+  which `akit run` sets with `admin.assistant`): the eight kinds' requests (Chat Completions,
+  Azure's deployments, Responses, Messages, `generateContent`, Ollama's chat; `llm_proxy` as
+  `openai_compatible`) and their streamed answers, SSE or NDJSON, parsed as they arrive into
+  text, thinking and tool calls with the usage (a line or event 1 MiB, the answer
+  `max_stream_bytes`, 64 tool calls, an error's message 8 KiB); thinking signatures and Gemini's
+  thought signatures kept for the round trip; arguments that are not a JSON object kept as a
+  string and marked. The timeouts: the connect (Happy Eyeballs' per attempt), the head
+  (akio's header timeout), the first piece after it (an `akio::timer::after_send` armed at the
+  head), the silence between pieces (akio's idle timeout) and the whole call. A call is tried
+  again at once only when its connection failed or closed before any answer; an answer of 408,
+  429 or 5xx fails it with its `Retry-After` in the message (decision row 100). `Call::cancel`
+  closes the connection; `Call::hold` holds the answer's reads (akio's `hold_reads`, the idle
+  timeout paused), for I162's linked backpressure. A key goes only in its kind's header, only
+  over https or to loopback, and is replaced by `***` in every error; `Secret` prints masked. At
+  most 16 akio clients, one a connect timeout and pin.
+- `POST /api/m/ai/providers/test` (fit's): a provider as the page has it, its list (15 s) then a
+  short call (30 s), 4 at once, a browser that leaves cancelling its call (`Detached::on_gone`).
+  An `llm_proxy` provider is called on loopback at the port `llm.proxy`'s API is bound to (the
+  proxy role's `Local::api_addr`, `akit_admin::Options::assistant_proxy_addr`), not only the
+  config's (fit's), so that a port 0 works; its certificate pinned (akio-tls's `pin_sha256`)
+  when it has one. The system's CAs are read once at the start, on the control plane.
+- `akit_assistant::standin` (feature `stand-ins`, for tests only): a plain HTTP/1.1 stand-in
+  server on port 0 and fit's `fakeapi` ported, with fit's recorded answers
+  (`testdata/recorded`).
+- Checked: fit's model tests ported (`model/tests.rs`, 30 tests: each kind's two-turn
+  conversation with a tool call round-tripping and the key only in its header; the requests'
+  shapes; the parse's edges; the first-byte, idle and total timeouts; a cut stream not retried;
+  incomplete answers; every bound; retries; cancels before, during and from an event; a refused
+  key, bad URL and closed client; transports bounded; error bodies bounded; errors midway), and
+  akit's held reads (a held call outlives its idle timeout, the API is held back, the answer
+  comes whole once resumed). Through the console (`akit-admin/tests/assistant.rs`): the provider
+  test against the fake API, a wrong key never said back, `models_only`, an invalid provider's
+  errors, the bound of 4 and the calls cancelled when their browsers leave, an `llm_proxy`
+  provider resolved to the bound port. Against akit's own LLM roles
+  (`akit-llm/tests/assistant.rs`): the client calls `llm.proxy` as an `llm_proxy` provider, the
+  model list from the mesh, a tool call round-tripping through the proxy, hub and node to the
+  stand-in API, the upstream given the node's key only. Not covered: a pinned `llm.proxy` over
+  TLS (fit's `TestPinnedCert`), which needs a TLS stand-in; it rests on akio-tls's pin tests.
+  Next: I162, the chat and the read tools.
 
 ### 2026-11-28: I160, the assistant I: `admin.assistant`, its settings and keys, the module `ai`
 

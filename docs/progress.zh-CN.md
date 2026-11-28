@@ -18,9 +18,36 @@
 | akio 需求 | A1–A24、A29、A30、A32、A33、A35–A38、A45、A48、A49、A51–A54、A57、A58、A63–A66、A75、A78、A79、A90–A94、A105、A108、A109、A111–A113、A117、A132–A135、A148、A165–A172、A180、A200、A214、A215、A220、A230–A238、A245 和 A247–A249 已进入 akio 的 main 并锁定；A225（外部审查，L15）已提出（[akio API 请求](akio-api-requests.zh-CN.md)） |
 | 流媒体与媒体认证 | [I120–I126](dev-plan.zh-CN.md#流媒体与媒体认证)，fit 的 I115–I117（决定 040）：I120（配置中的 `media_auth` 和 `streaming`）、I121（策略、检查、`akit media-token`）I122（角色的媒体中心、RTMP、RTSP 和 SRT）、I123（`httpflv`、`hls`）、I124（WebRTC 端口、`stream_whip`、`stream_whep`）、I125（`media_pages`）和 I126（`whip`、`whep` 和 `webrtc_proxy` 上的 `auth`）已完成；媒体库的 `libraries`、`vod` 和 `channels` 等待其那条线；akio 请求 A263–A268 |
 | 媒体库与频道 | [I140–I149](dev-plan.zh-CN.md#媒体库与频道)，fit 的 I131–I139 和 I119（决定 043）：I140（配置中的 `media_library`）、I141（目录、角色 `media_library`、`/media/library`）、I142（`vod`）、I143（`keys`、`media_tokens`）、I144（`url_signing`）、I145（频道）、I146（推送目标）、I147（加密分片）、I148（视频网站）和 I149（控制台的媒体页面、文件管理）已完成：这条线已完成；akio 需求 A295–A298 |
-| AI 助手 | [I160–I169](dev-plan.zh-CN.md#ai-助手)，fit 的 I124–I130 和 I152–I154（决定 044）：I160（`admin.assistant`、模块 `ai`、存储中的设置和密钥）已完成；下一个是 I161 |
+| AI 助手 | [I160–I169](dev-plan.zh-CN.md#ai-助手)，fit 的 I124–I130 和 I152–I154（决定 044）：I160（`admin.assistant`、模块 `ai`、存储中的设置和密钥）和 I161（模型客户端、提供方测试）已完成；下一个是 I162 |
 
 ## 日志
+
+### 2026-11-28：I161，助手 II：模型客户端和提供方测试
+
+- `akit_assistant::model`：在 akio-http 的异步客户端（`Client::request_with`）上、在监听器的 engine 上（`akit run` 在有
+  `admin.assistant` 时设置 `akit_admin::Options::assistant_engine`）实现 fit 的 `assistant/model`：八种 kind 的请求（Chat
+  Completions、Azure 部署、Responses、Messages、`generateContent`、Ollama 的 chat；`llm_proxy` 按 `openai_compatible`）及其流式
+  应答（SSE 或 NDJSON），边到达边解析为文本、思考和工具调用并记下用量（一行或一个事件 1 MiB、应答 `max_stream_bytes`、64 个工具
+  调用、错误消息 8 KiB）；保留思考签名和 Gemini 的 thought signature 以便往返；不是 JSON 对象的参数作为字符串保留并标记。超时：
+  连接（Happy Eyeballs 每次尝试）、应答头（akio 的头超时）、头之后的第一块（在头到达时设置的 `akio::timer::after_send`）、两块之间
+  的静默（akio 的空闲超时）以及整个调用。只在连接失败或在任何应答之前关闭时立即重试；408、429 或 5xx 的应答使调用失败，消息中带
+  `Retry-After`（待定决定第 100 行）。`Call::cancel` 关闭连接；`Call::hold` 暂停应答的读取（akio 的 `hold_reads`，空闲超时随之
+  暂停），供 I162 的相连背压使用。密钥只放在其 kind 的请求头中，只经 https 或发往回环，在每个错误中被替换为 `***`；`Secret` 打印
+  为遮掩形式。最多 16 个 akio 客户端，每个连接超时和固定证书一个。
+- `POST /api/m/ai/providers/test`（fit 的）：页面上的提供方，先取模型列表（15 s），再做一次简短调用（30 s），同时 4 个，浏览器离开
+  时取消其调用（`Detached::on_gone`）。`llm_proxy` 提供方在回环上、在 `llm.proxy` 的 API 实际绑定的端口上调用（代理角色的
+  `Local::api_addr`，`akit_admin::Options::assistant_proxy_addr`），而不只是配置中的端口（fit 的做法），使端口 0 也可用；有证书时
+  固定其证书（akio-tls 的 `pin_sha256`）。系统 CA 在启动时于控制面读取一次。
+- `akit_assistant::standin`（feature `stand-ins`，仅供测试）：端口 0 上的简单 HTTP/1.1 替身服务器，以及移植自 fit 的 `fakeapi`，
+  带 fit 录制的应答（`testdata/recorded`）。
+- 核对：移植了 fit 的模型测试（`model/tests.rs`，30 个：每种 kind 的两轮对话，工具调用往返，密钥只在其请求头中；请求的形状；解析的
+  边界；首字节、空闲和总超时；断开的流不重试；不完整的应答；每个上限；重试；在应答前、应答中和事件中取消；被拒的密钥、错误的 URL 和
+  已关闭的客户端；传输数有界；错误正文有界；中途的错误），以及 akit 的暂停读取（暂停的调用超过其空闲超时仍在，API 被压住，恢复后
+  应答完整到达）。经控制台（`akit-admin/tests/assistant.rs`）：对假 API 的提供方测试，错误的密钥从不回显，`models_only`，无效
+  提供方的错误，4 个的上限以及浏览器离开时调用被取消，`llm_proxy` 提供方解析到绑定的端口。对 akit 自己的 LLM 角色
+  （`akit-llm/tests/assistant.rs`）：客户端作为 `llm_proxy` 提供方调用 `llm.proxy`，模型列表来自 mesh，工具调用经代理、hub 和
+  node 到替身 API 往返，上游只得到 node 的密钥。未覆盖：经 TLS 并固定证书的 `llm.proxy`（fit 的 `TestPinnedCert`），需要 TLS
+  替身；依赖 akio-tls 的固定证书测试。下一个：I162，对话和读取工具。
 
 ### 2026-11-28：I160，助手 I：`admin.assistant`、其设置和密钥、模块 `ai`
 

@@ -33,6 +33,9 @@ akit-roles = { workspace = true }
 [dev-dependencies]
 # The roles' consoles, which serve the pages in the tests (I109c).
 akit-admin = { workspace = true }
+# The console's assistant's model client, calling llm.proxy as an llm_proxy provider, and the
+# stand-in of a model's API behind the node (I161).
+akit-assistant = { workspace = true, features = ["stand-ins"] }
 
 [lints]
 workspace = true

@@ -51,7 +51,13 @@ struct Inner {
     mesh: WeakMesh,
     /// The caller's end of the pipe, made at the first call, again after it closed.
     pipe: Mutex<Option<(Session, Session)>>,
+    /// Where the proxy role's agents' API listens, its port as bound (I161): what the console's
+    /// assistant calls an `llm_proxy` provider at.
+    api_addr: Mutex<Option<ApiAddr>>,
 }
+
+/// The address of the proxy role's agents' API, as bound; `None` while it does not run.
+pub type ApiAddr = Arc<dyn Fn() -> Option<std::net::SocketAddr> + Send + Sync>;
 
 /// A role's methods, called as its own pages ([`ROLE_LOCAL`]). Cheap to clone.
 #[derive(Clone)]
@@ -70,7 +76,21 @@ impl Local {
         Local(Arc::new(Inner {
             mesh,
             pipe: Mutex::new(None),
+            api_addr: Mutex::new(None),
         }))
+    }
+
+    /// Says where the role's agents' API listens (the proxy role, I161).
+    pub fn set_api_addr(&self, f: ApiAddr) {
+        *lock(&self.0.api_addr) = Some(f);
+    }
+
+    /// Where the proxy role's agents' API listens, its port as bound: `None` for another role,
+    /// or while it does not run.
+    #[must_use]
+    pub fn api_addr(&self) -> Option<std::net::SocketAddr> {
+        let f = lock(&self.0.api_addr).clone()?;
+        f()
     }
 
     fn session(&self) -> Session {

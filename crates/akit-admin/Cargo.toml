@@ -28,6 +28,8 @@ akit-roles = { workspace = true }
 akit-tls = { workspace = true }
 
 [dev-dependencies]
+# The stand-ins of the model APIs the assistant's tests call (I161).
+akit-assistant = { workspace = true, features = ["stand-ins"] }
 akio-x509 = { workspace = true }
 akit-handler = { workspace = true }
 akit-listener = { workspace = true }

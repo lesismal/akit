@@ -8,9 +8,16 @@ repository.workspace = true
 rust-version.workspace = true
 publish = false
 
+[features]
+# The stand-ins of the model APIs the tests talk to (`akit_assistant::standin`), for other
+# crates' tests: never a real API.
+stand-ins = []
+
 [dependencies]
 # The pool the store's writes run on, the engine the model calls go out on.
 akio = { workspace = true }
+# The SHA-256 of llm.proxy's certificate, pinned.
+akio-crypto = { workspace = true }
 # The requests the console module answers.
 akio-http = { workspace = true }
 akit-config = { workspace = true }

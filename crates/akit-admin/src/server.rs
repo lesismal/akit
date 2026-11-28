@@ -127,6 +127,15 @@ pub struct Options {
     /// `assistant`: with `admin.assistant`, the console's Settings page saves into it; without
     /// it, the settings are `admin.assistant`'s and are not saved.
     pub assistant_store: Option<Arc<dyn akit_assistant::Store>>,
+    /// The engine the assistant's model calls go out on (I161): the listeners'; without it,
+    /// the assistant calls nothing (its provider tests say so).
+    pub assistant_engine: Option<Arc<Engine>>,
+    /// The CAs the assistant's https providers are checked against, the system's, read once on
+    /// the control plane; akio's own read at the first call without them.
+    pub assistant_roots: Option<akio::tls::RootCerts>,
+    /// Where `llm.proxy`'s agents' API is bound, which the assistant's `llm_proxy` providers
+    /// call (I161).
+    pub assistant_proxy_addr: Option<akit_assistant::ProxyAddr>,
 }
 
 /// The origins of [`Options::media_origins`], for the console's `Host`.
@@ -157,6 +166,7 @@ impl fmt::Debug for Options {
             .field("node", &self.node.is_some())
             .field("cluster", &self.cluster.is_some())
             .field("assistant_store", &self.assistant_store.is_some())
+            .field("assistant_engine", &self.assistant_engine.is_some())
             .finish()
     }
 }
@@ -185,6 +195,9 @@ impl Default for Options {
             cluster_max_body: 0,
             media_origins: None,
             assistant_store: None,
+            assistant_engine: None,
+            assistant_roots: None,
+            assistant_proxy_addr: None,
         }
     }
 }
@@ -620,6 +633,10 @@ impl Server {
                     console: Some(c.clone()),
                     store: opts.assistant_store.clone(),
                     running: Some(Arc::new(move || configs.current().effective().to_owned())),
+                    engine: opts.assistant_engine.clone(),
+                    roots: opts.assistant_roots.clone(),
+                    limits: akit_assistant::model::Limits::default(),
+                    proxy_addr: opts.assistant_proxy_addr.clone(),
                     log: Arc::new(|msg: String| {
                         akit_observe::logger::log(
                             akit_observe::logger::Logger::Admin,

@@ -259,6 +259,11 @@ pub fn new(host: Host) -> Result<Box<dyn Role>, String> {
             api_want: Mutex::new(None),
         }
     });
+    // The console's assistant calls an llm_proxy provider where the API is bound (I161).
+    let w = Arc::downgrade(&core);
+    core.base
+        .local
+        .set_api_addr(Arc::new(move || w.upgrade().and_then(|c| c.api_addr())));
     // The pages' `GET /api/me` says where the agents' API is (fit's `me`).
     let w = Arc::downgrade(&core);
     core.base.pages.set_me(Arc::new(move || {

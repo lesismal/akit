@@ -1579,8 +1579,24 @@ fn run(args: &[String]) -> ExitCode {
                 roles: modules.ids().iter().map(|s| (*s).to_owned()).collect(),
                 counts_requests: graph.with(|g| g.metrics().is_some()),
             }));
-            // The assistant's settings and keys, kept in the store (I160).
+            // The assistant's settings and keys, kept in the store (I160); its model calls on
+            // the listeners' engine, https ones checked against the system's CAs, read now
+            // (I161).
             if a.assistant.is_some() {
+                api_opts.assistant_engine = Some(Arc::clone(&engine));
+                let apis = roles.apis();
+                api_opts.assistant_proxy_addr = Some(Arc::new(move || {
+                    akit_roles::host::api_in(&apis, "llm.proxy")?
+                        .downcast_ref::<akit_llm::local::Local>()?
+                        .api_addr()
+                }));
+                api_opts.assistant_roots = match akio::tls::RootCerts::system() {
+                    Ok(r) => Some(r),
+                    Err(e) => {
+                        eprintln!("akit run: admin.assistant: the system's CAs: {e}");
+                        None
+                    }
+                };
                 api_opts.assistant_store = boot.as_ref().map(|b| {
                     Arc::new(ClusterStore(Arc::clone(&b.store))) as Arc<dyn akit_assistant::Store>
                 });

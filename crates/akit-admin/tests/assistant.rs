@@ -51,8 +51,29 @@ impl akit_assistant::Store for Sections {
 
 const KEY: &str = "sk-test-0123456789abcdef";
 
+/// The engine the model calls go out on, as `akit run` gives the listeners'.
+fn engine() -> Arc<akio::Engine> {
+    static E: std::sync::OnceLock<Arc<akio::Engine>> = std::sync::OnceLock::new();
+    Arc::clone(E.get_or_init(|| {
+        let e = akio::Engine::builder().client_threads(1).build().unwrap();
+        e.start().unwrap();
+        Arc::new(e)
+    }))
+}
+
 /// A console with `admin.assistant` set to `assistant` (none when empty), its store `store`.
 fn start(assistant: &str, store: Option<Arc<Sections>>) -> (Server, SocketAddr) {
+    start_full(assistant, store, "", None)
+}
+
+/// [`start`], with `top` more top-level members of the config, and where `llm.proxy`'s API is
+/// bound.
+fn start_full(
+    assistant: &str,
+    store: Option<Arc<Sections>>,
+    top: &str,
+    proxy: Option<akit_assistant::ProxyAddr>,
+) -> (Server, SocketAddr) {
     let console = format!(
         r#""console": {{"address": "127.0.0.1:0", "users": [{{"username": "ada", "password_hash": "{}"}}, {{"username": "bob", "password_hash": "{}"}}]}}"#,
         akio_crypto::bcrypt::hash(b"pw", akio_crypto::bcrypt::MIN_COST).unwrap(),
@@ -63,7 +84,7 @@ fn start(assistant: &str, store: Option<Arc<Sections>>) -> (Server, SocketAddr) 
     } else {
         format!(r#", "assistant": {assistant}"#)
     };
-    let text = format!(r#"{{"admin": {{"address": "127.0.0.1:0", {console}{more}}}}}"#);
+    let text = format!(r#"{{"admin": {{"address": "127.0.0.1:0", {console}{more}}}{top}}}"#);
     let config = akit_config::from_json(&text, None).unwrap();
     let settings = config.admin.clone().unwrap();
     let configs = Configs::new(
@@ -75,6 +96,8 @@ fn start(assistant: &str, store: Option<Arc<Sections>>) -> (Server, SocketAddr) 
     let mut opts = Options::default();
     opts.backend = Some(backend());
     opts.assistant_store = store.map(|s| s as Arc<dyn akit_assistant::Store>);
+    opts.assistant_engine = Some(engine());
+    opts.assistant_proxy_addr = proxy;
     let api = Server::start(&settings, configs, submit, &opts).unwrap();
     let url = api.console_url().unwrap();
     let addr = url
@@ -160,6 +183,17 @@ impl Browser {
 
     fn get(&self, path: &str) -> Resp {
         self.send("GET", path, None)
+    }
+
+    /// A provider's test, `provider` as the page sends it.
+    fn test(&self, provider: &str, key: &str, more: &str) -> Resp {
+        self.send(
+            "POST",
+            "/api/m/ai/providers/test",
+            Some(&format!(
+                r#"{{"provider": {provider}, "key": "{key}"{more}}}"#
+            )),
+        )
     }
 }
 
@@ -434,5 +468,152 @@ fn fit_interop() {
     assert_eq!(r.status, 200, "{}", r.body);
     let sec = akit_assistant::Store::section(&*store, "assistant").unwrap();
     std::fs::write(dir.join("akit.section"), sec).unwrap();
+    api.shutdown();
+}
+
+/// fit's `TestProviderTest` (I161): a provider, not saved, tried: its model list, then a short
+/// call to a model, against a stand-in of its API; the key typed goes only to the API, never
+/// into the answer; a wrong key fails both, said without the key; the list alone with
+/// `models_only`; a provider that is not one is refused with its errors.
+#[test]
+fn provider_test() {
+    let fake = akit_assistant::standin::fake_api(KEY);
+    let (api, addr) = start(SETTINGS, None);
+    let b = Browser::login(addr, "ada");
+    let base = akit_assistant::standin::base_url(&fake.url(), "openai_compatible");
+    let provider = format!(r#"{{"name": "t", "kind": "openai_compatible", "base_url": "{base}"}}"#);
+    let r = b.test(&provider, KEY, "");
+    assert_eq!(r.status, 200, "{}", r.body);
+    assert!(!r.body.contains(KEY), "{}", r.body);
+    let v = json(&r);
+    assert_eq!(v.get("ok"), Some(&Value::Bool(true)), "{}", r.body);
+    assert_eq!(arr(&v, "models").len(), 2);
+    assert_eq!(str_at(&v, &["model"]), "gpt-test");
+    assert_eq!(str_at(&v, &["reply"]), "The listener web is up.");
+    assert!(v.get("usage").is_some() && v.get("call_ms").is_some());
+    // The call went with the key, as the API's own header.
+    let calls = fake.requests();
+    let chat = calls.iter().find(|q| q.method == "POST").unwrap();
+    assert_eq!(
+        chat.header("Authorization"),
+        Some(format!("Bearer {KEY}").as_str())
+    );
+    // The list alone.
+    let v = json(&b.test(&provider, KEY, r#", "models_only": true"#));
+    assert_eq!(v.get("ok"), Some(&Value::Bool(true)));
+    assert!(v.get("model").is_none() && v.get("reply").is_none());
+    // A wrong key: the API says it back, akit does not.
+    let wrong = "sk-wrong-0123456789abcdef";
+    let r = b.test(&provider, wrong, r#", "model": "gpt-test""#);
+    assert!(!r.body.contains(wrong), "{}", r.body);
+    let v = json(&r);
+    assert_eq!(v.get("ok"), Some(&Value::Bool(false)));
+    assert!(str_at(&v, &["models_error"]).contains("401"), "{}", r.body);
+    assert!(str_at(&v, &["call_error"]).contains("***"), "{}", r.body);
+    // Not a provider.
+    let r = b.test(r#"{"name": "-x", "kind": "nope"}"#, "", "");
+    assert_eq!(r.status, 400, "{}", r.body);
+    assert!(
+        r.body.contains("admin.assistant.providers[0].kind"),
+        "{}",
+        r.body
+    );
+    // An llm_proxy provider with no llm.proxy running says so.
+    let v = json(&b.test(r#"{"name": "mesh", "kind": "llm_proxy"}"#, "k", ""));
+    assert!(
+        str_at(&v, &["models_error"]).contains("no llm.proxy"),
+        "{v:?}"
+    );
+    api.shutdown();
+}
+
+/// At most four tests at once (fit's `MaxTests`): a fifth is refused while four wait on an API
+/// that does not answer, and a browser that leaves ends its test, its call cancelled.
+#[test]
+fn provider_tests_bounded() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let gone = Arc::new(AtomicUsize::new(0));
+    let g2 = Arc::clone(&gone);
+    let slow = akit_assistant::standin::Server::start(move |_, c| {
+        if c.wait_gone(Duration::from_secs(10)) {
+            g2.fetch_add(1, Ordering::SeqCst);
+        }
+    });
+    let (api, addr) = start(SETTINGS, None);
+    let b = Browser::login(addr, "ada");
+    let provider = format!(
+        r#"{{"name": "t", "kind": "openai_compatible", "base_url": "{}/v1"}}"#,
+        slow.url()
+    );
+    let body = format!(r#"{{"provider": {provider}, "key": ""}}"#);
+    let mut held = Vec::new();
+    for _ in 0..4 {
+        let mut s = TcpStream::connect(addr).unwrap();
+        let req = format!(
+            "POST /api/m/ai/providers/test HTTP/1.1\r\nHost: {addr}\r\nCookie: {}\r\nX-Akit-Csrf: {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+            b.cookie,
+            b.csrf,
+            body.len()
+        );
+        s.write_all(req.as_bytes()).unwrap();
+        held.push(s);
+    }
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    while slow.requests().len() < 4 && std::time::Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert_eq!(slow.requests().len(), 4);
+    let r = b.test(&provider, "", "");
+    assert_eq!(r.status, 429, "{}", r.body);
+    // The browsers leave: their calls are cancelled, and the slots come back.
+    drop(held);
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    while gone.load(Ordering::SeqCst) < 4 && std::time::Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert_eq!(
+        gone.load(Ordering::SeqCst),
+        4,
+        "the calls were not cancelled"
+    );
+    let fake = akit_assistant::standin::fake_api(KEY);
+    let base = akit_assistant::standin::base_url(&fake.url(), "openai_compatible");
+    let r = b.test(
+        &format!(r#"{{"name": "t", "kind": "openai_compatible", "base_url": "{base}"}}"#),
+        KEY,
+        r#", "models_only": true"#,
+    );
+    assert_eq!(r.status, 200, "{}", r.body);
+    api.shutdown();
+}
+
+/// An `llm_proxy` provider is called on loopback at the port `llm.proxy`'s API is bound to,
+/// whatever its config's address says (port 0 here), as an OpenAI-compatible API.
+#[test]
+fn llm_proxy_resolved() {
+    let fake = akit_assistant::standin::fake_api(KEY);
+    let bound = fake.addr();
+    let (api, addr) = start_full(
+        SETTINGS,
+        None,
+        r#", "llm": {"proxy": {"api": {"address": "127.0.0.1:0"}, "peers": [{"address": "127.0.0.1:1", "password": "p", "role": "hub"}]}}"#,
+        Some(Arc::new(move || Some(bound))),
+    );
+    let b = Browser::login(addr, "ada");
+    let v = json(&b.get("/api/m/ai/settings"));
+    assert_eq!(str_at(&v, &["llm_proxy", "address"]), "127.0.0.1:0");
+    let r = b.test(
+        r#"{"name": "mesh", "kind": "llm_proxy", "models": [{"name": "gpt-test"}]}"#,
+        KEY,
+        "",
+    );
+    let v = json(&r);
+    assert_eq!(v.get("ok"), Some(&Value::Bool(true)), "{}", r.body);
+    assert_eq!(str_at(&v, &["reply"]), "The listener web is up.");
+    assert!(
+        fake.requests()
+            .iter()
+            .any(|q| q.path == "/v1/chat/completions")
+    );
     api.shutdown();
 }
