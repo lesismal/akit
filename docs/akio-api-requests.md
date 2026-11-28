@@ -138,7 +138,6 @@ first; its status here records the branch, then the akio commit akit pins.
 | A301 | `H2Client` ends its connection at the engine's graceful shutdown (`GOAWAY`; closed now with no stream open, else after its last), as the HTTP/1 client closes its idle ones | on akio's main and pinned (since `db34bfd7`): `H2Acceptor::on_shutdown`; akit's stopgap (`EngineSlot::shutdown`) removed | 4, 10 | I18, I18b |
 | A302 | `Conn::close` on io_uring resets a TCP connection whose received data it did not deliver, as on epoll (or a `Conn::abort` that closes with a reset): today a receive in flight takes the data after the shutdown, so the peer, facing a zero window, is never reset | on akio's main and pinned (since `5893a0ed`): suggestion (a), akio's ADR-188 (`SO_LINGER` 0 when input was not delivered; `akio_sys::reset_on_close`); fastcgi.rs `cut_connections` passes on io_uring | — | I75 |
 | A303 | Linked backpressure that holds under work stealing (ADR-104): a held upstream read (akio-http's `ResponseBody::hold_reads`, under akit's `Download::hold_reads`) and a full downstream write (`BodyStream::queued_bytes`, `on_drain`) bound what a streamed relay holds, as on event loops | requested; stopgap: akit's TCP listeners choose `Scheduling::EventLoops` (`akit_runtime::scheduled`, decision 91) unless `AKIO_DEFAULT_SCHEDULING` is set | 8, 11 | I16, I17, I18b |
-
 | A305 | A plain WebSocket's late queue (what other threads send while its handler's batch is open) counted in `WsSender::queued_bytes` and waited for by `on_drain`, bounded by the connection's `max_queued_bytes` rather than a fixed 4 MiB, and never dropped silently when the batch ends | requested; akit ends a sealed WebSocket on a refused send instead of skipping a message's number (console.rs `large_transfers_both_ways` still fails now and then meanwhile) | 8, 9 | I103b |
 
 ## A1 TCP listeners on a running engine
@@ -3262,28 +3261,6 @@ relay between two connections on different workers, its memory bounded, would ke
 
 **How akit would use it.** `akit_runtime::scheduled` goes, with decision 91: akit's listeners
 take akio's default scheduling again, and `stream_download` passes under it.
-
-
-
-## A304 An `RtcServer`'s host candidates set once its listener is bound
-
-**Status.** Requested (2026-11-28) by the review of akit's tests' ports; the media server of I113.
-
-**Problem.** `webrtc.media` may listen on port 0. Its answers name the port as a host candidate,
-and `RtcServer::new` takes the candidates before `Listener::udp(addr).serve(server)` binds. akit
-finds a free port by binding port 0 and letting it go, then binds it: another process may take
-it meanwhile, and the listener fails to start.
-
-**Evidence.** At akio `d8d51f61`, `RtcServer::new(addrs: Vec<SocketAddr>)` fixes the host
-candidates; nothing sets them after, and the server is not told where its listener bound.
-
-**Suggested API.** `RtcServer::set_addrs(&self, addrs: Vec<SocketAddr>)`, for the answers and
-offers made from then on; or the server told its listener's local address when it is bound, its
-candidates' port 0 replaced by it.
-
-**How akit would use it.** `Media::start` binds `listen` as written, port 0 included, reads the
-listener's address from `Engine::listeners`, and sets the candidates (`advertised`) from it; the
-probe goes.
 
 ## A305 A WebSocket's late queue seen by pacing
 
