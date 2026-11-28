@@ -14,7 +14,7 @@ akit 配置的每个字段：配置的每一部分是做什么的、一个示例
 akit 与 fit 不同之处，在表格中以 **akit：** 标出。
 
 <!-- BEGIN GENERATED: summary -->
-fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **1312** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 195 个对象，下文各有一张表。
+fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **1364** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 204 个对象，下文各有一张表。
 <!-- END GENERATED -->
 
 字段说明来自 fit 代码中的 `doc` 标签，是英文的，所以每个字段的完整说明在[英文版](config.md)的同一张表中；本页的表格给出每个字段的
@@ -1017,7 +1017,7 @@ route { match { host example.com }; handler respond { body hello } }
 | --- | --- | --- | --- |
 | `access` | [对象](#cfg-admin-access) |  |  |
 | `address` | 字符串 | `"127.0.0.1:2019"` | **akit：**Unix 套接字（`unix/<路径>`）的权限设为 0600。 |
-| `assistant` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `assistant` | [对象](#cfg-admin-assistant) |  | **akit：**按 fit 的方式读取和检查（I160）。控制台以模块 `ai` 提供助手；“设置”页把设置连同各提供方的密钥整体保存到存储的 `assistant` 分区（fit 的文档），此后从那里读取（决定 044）。密钥从不应答、记录日志或导出。没有 `admin.store` 时设置取自本成员，无法从页面保存；密钥则来自 `api_key_env`。 |
 | `cert_file` | 字符串 |  | **akit：**在控制线程上，带 `-watch-certs`（默认开启）时每个 `-watch-interval` 查看一次这些文件，而不是像 fit 那样在握手时查看；文件保持 500ms 不变后加载；SIGHUP 也会重新读取（I94）。新连接得到新证书；加载失败的文件记录到 `admin` 日志器，正在使用的证书保留。 |
 | `client_ca_file` | 字符串 |  | **akit：**与 `cert_file` 一起重新读取（I94）：新连接按新的 CA 检查。 |
 | `cluster` | [对象](#cfg-admin-cluster) |  | **akit：**按 fit 的方式读取和检查（I130）；在 I132 运行管理端之前 `akit run` 拒绝它。管理端把成员保存在存储的 `cluster` 分区，即 fit 的文档（决定 041）。 |
@@ -1179,6 +1179,155 @@ admin {
 | `manager` | 字符串 | 必填 |  |
 | `token` | 字符串 |  | **akit：**akit 的前缀为 `akite1.`，即 fit 的 `fite1.` 改名（决定 037）：fit 管理端生成的 token 写作 `akite1.<id>.<secret>`。 |
 | `token_file` | 字符串 |  |  |
+<!-- END GENERATED -->
+
+### `admin.assistant`
+
+控制台的助手（I160–I169，[决定 044](../decisions/044-assistant.zh-CN.md)）：控制台每个页面旁的对话面板，读取 akit 运行的内容、
+加以解释，并起草由人应用的改动。它是 `providers` 所列模型 API 的客户端，自己不是模型；它需要 `admin.console`，由其页面以模块 `ai`
+提供，不写时关闭。密钥不写在这里："设置"页把它们保存在存储中，或由 `api_key_env` 指定保存密钥的环境变量。页面保存之后，设置取自存储
+（其 `assistant` 分区，即 fit 的文档），本成员只是最初的设置。
+
+```fit
+admin {
+	console { users { username ada; password_hash "$2b$10$..." } }
+	assistant {
+		providers { name local; kind openai_compatible; base_url "http://127.0.0.1:8000/v1"; models { name qwen } }
+		users { username ada; level apply }
+	}
+}
+```
+
+<!-- BEGIN GENERATED: admin.assistant -->
+<a id="cfg-admin-assistant"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-admin-assistant)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `data` | [对象](#cfg-admin-assistant-data) |  |  |
+| `default_level` | 字符串：`off`、`read`、`edit`、`propose`、`apply` | `"read"` |  |
+| `default_model` | [对象](#cfg-admin-assistant-default-model) |  |  |
+| `limits` | [对象](#cfg-admin-assistant-limits) |  |  |
+| `mcp` | [对象](#cfg-admin-assistant-mcp) |  | **akit：**按 fit 的方式读取和检查；`/mcp` 上的 MCP 服务器随 I166 提供，在此之前不应答任何请求。 |
+| `params` | [对象](#cfg-admin-assistant-params) |  |  |
+| `providers` | [对象](#cfg-admin-assistant-providers)的列表 |  |  |
+| `users` | [对象](#cfg-admin-assistant-users)的列表 |  |  |
+<!-- END GENERATED -->
+
+<!-- BEGIN GENERATED: admin.assistant.providers[] -->
+<a id="cfg-admin-assistant-providers"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-admin-assistant-providers)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `kind` | 字符串：`anthropic`、`openai`、`openai_responses`、`gemini`、`azure_openai`、`ollama`、`openai_compatible`、`llm_proxy` | 必填 |  |
+| `name` | 字符串 | 必填 |  |
+| `api_key_env` | 字符串 |  |  |
+| `api_version` | 字符串 |  |  |
+| `base_url` | 字符串 |  |  |
+| `connect_timeout` | 时长 | `"10s"` |  |
+| `first_byte_timeout` | 时长 | `"2m"` |  |
+| `headers` | 值为字符串的映射 |  |  |
+| `idle_timeout` | 时长 | `"1m"` |  |
+| `models` | [对象](#cfg-admin-assistant-providers-models)的列表 |  |  |
+| `retries` | 整数，0 到 5 | `2` |  |
+| `timeout` | 时长 | `"10m"` |  |
+<!-- END GENERATED -->
+
+<!-- BEGIN GENERATED: admin.assistant.providers[].models[] -->
+<a id="cfg-admin-assistant-providers-models"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-admin-assistant-providers-models)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `name` | 字符串 | 必填 |  |
+| `context` | 整数，≥ 0 |  |  |
+| `tools` | 布尔值 | `true` |  |
+<!-- END GENERATED -->
+
+<!-- BEGIN GENERATED: admin.assistant.default_model -->
+<a id="cfg-admin-assistant-default-model"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-admin-assistant-default-model)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `model` | 字符串 | 必填 |  |
+| `provider` | 字符串 | 必填 |  |
+<!-- END GENERATED -->
+
+<!-- BEGIN GENERATED: admin.assistant.params -->
+<a id="cfg-admin-assistant-params"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-admin-assistant-params)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `max_output_tokens` | 整数，≥ 0 | `4096` |  |
+| `temperature` | 数，0 到 2 |  |  |
+| `thinking` | 字符串：`off`、`low`、`medium`、`high` | `"off"` |  |
+<!-- END GENERATED -->
+
+<!-- BEGIN GENERATED: admin.assistant.limits -->
+<a id="cfg-admin-assistant-limits"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-admin-assistant-limits)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `max_audit_entries` | 整数，≥ 0 | `1000` |  |
+| `max_concurrent_chats` | 整数，≥ 0 | `4` |  |
+| `max_conversations` | 整数，≥ 0 | `50` |  |
+| `max_stream_bytes` | 整数，≥ 0 | `8388608` |  |
+| `max_tokens_per_day` | 整数，≥ 0 | `1000000` |  |
+| `max_tool_calls` | 整数，≥ 0 | `16` |  |
+| `max_tool_result_bytes` | 整数，≥ 0 | `32768` |  |
+| `max_turns` | 整数，≥ 0 | `40` |  |
+<!-- END GENERATED -->
+
+<!-- BEGIN GENERATED: admin.assistant.data -->
+<a id="cfg-admin-assistant-data"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-admin-assistant-data)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `redact` | 字符串的列表 |  |  |
+| `send_access_log` | 布尔值 |  |  |
+| `send_logs` | 布尔值 |  |  |
+| `send_records` | 布尔值 |  |  |
+| `send_subjects` | 布尔值 |  |  |
+<!-- END GENERATED -->
+
+<!-- BEGIN GENERATED: admin.assistant.users[] -->
+<a id="cfg-admin-assistant-users"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-admin-assistant-users)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `level` | 字符串：`off`、`read`、`edit`、`propose`、`apply` | 必填 |  |
+| `username` | 字符串 | 必填 |  |
+<!-- END GENERATED -->
+
+<!-- BEGIN GENERATED: admin.assistant.mcp -->
+<a id="cfg-admin-assistant-mcp"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-admin-assistant-mcp)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `allow` | 字符串的列表 |  |  |
+| `max_calls_per_minute` | 整数，0 到 6000 | `120` |  |
+| `max_concurrent_calls` | 整数，0 到 64 | `4` |  |
+| `max_request_bytes` | 整数，0 到 8388608 | `1048576` |  |
+| `max_sessions` | 整数，≥ 0 | `4` |  |
+| `max_token_days` | 整数，0 到 3650 | `90` |  |
+| `max_tokens_per_user` | 整数，≥ 0 | `10` |  |
+| `session_idle_timeout` | 时长 | `"1h"` |  |
 <!-- END GENERATED -->
 
 ## 默认 HTTPS

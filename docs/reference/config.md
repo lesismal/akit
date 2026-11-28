@@ -17,7 +17,7 @@ so in a note marked **akit:**; nine defaults that name the gateway are akit's, `
 say `fit` ([decision 037](../decisions/037-akit-names.md)).
 
 <!-- BEGIN GENERATED: summary -->
-akit reads **1312** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 195 objects akit reads, each has its table below.
+akit reads **1364** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 204 objects akit reads, each has its table below.
 <!-- END GENERATED -->
 
 How to read the tables:
@@ -1027,7 +1027,7 @@ route { match { host example.com }; handler respond { body hello } }
 | --- | --- | --- | --- |
 | `access` | [object](#cfg-admin-access) |  | The client addresses the Admin API serves, deciding before the global access, which applies to the API too: a connection either refuses is closed as soon as it is accepted. Unlike the other admin settings it follows every config applied, without a restart. Set allow to "127.0.0.1" (and "::1") to keep local access whatever the global access says. A Unix socket's peers have no address and are never checked, and access is an error with one. Every address is served, unless the global access says otherwise, when left out. |
 | `address` | string | `"127.0.0.1:2019"` | Where the Admin API listens: a host and port, or "unix/" and the path of a Unix socket, as in "unix//run/akit/admin.sock". A host that is not a loopback address or localhost needs token_file, cert_file and key_file, so that only holders of the token reach the API and the token never crosses a network in the clear. 127.0.0.1:2019 when left out. **akit:** A Unix socket is made 0600 (`unix/<path>`). |
-| `assistant` | object |  | **Not supported yet**: refused by name. The workbench's assistant, a chat beside the console's pages that reads what fit does and drafts changes for a person to submit, calling the model APIs set here; off when left out, and then nothing is sent anywhere. Needs console. With a store, these settings are the first ones only: once the Settings page saves, the store's are used, keys included. |
+| `assistant` | [object](#cfg-admin-assistant) |  | The workbench's assistant, a chat beside the console's pages that reads what akit does and drafts changes for a person to submit, calling the model APIs set here; off when left out, and then nothing is sent anywhere. Needs console. With a store, these settings are the first ones only: once the Settings page saves, the store's are used, keys included. **akit:** Read and checked as fit's (I160). The console serves the assistant as the module `ai`; the Settings page saves the settings whole, with the providers' keys, into the store's section `assistant`, fit's document, from which they are read from then on (decision 044). A key is never answered, logged or exported. Without `admin.store` the settings are this member's and cannot be saved from the page; keys then come from `api_key_env`. |
 | `cert_file` | string |  | A PEM file with the Admin API's certificate, followed by any intermediates; with key_file, the API is served over TLS, 1.2 or later. The files are read again when they change, so that a renewed certificate is served without a restart. Not for a Unix socket. **akit:** The files are looked at on the control thread every `-watch-interval` with `-watch-certs` (on by default), not at a handshake as fit's, and loaded once they have stayed as they are for 500ms; SIGHUP reads them again too (I94). New connections get the new certificate; files that do not load are logged in the `admin` logger and the running certificate stays. |
 | `client_ca_file` | string |  | A PEM file with the CAs that clients' certificates must chain to: with it, every client must present a valid certificate, besides the token, before it is heard. Needs cert_file and key_file; read again when it changes, as they are. **akit:** Read again with `cert_file` (I94): new connections are checked against the new CAs. |
 | `cluster` | [object](#cfg-admin-cluster) |  | Manage other fits from this one, the manager: their addresses and credentials, added on the workbench's Cluster pages, are kept in the store, and each one's state is read every poll_interval. Off when left out, and then nothing is called. Needs store and console. See decision 033. **akit:** Read and checked as fit's (I130); `akit run` refuses it until I132 runs the manager. The manager keeps its members in the store's `cluster` section, fit's document (decision 041). |
@@ -1187,6 +1187,140 @@ refuses it until I139b.
 | `manager` | string | required | The manager's link URL, as its Add by enrollment page gives it: wss://host:port/cluster/link. |
 | `token` | string |  | The enrollment token the manager made for this akit, fite1.<ID>.<secret>, used once: this akit proves it to the manager, which answers a credential of this akit's own, kept in the store, or without one in a file beside the config (akit.cluster-member beside akit.json); the token is not used again. Left out once this akit has a credential; a new token enrolls this akit again. **akit:** akit's prefix is `akite1.`, fit's `fite1.` renamed (decision 037): a token fit's manager made is written `akite1.<id>.<secret>`. |
 | `token_file` | string |  | A file holding the enrollment token, in place of token. |
+<!-- END GENERATED -->
+
+### `admin.assistant`
+
+The console's assistant (I160–I169, [decision 044](../decisions/044-assistant.md)): a chat panel
+beside every page of the console that reads what akit runs, explains it and drafts changes a
+person applies. It is a client of the model APIs `providers` names, never a model of its own; it
+needs `admin.console`, whose pages serve it as the module `ai`, and is off when left out. Its
+keys are not written here: the Settings page keeps them in the store, or `api_key_env` names a
+variable that holds one. Once the page saves, the settings are the store's (its section
+`assistant`, fit's document), and this member is only the first ones.
+
+```fit
+admin {
+	console { users { username ada; password_hash "$2b$10$..." } }
+	assistant {
+		providers { name local; kind openai_compatible; base_url "http://127.0.0.1:8000/v1"; models { name qwen } }
+		users { username ada; level apply }
+	}
+}
+```
+
+<!-- BEGIN GENERATED: admin.assistant -->
+<a id="cfg-admin-assistant"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `data` | [object](#cfg-admin-assistant-data) |  | What of akit's logs may be sent to a model, and more of what is redacted before anything is. |
+| `default_level` | string: `off`, `read`, `edit`, `propose`, `apply` | `"read"` | The level of a console user that users does not list: off, read (the read tools only), edit (also drafts on the open page, never submitted), propose (also proposals) or apply (also applies them). read when left out. |
+| `default_model` | [object](#cfg-admin-assistant-default-model) |  | The provider and model the chat uses; the first model of the first provider when left out. |
+| `limits` | [object](#cfg-admin-assistant-limits) |  | Bounds on the assistant's conversations, tool calls and model answers; the defaults when left out. |
+| `mcp` | [object](#cfg-admin-assistant-mcp) |  | An MCP server at /mcp on the console's address, for outside agents (Claude Code, Cursor, an SDK's client) to call the assistant's tools, read the config, the schema and the docs, and use the skills as prompts, with the MCP tokens users make on the workbench's MCP page. A token has its user's level, at most propose: what it proposes is applied only in the workbench. Off when left out. **akit:** Read and checked as fit's; the MCP server at `/mcp` comes with I166 and answers nothing before it. |
+| `params` | [object](#cfg-admin-assistant-params) |  | What a model call asks for: its output, temperature and thinking. |
+| `providers` | list of [object](#cfg-admin-assistant-providers) |  | The model APIs the assistant may call, each by name. Their keys are not written here: the Settings page keeps them in admin.store, or api_key_env names a variable that holds one. |
+| `users` | list of [object](#cfg-admin-assistant-users) |  | What each console user may have the assistant do, by user name; a user not listed has default_level. |
+<!-- END GENERATED -->
+
+<!-- BEGIN GENERATED: admin.assistant.providers[] -->
+<a id="cfg-admin-assistant-providers"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `kind` | string: `anthropic`, `openai`, `openai_responses`, `gemini`, `azure_openai`, `ollama`, `openai_compatible`, `llm_proxy` | required | The API it speaks: anthropic (Messages), openai (Chat Completions), openai_responses (Responses), gemini (generateContent), azure_openai (Chat Completions of a deployment), ollama (/api/chat), openai_compatible (Chat Completions at any base_url, as vLLM, llama.cpp, DeepSeek or a gateway), or llm_proxy, this akit's own llm.proxy, reached on its api address, so that the assistant uses the mesh's models. |
+| `name` | string | required | The provider's name, which default_model and the Settings page name it by: letters, digits, '_', '.' and '-'. |
+| `api_key_env` | string |  | An environment variable holding the API key, read when a call is made; a key the Settings page keeps in the store comes first. |
+| `api_version` | string |  | The api-version of an azure_openai provider's calls, as 2024-10-21; needed for it, and for no other kind. |
+| `base_url` | string |  | The API's base URL, as https://api.openai.com/v1; the vendor's when left out, and needed for openai_compatible and azure_openai. Not for llm_proxy. A key is sent only over https, or to a loopback host. |
+| `connect_timeout` | duration | `"10s"` | How long a connect, TLS included, may take. 10s when left out. |
+| `first_byte_timeout` | duration | `"2m"` | How long a call may wait for its answer to begin. 2m when left out. |
+| `headers` | map of string |  | Headers sent with every call, as an organization or a gateway's own; not the key's headers, Host or the body's framing. |
+| `idle_timeout` | duration | `"1m"` | How long a streamed answer may go silent. 1m when left out. |
+| `models` | list of [object](#cfg-admin-assistant-providers-models) |  | The models offered from this provider; the Settings page reads the provider's own list to add them. |
+| `retries` | integer, 0 to 5 | `2` | How often a call is tried again when it failed before any of its answer was taken: the connect failed, or the API answered 408, 429, 500, 502, 503, 504 or 529. 2 when left out; 0 tries once. |
+| `timeout` | duration | `"10m"` | The most one call may take, to the end of its answer. 10m when left out. |
+<!-- END GENERATED -->
+
+<!-- BEGIN GENERATED: admin.assistant.providers[].models[] -->
+<a id="cfg-admin-assistant-providers-models"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `name` | string | required | The model's ID, as the provider names it. |
+| `context` | integer, 0 or more |  | The model's context window, in tokens; 0 or left out when not known. |
+| `tools` | boolean | `true` | Whether the model calls tools. On when left out. |
+<!-- END GENERATED -->
+
+<!-- BEGIN GENERATED: admin.assistant.default_model -->
+<a id="cfg-admin-assistant-default-model"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `model` | string | required | The model's ID. |
+| `provider` | string | required | A provider's name. |
+<!-- END GENERATED -->
+
+<!-- BEGIN GENERATED: admin.assistant.params -->
+<a id="cfg-admin-assistant-params"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `max_output_tokens` | integer, 0 or more | `4096` | The most tokens a model's answer may have. 4096 when left out or 0. |
+| `temperature` | number, 0 to 2 |  | The sampling temperature; the model's own when left out. |
+| `thinking` | string: `off`, `low`, `medium`, `high` | `"off"` | How much a model that thinks before it answers may: off, low, medium or high, as its API takes it (an effort, or a budget of tokens). off when left out. |
+<!-- END GENERATED -->
+
+<!-- BEGIN GENERATED: admin.assistant.limits -->
+<a id="cfg-admin-assistant-limits"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `max_audit_entries` | integer, 0 or more | `1000` | The most entries the assistant's audit log keeps; one more removes the oldest. 1000 when left out or 0. |
+| `max_concurrent_chats` | integer, 0 or more | `4` | The most answers being made at once, across users; one more is refused until one ends. 4 when left out or 0. |
+| `max_conversations` | integer, 0 or more | `50` | The most conversations kept for each user; one more removes the oldest. 50 when left out or 0. |
+| `max_stream_bytes` | integer, 0 or more | `8388608` | The most bytes of one model answer as it streams in; a larger one is cut and fails. 8 MiB when left out or 0. |
+| `max_tokens_per_day` | integer, 0 or more | `1000000` | The most tokens, in and out, one user's calls may take in a day, as the APIs count them. 1000000 when left out or 0. |
+| `max_tool_calls` | integer, 0 or more | `16` | The most tools an answer may call before the assistant stops it. 16 when left out or 0. |
+| `max_tool_result_bytes` | integer, 0 or more | `32768` | The most bytes of a tool's result handed to the model; a longer one is cut, and says so. 32 KiB when left out or 0. |
+| `max_turns` | integer, 0 or more | `40` | The most turns a conversation keeps, a user's message and the answer to it each. 40 when left out or 0. |
+<!-- END GENERATED -->
+
+<!-- BEGIN GENERATED: admin.assistant.data -->
+<a id="cfg-admin-assistant-data"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `redact` | list of string |  | Regular expressions (Go's syntax) whose matches are replaced in everything the tools hand a model, beside the keys, hashes, tokens and private keys that always are. |
+| `send_access_log` | boolean |  | Let the tools hand lines of the access log to the model, redacted. Off by default. |
+| `send_logs` | boolean |  | Let the tools hand lines of akit's own log to the model, redacted. Off by default. |
+| `send_records` | boolean |  | Let the sync tools hand the records of dry runs and dead letters to the model as they are. Off by default: each value of a record's key and rows is replaced by its kind, so that the model sees namespaces, operations, fields and errors, not what the fields hold. |
+| `send_subjects` | boolean |  | Let the media tools hand playback sessions' subjects to the model as they are. Off by default: each subject is replaced by a hash of it, the same for one subject while akit runs, which the propose tools take back. |
+<!-- END GENERATED -->
+
+<!-- BEGIN GENERATED: admin.assistant.users[] -->
+<a id="cfg-admin-assistant-users"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `level` | string: `off`, `read`, `edit`, `propose`, `apply` | required | What the user may have the assistant do: off, read, edit, propose or apply, each including the ones before it. |
+| `username` | string | required | A console user's name. |
+<!-- END GENERATED -->
+
+<!-- BEGIN GENERATED: admin.assistant.mcp -->
+<a id="cfg-admin-assistant-mcp"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `allow` | list of string |  | The addresses (as 127.0.0.1) and prefixes (as 10.0.0.0/8) MCP clients may call from; a token may narrow them further. Loopback only when left out. |
+| `max_calls_per_minute` | integer, 0 to 6000 | `120` | The most requests of one token in a minute; past it they are answered 429 until the minute's share comes back. 120 when left out or 0. |
+| `max_concurrent_calls` | integer, 0 to 64 | `4` | The most requests of one token served at once; one more is answered 429. 4 when left out or 0. |
+| `max_request_bytes` | integer, 0 to 8388608 | `1048576` | The most bytes of a request's body, beside the console's own bound. 1 MiB when left out or 0. |
+| `max_sessions` | integer, 0 or more | `4` | The most sessions a token keeps for clients of the protocol's versions before 2026-07-28, which open one with initialize; one more ends the one used least recently. 4 when left out or 0. |
+| `max_token_days` | integer, 0 to 3650 | `90` | The longest a token may last, in days, from when it is made. 90 when left out or 0. |
+| `max_tokens_per_user` | integer, 0 or more | `10` | The most MCP tokens a console user may hold. 10 when left out or 0. |
+| `session_idle_timeout` | duration | `"1h"` | How long such a session is kept without a request. 1h when left out. |
 <!-- END GENERATED -->
 
 ## HTTPS by default

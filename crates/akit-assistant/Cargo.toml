@@ -1,0 +1,21 @@
+[package]
+name = "akit-assistant"
+description = "akit's console assistant (fit's assistant): the module ai, its settings and keys kept in the store, the model APIs it calls."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+# The pool the store's writes run on, the engine the model calls go out on.
+akio = { workspace = true }
+# The requests the console module answers.
+akio-http = { workspace = true }
+akit-config = { workspace = true }
+# The console module the assistant is served as (akit_roles::pages::Module).
+akit-roles = { workspace = true }
+
+[lints]
+workspace = true

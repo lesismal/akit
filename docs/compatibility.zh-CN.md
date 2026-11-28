@@ -328,14 +328,14 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 1312 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 1364 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
 | [`access`](#fields-access) | 5 | 5 | 0 |
 | [`access_log`](#fields-access-log) | 14 | 14 | 0 |
 | [`acme`](#fields-acme) | 43 | 43 | 0 |
-| [`admin`](#fields-admin) | 105 | 51 | 54 |
+| [`admin`](#fields-admin) | 105 | 103 | 2 |
 | [`auto_https`](#fields-auto-https) | 5 | 5 | 0 |
 | [`bittorrent`](#fields-bittorrent) | 160 | 106 | 54 |
 | [`engine`](#fields-engine) | 11 | 8 | 3 |
@@ -453,7 +453,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`tunnel`](#fields-tunnel) | 164 | 161 | 3 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 76 | 0 |
-| **合计** | 3821 | 1312 | 2509 |
+| **合计** | 3821 | 1364 | 2457 |
 
 <a id="fields-access"></a>
 
@@ -551,58 +551,58 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | `admin.access.deny` | `array<string>` | 已支持 |
 | `admin.access.deny_files` | `array<string>` | 已支持 |
 | `admin.address` | `string` | 已支持 |
-| `admin.assistant` | `object` | 尚不支持（not supported yet） |
-| `admin.assistant.data` | `object` | 尚不支持（not supported yet） |
-| `admin.assistant.data.redact` | `array<string>` | 尚不支持（not supported yet） |
-| `admin.assistant.data.send_access_log` | `boolean` | 尚不支持（not supported yet） |
-| `admin.assistant.data.send_logs` | `boolean` | 尚不支持（not supported yet） |
-| `admin.assistant.data.send_records` | `boolean` | 尚不支持（not supported yet） |
-| `admin.assistant.data.send_subjects` | `boolean` | 尚不支持（not supported yet） |
-| `admin.assistant.default_level` | `enum(off\|read\|edit\|propose\|apply)` | 尚不支持（not supported yet） |
-| `admin.assistant.default_model` | `object` | 尚不支持（not supported yet） |
-| `admin.assistant.default_model.model` | `string, required` | 尚不支持（not supported yet） |
-| `admin.assistant.default_model.provider` | `string, required` | 尚不支持（not supported yet） |
-| `admin.assistant.limits` | `object` | 尚不支持（not supported yet） |
-| `admin.assistant.limits.max_audit_entries` | `integer` | 尚不支持（not supported yet） |
-| `admin.assistant.limits.max_concurrent_chats` | `integer` | 尚不支持（not supported yet） |
-| `admin.assistant.limits.max_conversations` | `integer` | 尚不支持（not supported yet） |
-| `admin.assistant.limits.max_stream_bytes` | `integer` | 尚不支持（not supported yet） |
-| `admin.assistant.limits.max_tokens_per_day` | `integer` | 尚不支持（not supported yet） |
-| `admin.assistant.limits.max_tool_calls` | `integer` | 尚不支持（not supported yet） |
-| `admin.assistant.limits.max_tool_result_bytes` | `integer` | 尚不支持（not supported yet） |
-| `admin.assistant.limits.max_turns` | `integer` | 尚不支持（not supported yet） |
-| `admin.assistant.mcp` | `object` | 尚不支持（not supported yet） |
-| `admin.assistant.mcp.allow` | `array<string>` | 尚不支持（not supported yet） |
-| `admin.assistant.mcp.max_calls_per_minute` | `integer` | 尚不支持（not supported yet） |
-| `admin.assistant.mcp.max_concurrent_calls` | `integer` | 尚不支持（not supported yet） |
-| `admin.assistant.mcp.max_request_bytes` | `integer` | 尚不支持（not supported yet） |
-| `admin.assistant.mcp.max_sessions` | `integer` | 尚不支持（not supported yet） |
-| `admin.assistant.mcp.max_token_days` | `integer` | 尚不支持（not supported yet） |
-| `admin.assistant.mcp.max_tokens_per_user` | `integer` | 尚不支持（not supported yet） |
-| `admin.assistant.mcp.session_idle_timeout` | `duration` | 尚不支持（not supported yet） |
-| `admin.assistant.params` | `object` | 尚不支持（not supported yet） |
-| `admin.assistant.params.max_output_tokens` | `integer` | 尚不支持（not supported yet） |
-| `admin.assistant.params.temperature` | `number` | 尚不支持（not supported yet） |
-| `admin.assistant.params.thinking` | `enum(off\|low\|medium\|high)` | 尚不支持（not supported yet） |
-| `admin.assistant.providers` | `array<object>` | 尚不支持（not supported yet） |
-| `admin.assistant.providers[].api_key_env` | `string` | 尚不支持（not supported yet） |
-| `admin.assistant.providers[].api_version` | `string` | 尚不支持（not supported yet） |
-| `admin.assistant.providers[].base_url` | `string` | 尚不支持（not supported yet） |
-| `admin.assistant.providers[].connect_timeout` | `duration` | 尚不支持（not supported yet） |
-| `admin.assistant.providers[].first_byte_timeout` | `duration` | 尚不支持（not supported yet） |
-| `admin.assistant.providers[].headers` | `map<string>` | 尚不支持（not supported yet） |
-| `admin.assistant.providers[].idle_timeout` | `duration` | 尚不支持（not supported yet） |
-| `admin.assistant.providers[].kind` | `enum(anthropic\|openai\|openai_responses\|gemini\|azure_openai\|ollama\|openai_compatible\|llm_proxy), required` | 尚不支持（not supported yet） |
-| `admin.assistant.providers[].models` | `array<object>` | 尚不支持（not supported yet） |
-| `admin.assistant.providers[].models[].context` | `integer` | 尚不支持（not supported yet） |
-| `admin.assistant.providers[].models[].name` | `string, required` | 尚不支持（not supported yet） |
-| `admin.assistant.providers[].models[].tools` | `boolean` | 尚不支持（not supported yet） |
-| `admin.assistant.providers[].name` | `string, required` | 尚不支持（not supported yet） |
-| `admin.assistant.providers[].retries` | `integer` | 尚不支持（not supported yet） |
-| `admin.assistant.providers[].timeout` | `duration` | 尚不支持（not supported yet） |
-| `admin.assistant.users` | `array<object>` | 尚不支持（not supported yet） |
-| `admin.assistant.users[].level` | `enum(off\|read\|edit\|propose\|apply), required` | 尚不支持（not supported yet） |
-| `admin.assistant.users[].username` | `string, required` | 尚不支持（not supported yet） |
+| `admin.assistant` | `object` | 已支持 |
+| `admin.assistant.data` | `object` | 已支持 |
+| `admin.assistant.data.redact` | `array<string>` | 已支持 |
+| `admin.assistant.data.send_access_log` | `boolean` | 已支持 |
+| `admin.assistant.data.send_logs` | `boolean` | 已支持 |
+| `admin.assistant.data.send_records` | `boolean` | 已支持 |
+| `admin.assistant.data.send_subjects` | `boolean` | 已支持 |
+| `admin.assistant.default_level` | `enum(off\|read\|edit\|propose\|apply)` | 已支持 |
+| `admin.assistant.default_model` | `object` | 已支持 |
+| `admin.assistant.default_model.model` | `string, required` | 已支持 |
+| `admin.assistant.default_model.provider` | `string, required` | 已支持 |
+| `admin.assistant.limits` | `object` | 已支持 |
+| `admin.assistant.limits.max_audit_entries` | `integer` | 已支持 |
+| `admin.assistant.limits.max_concurrent_chats` | `integer` | 已支持 |
+| `admin.assistant.limits.max_conversations` | `integer` | 已支持 |
+| `admin.assistant.limits.max_stream_bytes` | `integer` | 已支持 |
+| `admin.assistant.limits.max_tokens_per_day` | `integer` | 已支持 |
+| `admin.assistant.limits.max_tool_calls` | `integer` | 已支持 |
+| `admin.assistant.limits.max_tool_result_bytes` | `integer` | 已支持 |
+| `admin.assistant.limits.max_turns` | `integer` | 已支持 |
+| `admin.assistant.mcp` | `object` | 已支持 |
+| `admin.assistant.mcp.allow` | `array<string>` | 已支持 |
+| `admin.assistant.mcp.max_calls_per_minute` | `integer` | 已支持 |
+| `admin.assistant.mcp.max_concurrent_calls` | `integer` | 已支持 |
+| `admin.assistant.mcp.max_request_bytes` | `integer` | 已支持 |
+| `admin.assistant.mcp.max_sessions` | `integer` | 已支持 |
+| `admin.assistant.mcp.max_token_days` | `integer` | 已支持 |
+| `admin.assistant.mcp.max_tokens_per_user` | `integer` | 已支持 |
+| `admin.assistant.mcp.session_idle_timeout` | `duration` | 已支持 |
+| `admin.assistant.params` | `object` | 已支持 |
+| `admin.assistant.params.max_output_tokens` | `integer` | 已支持 |
+| `admin.assistant.params.temperature` | `number` | 已支持 |
+| `admin.assistant.params.thinking` | `enum(off\|low\|medium\|high)` | 已支持 |
+| `admin.assistant.providers` | `array<object>` | 已支持 |
+| `admin.assistant.providers[].api_key_env` | `string` | 已支持 |
+| `admin.assistant.providers[].api_version` | `string` | 已支持 |
+| `admin.assistant.providers[].base_url` | `string` | 已支持 |
+| `admin.assistant.providers[].connect_timeout` | `duration` | 已支持 |
+| `admin.assistant.providers[].first_byte_timeout` | `duration` | 已支持 |
+| `admin.assistant.providers[].headers` | `map<string>` | 已支持 |
+| `admin.assistant.providers[].idle_timeout` | `duration` | 已支持 |
+| `admin.assistant.providers[].kind` | `enum(anthropic\|openai\|openai_responses\|gemini\|azure_openai\|ollama\|openai_compatible\|llm_proxy), required` | 已支持 |
+| `admin.assistant.providers[].models` | `array<object>` | 已支持 |
+| `admin.assistant.providers[].models[].context` | `integer` | 已支持 |
+| `admin.assistant.providers[].models[].name` | `string, required` | 已支持 |
+| `admin.assistant.providers[].models[].tools` | `boolean` | 已支持 |
+| `admin.assistant.providers[].name` | `string, required` | 已支持 |
+| `admin.assistant.providers[].retries` | `integer` | 已支持 |
+| `admin.assistant.providers[].timeout` | `duration` | 已支持 |
+| `admin.assistant.users` | `array<object>` | 已支持 |
+| `admin.assistant.users[].level` | `enum(off\|read\|edit\|propose\|apply), required` | 已支持 |
+| `admin.assistant.users[].username` | `string, required` | 已支持 |
 | `admin.cert_file` | `string` | 已支持 |
 | `admin.client_ca_file` | `string` | 已支持 |
 | `admin.cluster` | `object` | 已支持 |

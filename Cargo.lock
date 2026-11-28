@@ -366,6 +366,7 @@ dependencies = [
  "akio-sys",
  "akio-x509",
  "akit-admin",
+ "akit-assistant",
  "akit-bittorrent",
  "akit-cache",
  "akit-cluster",
@@ -404,6 +405,7 @@ dependencies = [
  "akio-http",
  "akio-x509",
  "akit-access",
+ "akit-assistant",
  "akit-cache",
  "akit-config",
  "akit-handler",
@@ -414,6 +416,16 @@ dependencies = [
  "akit-roles",
  "akit-runtime",
  "akit-tls",
+]
+
+[[package]]
+name = "akit-assistant"
+version = "0.0.1"
+dependencies = [
+ "akio",
+ "akio-http",
+ "akit-config",
+ "akit-roles",
 ]
 
 [[package]]

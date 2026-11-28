@@ -26,6 +26,7 @@ members = [
     "crates/akit-webrtc",
     "crates/akit-bittorrent",
     "crates/akit-cluster",
+    "crates/akit-assistant",
     "crates/akit-media",
     "tests/compat",
 ]
@@ -109,6 +110,7 @@ akit-bittorrent = { path = "crates/akit-bittorrent" }
 akit-media = { path = "crates/akit-media" }
 
 akit-cluster = { path = "crates/akit-cluster" }
+akit-assistant = { path = "crates/akit-assistant" }
 
 [workspace.lints.rust]
 # No unsafe in akit (rules.md rule 14); every crate also says #![forbid(unsafe_code)].

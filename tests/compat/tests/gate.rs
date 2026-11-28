@@ -800,6 +800,165 @@ fn supported_fields_are_read() {
             member_sample(&format!(r#""token": "akite1.0123456789abcdef.{}""#, "A".repeat(43))),
             |c| member_of(c).unwrap().token.starts_with("akite1."),
         ),
+        // I160: the console's assistant, read as fit's config/assistant.go.
+        ("admin.assistant", assistant_sample(""), |c| assistant_of(c).is_some()),
+        ("admin.assistant.providers", assistant_sample(PROVIDER), |c| {
+            assistant_of(c).unwrap().providers.len() == 1
+        }),
+        ("admin.assistant.providers[].name", assistant_sample(PROVIDER), |c| {
+            provider_of(c).name == "p"
+        }),
+        ("admin.assistant.providers[].kind", assistant_sample(PROVIDER), |c| {
+            provider_of(c).kind == akit_config::assistant::ProviderKind::AzureOpenAi
+        }),
+        ("admin.assistant.providers[].base_url", assistant_sample(PROVIDER), |c| {
+            provider_of(c).url() == "https://x.example"
+        }),
+        ("admin.assistant.providers[].api_version", assistant_sample(PROVIDER), |c| {
+            provider_of(c).api_version == "2024-10-21"
+        }),
+        ("admin.assistant.providers[].api_key_env", assistant_sample(PROVIDER), |c| {
+            provider_of(c).api_key_env == "AZ_KEY"
+        }),
+        ("admin.assistant.providers[].headers", assistant_sample(PROVIDER), |c| {
+            provider_of(c).headers == [("X-Org".to_owned(), "o".to_owned())]
+        }),
+        ("admin.assistant.providers[].connect_timeout", assistant_sample(PROVIDER), |c| {
+            provider_of(c).connect() == std::time::Duration::from_secs(1)
+        }),
+        ("admin.assistant.providers[].first_byte_timeout", assistant_sample(PROVIDER), |c| {
+            provider_of(c).first_byte() == std::time::Duration::from_secs(2)
+        }),
+        ("admin.assistant.providers[].idle_timeout", assistant_sample(PROVIDER), |c| {
+            provider_of(c).idle() == std::time::Duration::from_secs(3)
+        }),
+        ("admin.assistant.providers[].timeout", assistant_sample(PROVIDER), |c| {
+            provider_of(c).total() == std::time::Duration::from_secs(4)
+        }),
+        ("admin.assistant.providers[].retries", assistant_sample(PROVIDER), |c| {
+            provider_of(c).retry_count() == 1
+        }),
+        ("admin.assistant.providers[].models", assistant_sample(PROVIDER), |c| {
+            provider_of(c).models.len() == 1
+        }),
+        ("admin.assistant.providers[].models[].name", assistant_sample(PROVIDER), |c| {
+            provider_of(c).models.first().unwrap().name == "m"
+        }),
+        ("admin.assistant.providers[].models[].context", assistant_sample(PROVIDER), |c| {
+            provider_of(c).models.first().unwrap().context == 8192
+        }),
+        ("admin.assistant.providers[].models[].tools", assistant_sample(PROVIDER), |c| {
+            !provider_of(c).models.first().unwrap().calls_tools()
+        }),
+        (
+            "admin.assistant.default_model",
+            assistant_sample(&format!(r#"{PROVIDER}, "default_model": {{"provider": "p", "model": "x"}}"#)),
+            |c| assistant_of(c).unwrap().default_model() == ("p", "x"),
+        ),
+        (
+            "admin.assistant.default_model.provider",
+            assistant_sample(&format!(r#"{PROVIDER}, "default_model": {{"provider": "p", "model": "x"}}"#)),
+            |c| assistant_of(c).unwrap().default_model.as_ref().unwrap().provider == "p",
+        ),
+        (
+            "admin.assistant.default_model.model",
+            assistant_sample(&format!(r#"{PROVIDER}, "default_model": {{"provider": "p", "model": "x"}}"#)),
+            |c| assistant_of(c).unwrap().default_model.as_ref().unwrap().model == "x",
+        ),
+        ("admin.assistant.params", assistant_sample(r#""params": {}"#), |c| {
+            assistant_of(c).unwrap().params.max_output() == 4096
+        }),
+        ("admin.assistant.params.max_output_tokens", assistant_sample(r#""params": {"max_output_tokens": 9}"#), |c| {
+            assistant_of(c).unwrap().params.max_output() == 9
+        }),
+        ("admin.assistant.params.temperature", assistant_sample(r#""params": {"temperature": 0.2}"#), |c| {
+            assistant_of(c).unwrap().params.temperature.as_deref() == Some("0.2")
+        }),
+        ("admin.assistant.params.thinking", assistant_sample(r#""params": {"thinking": "low"}"#), |c| {
+            assistant_of(c).unwrap().params.thinking_level() == "low"
+        }),
+        ("admin.assistant.limits", assistant_sample(LIMITS), |c| {
+            assistant_of(c).unwrap().limits.turns() == 1
+        }),
+        ("admin.assistant.limits.max_turns", assistant_sample(LIMITS), |c| {
+            assistant_of(c).unwrap().limits.turns() == 1
+        }),
+        ("admin.assistant.limits.max_tool_calls", assistant_sample(LIMITS), |c| {
+            assistant_of(c).unwrap().limits.tool_calls() == 2
+        }),
+        ("admin.assistant.limits.max_tool_result_bytes", assistant_sample(LIMITS), |c| {
+            assistant_of(c).unwrap().limits.tool_result_bytes() == 3
+        }),
+        ("admin.assistant.limits.max_conversations", assistant_sample(LIMITS), |c| {
+            assistant_of(c).unwrap().limits.conversations() == 4
+        }),
+        ("admin.assistant.limits.max_concurrent_chats", assistant_sample(LIMITS), |c| {
+            assistant_of(c).unwrap().limits.concurrent_chats() == 5
+        }),
+        ("admin.assistant.limits.max_tokens_per_day", assistant_sample(LIMITS), |c| {
+            assistant_of(c).unwrap().limits.tokens_per_day() == 6
+        }),
+        ("admin.assistant.limits.max_stream_bytes", assistant_sample(LIMITS), |c| {
+            assistant_of(c).unwrap().limits.stream_bytes() == 7
+        }),
+        ("admin.assistant.limits.max_audit_entries", assistant_sample(LIMITS), |c| {
+            assistant_of(c).unwrap().limits.audit_entries() == 8
+        }),
+        ("admin.assistant.data", assistant_sample(DATA), |c| {
+            assistant_of(c).unwrap().data.send_logs
+        }),
+        ("admin.assistant.data.send_logs", assistant_sample(DATA), |c| {
+            assistant_of(c).unwrap().data.send_logs
+        }),
+        ("admin.assistant.data.send_access_log", assistant_sample(DATA), |c| {
+            assistant_of(c).unwrap().data.send_access_log
+        }),
+        ("admin.assistant.data.send_subjects", assistant_sample(DATA), |c| {
+            assistant_of(c).unwrap().data.send_subjects
+        }),
+        ("admin.assistant.data.send_records", assistant_sample(DATA), |c| {
+            assistant_of(c).unwrap().data.send_records
+        }),
+        ("admin.assistant.data.redact", assistant_sample(DATA), |c| {
+            assistant_of(c).unwrap().data.redact == ["k-[0-9]+"]
+        }),
+        ("admin.assistant.users", assistant_sample(USERS), |c| {
+            assistant_of(c).unwrap().users.len() == 1
+        }),
+        ("admin.assistant.users[].username", assistant_sample(USERS), |c| {
+            assistant_of(c).unwrap().users.first().unwrap().username == "a"
+        }),
+        ("admin.assistant.users[].level", assistant_sample(USERS), |c| {
+            assistant_of(c).unwrap().level("a") == akit_config::assistant::Level::Apply
+        }),
+        ("admin.assistant.default_level", assistant_sample(r#""default_level": "off""#), |c| {
+            assistant_of(c).unwrap().level("a") == akit_config::assistant::Level::Off
+        }),
+        ("admin.assistant.mcp", assistant_sample(MCP), |c| mcp_of(c).is_some()),
+        ("admin.assistant.mcp.allow", assistant_sample(MCP), |c| {
+            mcp_of(c).unwrap().allow == ["10.0.0.0/8"]
+        }),
+        ("admin.assistant.mcp.max_tokens_per_user", assistant_sample(MCP), |c| {
+            mcp_of(c).unwrap().tokens_per_user() == 1
+        }),
+        ("admin.assistant.mcp.max_token_days", assistant_sample(MCP), |c| {
+            mcp_of(c).unwrap().token_days() == 2
+        }),
+        ("admin.assistant.mcp.max_sessions", assistant_sample(MCP), |c| {
+            mcp_of(c).unwrap().sessions() == 3
+        }),
+        ("admin.assistant.mcp.session_idle_timeout", assistant_sample(MCP), |c| {
+            mcp_of(c).unwrap().session_idle() == std::time::Duration::from_secs(60)
+        }),
+        ("admin.assistant.mcp.max_request_bytes", assistant_sample(MCP), |c| {
+            mcp_of(c).unwrap().request_bytes() == 5
+        }),
+        ("admin.assistant.mcp.max_concurrent_calls", assistant_sample(MCP), |c| {
+            mcp_of(c).unwrap().concurrent_calls() == 6
+        }),
+        ("admin.assistant.mcp.max_calls_per_minute", assistant_sample(MCP), |c| {
+            mcp_of(c).unwrap().calls_per_minute() == 7
+        }),
         ("admin.console", console_sample(""), |c| console_of(c).users.len() == 1),
         ("admin.console.users", console_sample(""), |c| console_of(c).users.len() == 1),
         ("admin.console.users[].username", console_sample(""), |c| {
@@ -3347,6 +3506,8 @@ fn akit_config_lists_match_the_inventory() {
         "bittorrent.rs",
         // I130: cluster management.
         "cluster.rs",
+        // I160: the console's assistant.
+        "assistant.rs",
         // I120: media auth and the streaming role.
         "media.rs",
         // I140: the media libraries.
@@ -3368,7 +3529,7 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 194] = [
+    let objects: [(&str, &str, Option<&str>); 203] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         (
             "providers[].kubernetes",
@@ -3387,6 +3548,27 @@ fn akit_config_lists_match_the_inventory() {
         ("admin.store", "STORE_FIELDS", None),
         ("admin.cluster", "CLUSTER_FIELDS", None),
         ("admin.cluster_member", "CLUSTER_MEMBER_FIELDS", None),
+        ("admin.assistant", "ASSISTANT_FIELDS", None),
+        (
+            "admin.assistant.providers[]",
+            "ASSISTANT_PROVIDER_FIELDS",
+            None,
+        ),
+        (
+            "admin.assistant.providers[].models[]",
+            "ASSISTANT_MODEL_FIELDS",
+            None,
+        ),
+        (
+            "admin.assistant.default_model",
+            "ASSISTANT_MODEL_REF_FIELDS",
+            None,
+        ),
+        ("admin.assistant.params", "ASSISTANT_PARAMS_FIELDS", None),
+        ("admin.assistant.limits", "ASSISTANT_LIMITS_FIELDS", None),
+        ("admin.assistant.data", "ASSISTANT_DATA_FIELDS", None),
+        ("admin.assistant.users[]", "ASSISTANT_USER_FIELDS", None),
+        ("admin.assistant.mcp", "ASSISTANT_MCP_FIELDS", None),
         ("acme", "ACME_FIELDS", Some("ACME_FIT_ONLY")),
         ("acme.on_demand", "ON_DEMAND_FIELDS", None),
         ("acme.shared_storage", "SHARED_STORAGE_FIELDS", None),
@@ -4394,6 +4576,35 @@ fn cluster_sample(extra: &str) -> String {
 /// The `admin.cluster` of `c`.
 fn cluster_of(c: &Config) -> Option<&akit_config::cluster::Cluster> {
     c.admin.as_ref().unwrap().cluster.as_ref()
+}
+
+/// A provider of every field, for `admin.assistant`'s checks (I160).
+const PROVIDER: &str = r#""providers": [{"name": "p", "kind": "azure_openai", "base_url": "https://x.example", "api_version": "2024-10-21", "api_key_env": "AZ_KEY", "headers": {"X-Org": "o"}, "connect_timeout": "1s", "first_byte_timeout": "2s", "idle_timeout": "3s", "timeout": "4s", "retries": 1, "models": [{"name": "m", "context": 8192, "tools": false}]}]"#;
+const LIMITS: &str = r#""limits": {"max_turns": 1, "max_tool_calls": 2, "max_tool_result_bytes": 3, "max_conversations": 4, "max_concurrent_chats": 5, "max_tokens_per_day": 6, "max_stream_bytes": 7, "max_audit_entries": 8}"#;
+const DATA: &str = r#""data": {"send_logs": true, "send_access_log": true, "send_subjects": true, "send_records": true, "redact": ["k-[0-9]+"]}"#;
+const USERS: &str = r#""users": [{"username": "a", "level": "apply"}]"#;
+const MCP: &str = r#""mcp": {"allow": ["10.0.0.0/8"], "max_tokens_per_user": 1, "max_token_days": 2, "max_sessions": 3, "session_idle_timeout": "1m", "max_request_bytes": 5, "max_concurrent_calls": 6, "max_calls_per_minute": 7}"#;
+
+/// A config with `admin.console` and `admin.assistant` with `extra` members (I160).
+fn assistant_sample(extra: &str) -> String {
+    format!(
+        r#"{{"admin": {{"console": {{"users": [{{"username": "a", "password_hash": "$2b$04$x"}}]}}, "assistant": {{{extra}}}}}}}"#
+    )
+}
+
+/// The `admin.assistant` of `c`.
+fn assistant_of(c: &Config) -> Option<&akit_config::assistant::Assistant> {
+    c.admin.as_ref().unwrap().assistant.as_ref()
+}
+
+/// The first provider of `c`'s `admin.assistant`.
+fn provider_of(c: &Config) -> &akit_config::assistant::Provider {
+    assistant_of(c).unwrap().providers.first().unwrap()
+}
+
+/// The `admin.assistant.mcp` of `c`.
+fn mcp_of(c: &Config) -> Option<&akit_config::assistant::Mcp> {
+    assistant_of(c).unwrap().mcp.as_ref()
 }
 
 /// A config with `admin.cluster_member`, its manager and pin, and `extra` members (I130).

@@ -332,9 +332,22 @@ fn roles_not_running(config: &Config) -> Result<(), Failure> {
     }
 }
 
-/// The store, as the cluster manager keeps its members in it (I132): its section `cluster`,
-/// written on the manager's pool.
+/// The store, as the cluster manager keeps its members in it (I132), its section `cluster`,
+/// written on the manager's pool; and as the assistant keeps its settings and keys (I160), its
+/// section `assistant`, written on the assistant's.
 struct ClusterStore(boot::Shared);
+
+impl akit_assistant::Store for ClusterStore {
+    fn section(&self, name: &str) -> Option<Vec<u8>> {
+        boot::lock(&self.0).section(name).map(<[u8]>::to_vec)
+    }
+
+    fn set_section(&self, name: &str, data: &[u8]) -> Result<(), String> {
+        boot::lock(&self.0)
+            .set_section(name, data)
+            .map_err(|e| e.to_string())
+    }
+}
 
 impl akit_cluster::Store for ClusterStore {
     fn section(&self, name: &str) -> Option<Vec<u8>> {
@@ -1566,6 +1579,12 @@ fn run(args: &[String]) -> ExitCode {
                 roles: modules.ids().iter().map(|s| (*s).to_owned()).collect(),
                 counts_requests: graph.with(|g| g.metrics().is_some()),
             }));
+            // The assistant's settings and keys, kept in the store (I160).
+            if a.assistant.is_some() {
+                api_opts.assistant_store = boot.as_ref().map(|b| {
+                    Arc::new(ClusterStore(Arc::clone(&b.store))) as Arc<dyn akit_assistant::Store>
+                });
+            }
             // The cluster manager (I132), its members kept in the store, served by the console.
             if let Some(c) = &a.cluster {
                 let Some(b) = &boot else {

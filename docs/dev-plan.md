@@ -289,7 +289,7 @@ Tunnel and LLM track; I110–I114 are the WebRTC track, and I115–I119 are rese
 | I139b | Cluster XI: members behind NAT, linking out | I132 | todo |
 | I139c | Cluster XII: metrics, logs and certificates across members; `akit cluster` | I138 | todo |
 | **After 1.0: AI assistant** | | | |
-| I160 | The assistant I: `admin.assistant` in the config, its settings and keys in the store, the module `ai` | I93c, I91 | todo |
+| I160 | The assistant I: `admin.assistant` in the config, its settings and keys in the store, the module `ai` | I93c, I91 | done |
 | I161 | The assistant II: the model client and the provider test | I160, I107 | todo |
 | I162 | The assistant III: the chat and the read tools | I161 | todo |
 | I163 | The assistant IV: proposals, levels and the audit log | I162 | todo |
@@ -2702,7 +2702,8 @@ of the model APIs on port 0, never to a real API or with a real key.
 - **Touches**: `akit-config`, `akit-assistant` (new), `akit-admin` (`console`), `akit` (`run`),
   `tests/compat`, `docs`.
 - **fit**: `config/assistant.go`, `assistant/assistant.go`; I124.
-- **Status**: todo.
+- **Status**: done (2026-11-28). `akit_config::assistant`, the crate `akit-assistant`; the
+  section checked against fit's own code both ways (`tests/fitassistant`). See the progress log.
 
 ### I161 The assistant II: the model client and the provider test
 

@@ -277,7 +277,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I139b | 集群 XI：NAT 之后主动外连的成员 | I132 | todo |
 | I139c | 集群 XII：跨成员的指标、日志和证书；`akit cluster` | I138 | todo |
 | **1.0 之后：AI 助手** | | | |
-| I160 | 助手 I：配置中的 `admin.assistant`、存储中的设置和密钥、模块 `ai` | I93c, I91 | todo |
+| I160 | 助手 I：配置中的 `admin.assistant`、存储中的设置和密钥、模块 `ai` | I93c, I91 | done |
 | I161 | 助手 II：模型客户端和提供方测试 | I160, I107 | todo |
 | I162 | 助手 III：对话和读取工具 | I161 | todo |
 | I163 | 助手 IV：提案、级别和审计日志 | I162 | todo |
@@ -2246,7 +2246,8 @@ fit 的 I124–I130 和 I152–I154（fit 的 [工作台中的 AI
   `make v1-bless` 标记；参考文档重新生成。
 - **涉及**：`akit-config`、`akit-assistant`（新）、`akit-admin`（`console`）、`akit`（`run`）、`tests/compat`、`docs`。
 - **fit**：`config/assistant.go`、`assistant/assistant.go`；I124。
-- **状态**：todo。
+- **状态**：done（2026-11-28）。`akit_config::assistant`、crate `akit-assistant`；分区与 fit 自己的代码双向核对过
+  （`tests/fitassistant`）。见进展日志。
 
 ### I161 助手 II：模型客户端和提供方测试
 

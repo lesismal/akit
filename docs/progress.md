@@ -19,9 +19,36 @@ done and where the work differs from the plan.
 | akio requests | A1–A24, A29, A30, A32, A33, A35–A38, A45, A48, A49, A51–A54, A57, A58, A63–A66, A75, A78, A79, A90–A94, A105, A108, A109, A111–A113, A117, A132–A135, A148, A165–A172, A180, A200, A214, A215, A220, A230–A238, A245 and A247–A249 on akio's main and pinned; A225 (an external review, L15) requested ([akio API requests](akio-api-requests.md)) |
 | Streaming and media auth | [I120–I126](dev-plan.md#streaming-and-media-auth), fit's I115–I117 (decision 040): I120 (`media_auth` and `streaming` in the config), I121 (the policies, the checks, `akit media-token`), I122 (the role's hub, RTMP, RTSP and SRT), I123 (`httpflv`, `hls`), I124 (the WebRTC port, `stream_whip`, `stream_whep`), I125 (`media_pages`) and I126 (`auth` on `whip`, `whep` and `webrtc_proxy`) done; the media library's `libraries`, `vod` and `channels` wait for its track; akio requests A263–A268 |
 | Media library and channels | [I140–I149](dev-plan.md#media-library-and-channels), fit's I131–I139 and I119 (decision 043): I140 (`media_library` in the config) I141 (the catalog, the role `media_library`, `/media/library`) I142 (`vod`), I143 (`keys`, `media_tokens`), I144 (`url_signing`), I145 (channels), I146 (push targets), I147 (encrypted segments), I148 (the video site) and I149 (the console's media pages, the files managed) done: the track is done; akio requests A295–A298 |
-| AI assistant | [I160–I169](dev-plan.md#ai-assistant), fit's I124–I130 and I152–I154 (decision 044): planned; I160 next |
+| AI assistant | [I160–I169](dev-plan.md#ai-assistant), fit's I124–I130 and I152–I154 (decision 044): I160 (`admin.assistant`, the module `ai`, its settings and keys in the store) done; I161 next |
 
 ## Log
+
+### 2026-11-28: I160, the assistant I: `admin.assistant`, its settings and keys, the module `ai`
+
+- `akit_config::assistant` reads `admin.assistant` as fit's `config/assistant.go`: eight kinds of
+  provider with their URLs, versions, keys' variables, headers (the keys' and the framing's
+  refused), models and timeouts; `default_model`, `params`, `limits`, `data`, `users`,
+  `default_level` and `mcp`, with fit's defaults, bounds and messages, needing `admin.console`;
+  `load` reads settings kept apart (the store's) with their errors under `admin.assistant`, and
+  `raw` keeps the member as JSON for the Settings page. 52 fields supported, marked as v1
+  additions, the reference's tables added.
+- A new crate, `akit-assistant`: the console module `ai`, which akit-admin's console makes with
+  `admin.assistant` and lists after `admin` (`GET /api/workbench`); `GET /api/m/ai/settings` and
+  `PUT` (fit's view: the settings as written, the keys as set, where from and masked, the kinds,
+  levels, users, llm.proxy's API, each kind's URL; 409 without a store, 412 for a stale version,
+  400 with each error at its path). The settings and keys go into the store's section
+  `assistant`, fit's `{"settings", "keys"}`, written on a pool of the assistant's own; the store's
+  are used from the next start on, the config's when they no longer load. `akit run` gives it the
+  store (`akit_admin::Options::assistant_store`).
+- Checked: fit's `config/assistant_test.go` ported (`akit-config`, 7 tests), the settings' tests of
+  `assistant/assistant_test.go` through a running console (`akit-admin/tests/assistant.rs`): the
+  module only with the member, a key never answered (one from `api_key_env` shown masked), saved,
+  refused stale or invalid, read again after a restart, a section fit writes read; the gate's
+  checks of every field. Against fit's own code (`tests/fitassistant/akit_assistant_test.go` in
+  fit's package `assistant` at the gate's pin, Go 1.27.3): fit opens the section akit saved, with
+  its key, and akit the one fit saved, byte for byte the same document. The errors' members are
+  `path`, `line`, `col` and `msg`, as the pages read them (fit's encode Go's field names, which the
+  pages do not find; Go's decoder takes either). Next: I161, the model client.
 
 ### 2026-11-28: the AI assistant track planned (I160–I169)
 

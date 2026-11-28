@@ -123,6 +123,10 @@ pub struct Options {
     /// running `vod` and `hls` routes, for the console's `Host` as the browser sent it; added to
     /// its Content-Security-Policy, as fit's console `Sources`. None without it.
     pub media_origins: Option<MediaOrigins>,
+    /// What keeps the assistant's settings and keys (I160), the encrypted store's section
+    /// `assistant`: with `admin.assistant`, the console's Settings page saves into it; without
+    /// it, the settings are `admin.assistant`'s and are not saved.
+    pub assistant_store: Option<Arc<dyn akit_assistant::Store>>,
 }
 
 /// The origins of [`Options::media_origins`], for the console's `Host`.
@@ -152,6 +156,7 @@ impl fmt::Debug for Options {
             .field("console_grace", &self.console_grace)
             .field("node", &self.node.is_some())
             .field("cluster", &self.cluster.is_some())
+            .field("assistant_store", &self.assistant_store.is_some())
             .finish()
     }
 }
@@ -179,6 +184,7 @@ impl Default for Options {
             cluster: None,
             cluster_max_body: 0,
             media_origins: None,
+            assistant_store: None,
         }
     }
 }
@@ -604,6 +610,28 @@ impl Server {
         // The console (I90), when admin.console is set: the same endpoints, behind its logins,
         // its configs applied as its own source; bound first, so that an address it cannot have
         // stops akit before the API listens.
+        // The assistant (I160), when admin.assistant is set: served by the console as the module
+        // `ai`, its settings and keys kept in the store's section `assistant`.
+        let assistant = match (&settings.assistant, &settings.console) {
+            (Some(a), Some(c)) => {
+                let configs = shared.configs.clone();
+                let o = akit_assistant::Options {
+                    settings: a.clone(),
+                    console: Some(c.clone()),
+                    store: opts.assistant_store.clone(),
+                    running: Some(Arc::new(move || configs.current().effective().to_owned())),
+                    log: Arc::new(|msg: String| {
+                        akit_observe::logger::log(
+                            akit_observe::logger::Logger::Admin,
+                            akit_observe::logger::Level::Info,
+                            format_args!("{msg}"),
+                        );
+                    }),
+                };
+                Some(akit_assistant::Assistant::new(o).module())
+            }
+            _ => None,
+        };
         let console = match &settings.console {
             Some(c) => Some(crate::console::server::Console::start(
                 c,
@@ -618,6 +646,7 @@ impl Server {
                     ..shared.clone()
                 },
                 opts,
+                assistant,
             )?),
             None => None,
         };

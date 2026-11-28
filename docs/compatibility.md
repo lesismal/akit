@@ -398,14 +398,14 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 1312 supported.
+3821 fields in 121 sections, at fit `7daee573`; 1364 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
 | [`access`](#fields-access) | 5 | 5 | 0 |
 | [`access_log`](#fields-access-log) | 14 | 14 | 0 |
 | [`acme`](#fields-acme) | 43 | 43 | 0 |
-| [`admin`](#fields-admin) | 105 | 51 | 54 |
+| [`admin`](#fields-admin) | 105 | 103 | 2 |
 | [`auto_https`](#fields-auto-https) | 5 | 5 | 0 |
 | [`bittorrent`](#fields-bittorrent) | 160 | 106 | 54 |
 | [`engine`](#fields-engine) | 11 | 8 | 3 |
@@ -523,7 +523,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 161 | 3 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 76 | 0 |
-| **Total** | 3821 | 1312 | 2509 |
+| **Total** | 3821 | 1364 | 2457 |
 
 <a id="fields-access"></a>
 
@@ -621,58 +621,58 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `admin.access.deny` | `array<string>` | supported |
 | `admin.access.deny_files` | `array<string>` | supported |
 | `admin.address` | `string` | supported |
-| `admin.assistant` | `object` | not supported yet |
-| `admin.assistant.data` | `object` | not supported yet |
-| `admin.assistant.data.redact` | `array<string>` | not supported yet |
-| `admin.assistant.data.send_access_log` | `boolean` | not supported yet |
-| `admin.assistant.data.send_logs` | `boolean` | not supported yet |
-| `admin.assistant.data.send_records` | `boolean` | not supported yet |
-| `admin.assistant.data.send_subjects` | `boolean` | not supported yet |
-| `admin.assistant.default_level` | `enum(off\|read\|edit\|propose\|apply)` | not supported yet |
-| `admin.assistant.default_model` | `object` | not supported yet |
-| `admin.assistant.default_model.model` | `string, required` | not supported yet |
-| `admin.assistant.default_model.provider` | `string, required` | not supported yet |
-| `admin.assistant.limits` | `object` | not supported yet |
-| `admin.assistant.limits.max_audit_entries` | `integer` | not supported yet |
-| `admin.assistant.limits.max_concurrent_chats` | `integer` | not supported yet |
-| `admin.assistant.limits.max_conversations` | `integer` | not supported yet |
-| `admin.assistant.limits.max_stream_bytes` | `integer` | not supported yet |
-| `admin.assistant.limits.max_tokens_per_day` | `integer` | not supported yet |
-| `admin.assistant.limits.max_tool_calls` | `integer` | not supported yet |
-| `admin.assistant.limits.max_tool_result_bytes` | `integer` | not supported yet |
-| `admin.assistant.limits.max_turns` | `integer` | not supported yet |
-| `admin.assistant.mcp` | `object` | not supported yet |
-| `admin.assistant.mcp.allow` | `array<string>` | not supported yet |
-| `admin.assistant.mcp.max_calls_per_minute` | `integer` | not supported yet |
-| `admin.assistant.mcp.max_concurrent_calls` | `integer` | not supported yet |
-| `admin.assistant.mcp.max_request_bytes` | `integer` | not supported yet |
-| `admin.assistant.mcp.max_sessions` | `integer` | not supported yet |
-| `admin.assistant.mcp.max_token_days` | `integer` | not supported yet |
-| `admin.assistant.mcp.max_tokens_per_user` | `integer` | not supported yet |
-| `admin.assistant.mcp.session_idle_timeout` | `duration` | not supported yet |
-| `admin.assistant.params` | `object` | not supported yet |
-| `admin.assistant.params.max_output_tokens` | `integer` | not supported yet |
-| `admin.assistant.params.temperature` | `number` | not supported yet |
-| `admin.assistant.params.thinking` | `enum(off\|low\|medium\|high)` | not supported yet |
-| `admin.assistant.providers` | `array<object>` | not supported yet |
-| `admin.assistant.providers[].api_key_env` | `string` | not supported yet |
-| `admin.assistant.providers[].api_version` | `string` | not supported yet |
-| `admin.assistant.providers[].base_url` | `string` | not supported yet |
-| `admin.assistant.providers[].connect_timeout` | `duration` | not supported yet |
-| `admin.assistant.providers[].first_byte_timeout` | `duration` | not supported yet |
-| `admin.assistant.providers[].headers` | `map<string>` | not supported yet |
-| `admin.assistant.providers[].idle_timeout` | `duration` | not supported yet |
-| `admin.assistant.providers[].kind` | `enum(anthropic\|openai\|openai_responses\|gemini\|azure_openai\|ollama\|openai_compatible\|llm_proxy), required` | not supported yet |
-| `admin.assistant.providers[].models` | `array<object>` | not supported yet |
-| `admin.assistant.providers[].models[].context` | `integer` | not supported yet |
-| `admin.assistant.providers[].models[].name` | `string, required` | not supported yet |
-| `admin.assistant.providers[].models[].tools` | `boolean` | not supported yet |
-| `admin.assistant.providers[].name` | `string, required` | not supported yet |
-| `admin.assistant.providers[].retries` | `integer` | not supported yet |
-| `admin.assistant.providers[].timeout` | `duration` | not supported yet |
-| `admin.assistant.users` | `array<object>` | not supported yet |
-| `admin.assistant.users[].level` | `enum(off\|read\|edit\|propose\|apply), required` | not supported yet |
-| `admin.assistant.users[].username` | `string, required` | not supported yet |
+| `admin.assistant` | `object` | supported |
+| `admin.assistant.data` | `object` | supported |
+| `admin.assistant.data.redact` | `array<string>` | supported |
+| `admin.assistant.data.send_access_log` | `boolean` | supported |
+| `admin.assistant.data.send_logs` | `boolean` | supported |
+| `admin.assistant.data.send_records` | `boolean` | supported |
+| `admin.assistant.data.send_subjects` | `boolean` | supported |
+| `admin.assistant.default_level` | `enum(off\|read\|edit\|propose\|apply)` | supported |
+| `admin.assistant.default_model` | `object` | supported |
+| `admin.assistant.default_model.model` | `string, required` | supported |
+| `admin.assistant.default_model.provider` | `string, required` | supported |
+| `admin.assistant.limits` | `object` | supported |
+| `admin.assistant.limits.max_audit_entries` | `integer` | supported |
+| `admin.assistant.limits.max_concurrent_chats` | `integer` | supported |
+| `admin.assistant.limits.max_conversations` | `integer` | supported |
+| `admin.assistant.limits.max_stream_bytes` | `integer` | supported |
+| `admin.assistant.limits.max_tokens_per_day` | `integer` | supported |
+| `admin.assistant.limits.max_tool_calls` | `integer` | supported |
+| `admin.assistant.limits.max_tool_result_bytes` | `integer` | supported |
+| `admin.assistant.limits.max_turns` | `integer` | supported |
+| `admin.assistant.mcp` | `object` | supported |
+| `admin.assistant.mcp.allow` | `array<string>` | supported |
+| `admin.assistant.mcp.max_calls_per_minute` | `integer` | supported |
+| `admin.assistant.mcp.max_concurrent_calls` | `integer` | supported |
+| `admin.assistant.mcp.max_request_bytes` | `integer` | supported |
+| `admin.assistant.mcp.max_sessions` | `integer` | supported |
+| `admin.assistant.mcp.max_token_days` | `integer` | supported |
+| `admin.assistant.mcp.max_tokens_per_user` | `integer` | supported |
+| `admin.assistant.mcp.session_idle_timeout` | `duration` | supported |
+| `admin.assistant.params` | `object` | supported |
+| `admin.assistant.params.max_output_tokens` | `integer` | supported |
+| `admin.assistant.params.temperature` | `number` | supported |
+| `admin.assistant.params.thinking` | `enum(off\|low\|medium\|high)` | supported |
+| `admin.assistant.providers` | `array<object>` | supported |
+| `admin.assistant.providers[].api_key_env` | `string` | supported |
+| `admin.assistant.providers[].api_version` | `string` | supported |
+| `admin.assistant.providers[].base_url` | `string` | supported |
+| `admin.assistant.providers[].connect_timeout` | `duration` | supported |
+| `admin.assistant.providers[].first_byte_timeout` | `duration` | supported |
+| `admin.assistant.providers[].headers` | `map<string>` | supported |
+| `admin.assistant.providers[].idle_timeout` | `duration` | supported |
+| `admin.assistant.providers[].kind` | `enum(anthropic\|openai\|openai_responses\|gemini\|azure_openai\|ollama\|openai_compatible\|llm_proxy), required` | supported |
+| `admin.assistant.providers[].models` | `array<object>` | supported |
+| `admin.assistant.providers[].models[].context` | `integer` | supported |
+| `admin.assistant.providers[].models[].name` | `string, required` | supported |
+| `admin.assistant.providers[].models[].tools` | `boolean` | supported |
+| `admin.assistant.providers[].name` | `string, required` | supported |
+| `admin.assistant.providers[].retries` | `integer` | supported |
+| `admin.assistant.providers[].timeout` | `duration` | supported |
+| `admin.assistant.users` | `array<object>` | supported |
+| `admin.assistant.users[].level` | `enum(off\|read\|edit\|propose\|apply), required` | supported |
+| `admin.assistant.users[].username` | `string, required` | supported |
 | `admin.cert_file` | `string` | supported |
 | `admin.client_ca_file` | `string` | supported |
 | `admin.cluster` | `object` | supported |

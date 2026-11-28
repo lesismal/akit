@@ -22,6 +22,7 @@
 //! (rules.md rule 1).
 
 pub mod adapt;
+pub mod assistant;
 mod auto_https;
 mod binds;
 pub mod bittorrent;

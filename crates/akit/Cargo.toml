@@ -27,6 +27,8 @@ akio-sys = { workspace = true }
 akit-admin = { workspace = true }
 # The cluster manager (I132): admin.cluster's members, served by the console.
 akit-cluster = { workspace = true }
+# The assistant's settings kept in the store (I160).
+akit-assistant = { workspace = true }
 akit-provider = { workspace = true }
 akit-cache = { workspace = true }
 akit-plugin = { workspace = true }

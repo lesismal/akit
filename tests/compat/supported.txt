@@ -774,6 +774,64 @@ admin.cluster_member.fingerprint
 admin.cluster_member.token
 admin.cluster_member.token_file
 
+# I160: the console's assistant (fit's I124), read and checked as fit's config/assistant.go: its
+# providers of eight kinds, the default model, the params, limits and data sent, each console
+# user's level, and the MCP server's settings (served from I166). It needs admin.console; the
+# console serves it as the module ai, its settings and keys kept in the store's section
+# assistant once the Settings page saves them (decision 044).
+admin.assistant
+admin.assistant.data
+admin.assistant.data.redact
+admin.assistant.data.send_access_log
+admin.assistant.data.send_logs
+admin.assistant.data.send_records
+admin.assistant.data.send_subjects
+admin.assistant.default_level
+admin.assistant.default_model
+admin.assistant.default_model.model
+admin.assistant.default_model.provider
+admin.assistant.limits
+admin.assistant.limits.max_audit_entries
+admin.assistant.limits.max_concurrent_chats
+admin.assistant.limits.max_conversations
+admin.assistant.limits.max_stream_bytes
+admin.assistant.limits.max_tokens_per_day
+admin.assistant.limits.max_tool_calls
+admin.assistant.limits.max_tool_result_bytes
+admin.assistant.limits.max_turns
+admin.assistant.mcp
+admin.assistant.mcp.allow
+admin.assistant.mcp.max_calls_per_minute
+admin.assistant.mcp.max_concurrent_calls
+admin.assistant.mcp.max_request_bytes
+admin.assistant.mcp.max_sessions
+admin.assistant.mcp.max_token_days
+admin.assistant.mcp.max_tokens_per_user
+admin.assistant.mcp.session_idle_timeout
+admin.assistant.params
+admin.assistant.params.max_output_tokens
+admin.assistant.params.temperature
+admin.assistant.params.thinking
+admin.assistant.providers
+admin.assistant.providers[].api_key_env
+admin.assistant.providers[].api_version
+admin.assistant.providers[].base_url
+admin.assistant.providers[].connect_timeout
+admin.assistant.providers[].first_byte_timeout
+admin.assistant.providers[].headers
+admin.assistant.providers[].idle_timeout
+admin.assistant.providers[].kind
+admin.assistant.providers[].models
+admin.assistant.providers[].models[].context
+admin.assistant.providers[].models[].name
+admin.assistant.providers[].models[].tools
+admin.assistant.providers[].name
+admin.assistant.providers[].retries
+admin.assistant.providers[].timeout
+admin.assistant.users
+admin.assistant.users[].level
+admin.assistant.users[].username
+
 # I98: fit's roles, tunnel.{hub,node,proxy} and llm.{hub,node,proxy}, read and checked as fit's
 # (crate::roles); their consoles' mptcp is refused as admin.console's. akit run refuses a role
 # until the iteration that runs it (I101-I109).

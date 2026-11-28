@@ -145,9 +145,14 @@ impl std::fmt::Debug for Console {
 /// What a console serves beside its logins and files.
 enum Kind {
     /// `admin.console`: the Admin API's endpoints, its configs applied as the console's, as the
-    /// config's own module (`admin`), the running roles' modules beside it (I109), and the
-    /// cluster manager's module, `cluster` (I132).
-    Admin(Arc<Shared>, Option<Modules>, Option<ModuleRef>),
+    /// config's own module (`admin`), the running roles' modules beside it (I109), the cluster
+    /// manager's module, `cluster` (I132), and the assistant's, `ai` (I160).
+    Admin(
+        Arc<Shared>,
+        Option<Modules>,
+        Option<ModuleRef>,
+        Option<ModuleRef>,
+    ),
     /// A role's own console (I109): the role's module, at `/api/` and at `/api/m/<id>/`, as
     /// fit's role consoles serve it.
     Role(ModuleRef),
@@ -305,6 +310,7 @@ impl Console {
         c: &akit_config::Console,
         api: Shared,
         opts: &Options,
+        assistant: Option<ModuleRef>,
     ) -> io::Result<Console> {
         // A console started while a user's password is temporary asks for it to be changed.
         let temporary = api.configs.temporary_password();
@@ -312,9 +318,15 @@ impl Console {
         // What the node switcher passes on to a member is bounded by the manager's
         // max_response_bytes, which the module checks (I134).
         let max_body = OTHER_BODY_BYTES.max(opts.cluster_max_body);
+        // The assistant's settings and keys come whole (I160).
+        let max_body = if assistant.is_some() {
+            max_body.max(akit_assistant::settings::MAX_BODY_BYTES)
+        } else {
+            max_body
+        };
         Console::start_kind(
             c,
-            Kind::Admin(Arc::new(api), modules, opts.cluster.clone()),
+            Kind::Admin(Arc::new(api), modules, opts.cluster.clone(), assistant),
             COOKIE.to_owned(),
             max_body,
             temporary,
@@ -654,8 +666,12 @@ impl Pages {
     /// The IDs of the modules the console serves, for `GET /api/workbench`.
     fn module_ids(&self) -> Vec<&'static str> {
         match &self.kind {
-            Kind::Admin(_, ms, cluster) => {
+            Kind::Admin(_, ms, cluster, ai) => {
                 let mut ids = vec![ADMIN_MODULE];
+                // The assistant after the config's own, as fit's console lists it (I160).
+                if let Some(ai) = ai {
+                    ids.push(ai.id());
+                }
                 if let Some(ms) = ms {
                     ids.extend(ms.ids());
                 }
@@ -671,7 +687,11 @@ impl Pages {
     /// The module `id`, other than `admin`, the console serves.
     fn module(&self, id: &str) -> Option<ModuleRef> {
         match &self.kind {
-            Kind::Admin(_, ms, cluster) => match cluster.as_ref().filter(|c| c.id() == id) {
+            Kind::Admin(_, ms, cluster, ai) => match cluster
+                .as_ref()
+                .filter(|c| c.id() == id)
+                .or_else(|| ai.as_ref().filter(|a| a.id() == id))
+            {
                 Some(c) => Some(Arc::clone(c)),
                 None => ms.as_ref().and_then(|ms| ms.get(id)),
             },
@@ -796,7 +816,7 @@ impl Pages {
         }
         // A manager of many bounds by its users' roles what each changes of the manager itself
         // (I139, fit's ConsoleGate).
-        if let Kind::Admin(_, _, Some(c)) = &self.kind {
+        if let Kind::Admin(_, _, Some(c), _) = &self.kind {
             let query = ctx.req().query().unwrap_or("").to_owned();
             if let Some(why) = c.console_gate(&s.user, &method, &path, &query) {
                 return ctx.respond(error(403, &why));

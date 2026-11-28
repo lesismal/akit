@@ -14,6 +14,8 @@ fuzzing = []
 
 [dependencies]
 akit-access = { workspace = true }
+# The console's assistant, served as the module ai (I160).
+akit-assistant = { workspace = true }
 akio = { workspace = true }
 akio-crypto = { workspace = true }
 akio-http = { workspace = true }

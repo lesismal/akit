@@ -18,9 +18,27 @@
 | akio 需求 | A1–A24、A29、A30、A32、A33、A35–A38、A45、A48、A49、A51–A54、A57、A58、A63–A66、A75、A78、A79、A90–A94、A105、A108、A109、A111–A113、A117、A132–A135、A148、A165–A172、A180、A200、A214、A215、A220、A230–A238、A245 和 A247–A249 已进入 akio 的 main 并锁定；A225（外部审查，L15）已提出（[akio API 请求](akio-api-requests.zh-CN.md)） |
 | 流媒体与媒体认证 | [I120–I126](dev-plan.zh-CN.md#流媒体与媒体认证)，fit 的 I115–I117（决定 040）：I120（配置中的 `media_auth` 和 `streaming`）、I121（策略、检查、`akit media-token`）I122（角色的媒体中心、RTMP、RTSP 和 SRT）、I123（`httpflv`、`hls`）、I124（WebRTC 端口、`stream_whip`、`stream_whep`）、I125（`media_pages`）和 I126（`whip`、`whep` 和 `webrtc_proxy` 上的 `auth`）已完成；媒体库的 `libraries`、`vod` 和 `channels` 等待其那条线；akio 请求 A263–A268 |
 | 媒体库与频道 | [I140–I149](dev-plan.zh-CN.md#媒体库与频道)，fit 的 I131–I139 和 I119（决定 043）：I140（配置中的 `media_library`）、I141（目录、角色 `media_library`、`/media/library`）、I142（`vod`）、I143（`keys`、`media_tokens`）、I144（`url_signing`）、I145（频道）、I146（推送目标）、I147（加密分片）、I148（视频网站）和 I149（控制台的媒体页面、文件管理）已完成：这条线已完成；akio 需求 A295–A298 |
-| AI 助手 | [I160–I169](dev-plan.zh-CN.md#ai-助手)，fit 的 I124–I130 和 I152–I154（决定 044）：已规划；下一个是 I160 |
+| AI 助手 | [I160–I169](dev-plan.zh-CN.md#ai-助手)，fit 的 I124–I130 和 I152–I154（决定 044）：I160（`admin.assistant`、模块 `ai`、存储中的设置和密钥）已完成；下一个是 I161 |
 
 ## 日志
+
+### 2026-11-28：I160，助手 I：`admin.assistant`、其设置和密钥、模块 `ai`
+
+- `akit_config::assistant` 按 fit 的 `config/assistant.go` 读取 `admin.assistant`：八种提供方及其 URL、版本、密钥变量、请求头
+  （拒绝密钥和报文框架的请求头）、模型和超时；`default_model`、`params`、`limits`、`data`、`users`、`default_level` 和 `mcp`，
+  带 fit 的默认值、上限和消息，需要 `admin.console`；`load` 读取单独保存的设置（存储中的），其错误位于 `admin.assistant` 之下，
+  `raw` 以 JSON 保留该成员供"设置"页使用。支持 52 个字段，标记为 v1 新增，参考文档的表格已加上。
+- 新 crate `akit-assistant`：控制台模块 `ai`，由 akit-admin 的控制台在有 `admin.assistant` 时创建，列在 `admin` 之后
+  （`GET /api/workbench`）；`GET /api/m/ai/settings` 和 `PUT`（fit 的视图：按原样的设置、密钥是否设置及来源和遮掩形式、kind、
+  级别、用户、llm.proxy 的 API、每种 kind 的 URL；无存储时 409，版本过期时 412，400 时每个错误带其路径）。设置和密钥写入存储的
+  `assistant` 分区，即 fit 的 `{"settings", "keys"}`，在助手自己的线程池上写入；此后启动时使用存储中的设置，无法加载时使用配置中的。
+  `akit run` 把存储交给它（`akit_admin::Options::assistant_store`）。
+- 核对：移植了 fit 的 `config/assistant_test.go`（`akit-config`，7 个测试），以及经运行中的控制台移植的 `assistant/assistant_test.go`
+  中设置部分的测试（`akit-admin/tests/assistant.rs`）：只有设置了该成员才有模块，密钥从不应答（来自 `api_key_env` 的显示为遮掩
+  形式），保存，过期或无效时拒绝，重启后再次读取，读取 fit 写的分区；闸门对每个字段的检查。与 fit 自己的代码核对
+  （`tests/fitassistant/akit_assistant_test.go` 在闸门固定版本的 fit 包 `assistant` 中运行，Go 1.27.3）：fit 打开 akit 保存的
+  分区及其密钥，akit 打开 fit 保存的，二者是逐字节相同的文档。错误的成员为 `path`、`line`、`col` 和 `msg`，与页面读取的一致（fit
+  编码为 Go 的字段名，页面找不到；Go 的解码器两者都接受）。下一个：I161，模型客户端。
 
 ### 2026-11-28：规划 AI 助手路线（I160–I169）
 
