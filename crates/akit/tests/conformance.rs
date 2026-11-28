@@ -260,12 +260,14 @@ fn start() -> (Akit, SocketAddr, Recorder) {
 /// moment or closes.
 fn exchange(addr: SocketAddr, raw: &[u8]) -> String {
     let mut conn = TcpStream::connect(addr).unwrap();
+    // Before the write: akit may refuse `raw` and close before it reads all of it, and macOS
+    // refuses a socket's options (`EINVAL`) once its peer has reset it.
+    conn.set_read_timeout(Some(Duration::from_millis(500)))
+        .unwrap();
     conn.write_all(raw).unwrap();
     let mut out = Vec::new();
     let mut buf = vec![0; 64 << 10];
     let end = Instant::now() + WAIT;
-    conn.set_read_timeout(Some(Duration::from_millis(500)))
-        .unwrap();
     while Instant::now() < end {
         match conn.read(&mut buf) {
             Ok(0) | Err(_) => break,
@@ -278,8 +280,10 @@ fn exchange(addr: SocketAddr, raw: &[u8]) -> String {
 /// Whether akit closes the connection after answering `raw`.
 fn closes(addr: SocketAddr, raw: &str) -> bool {
     let mut conn = TcpStream::connect(addr).unwrap();
-    conn.write_all(raw.as_bytes()).unwrap();
+    // Before the write: akit may answer and close before it reads all of `raw`, and macOS
+    // refuses a socket's options (`EINVAL`) once its peer has reset it.
     conn.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+    conn.write_all(raw.as_bytes()).unwrap();
     let mut br = BufReader::new(conn);
     let mut head = String::new();
     loop {

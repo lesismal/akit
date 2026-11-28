@@ -23,6 +23,39 @@ done and where the work differs from the plan.
 
 ## Log
 
+### 2026-11-28: the tests' ports and sockets that another process could fool
+
+- Every test that runs fit's binary has its listeners bind port 0 and reads where from the lines
+  fit logs, as `tests/console.rs` began (one helper, `crates/akit-tunnel/tests/support/fit.rs`,
+  shared by `#[path]`): akit-tunnel's `e2e.rs` (fit's forwards), `pages.rs` (fit's web proxy),
+  `peer_pages.rs` (fit's hub's link listener), akit-llm's `fit_mesh.rs`, `fit_pages.rs`,
+  `fit_roles.rs` and `fit_manage.rs` (fit's mesh listeners; `fit_pages.rs` starts fit's hub
+  before its node, which dials it), akit-webrtc's `fib_turn.rs` (fit's TURN listeners) and
+  akit-bittorrent's `fit_interop.rs` (fit's listener, Admin API and client). A port the test
+  picked could be taken by another process before fit bound it. Still picked: fit's LLM role
+  consoles and its LLM proxy's API (fit does not log where they listen), akit's own consoles
+  whose `http_url` or console socket names the configured port (akit's console socket dials the
+  console's configured address, where fit's dials where its console listens), the pages' forwards
+  (named by their address), Pebble's ports (relaunched when taken), aria2c's (no port 0), and
+  `crates/akit/tests/media.rs`'s, whose config both akit's binary and fit's read (neither prints
+  where its HTTP listeners bind).
+- macOS refuses a socket's options (`EINVAL`) once its peer has reset it. The tests' "is it
+  closed" helpers (akit-listener `limits.rs` `closed`, `l4.rs` and `socks.rs` `expect_closed`,
+  akit-handler `forward_proxy.rs` `expect_closed`, akit-admin `console.rs` `closed_within`) take a
+  refused timeout as closed; `limits.rs`'s retry after `max_conns` counts a refused one as a try
+  that got nothing; the reads that may follow a reset (akit's `conformance.rs` `exchange` and
+  `closes`, akit-upstream `probe.rs`'s huge answer, `limits.rs`'s budget, `l4.rs` `round_trip`) set
+  their timeouts before they write.
+- Two checks that a listener was gone connected to its port, which whatever took the port since,
+  or a loopback connect to its own port, could answer: akit-listener `listeners.rs`
+  (`shutdown_lets_a_request_in_flight_finish`) now binds the port, and `h3.rs`
+  (`reload_knows_h3_listeners`) asks the engine's `listeners()`, which lists it before the reload
+  and not after.
+- Copies of one test binary run at once (as these checks were run, six at a time) shared their
+  files: akit-listener's `support/certs.rs` `dir` (every test's certificates), `limits.rs`
+  `pending_bytes_budget`'s files and akit-admin `console.rs`'s directory now take the process's
+  ID.
+
 ### 2026-11-28: I165, the assistant VI: Ask AI, migration and review
 
 - The evaluation (fit's I129, `akit_assistant`'s `eval` tests): the skills `migrate` and

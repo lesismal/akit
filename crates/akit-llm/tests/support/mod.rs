@@ -15,9 +15,14 @@ use std::net::{TcpListener, TcpStream};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-/// A port free now, for what must name its port before it binds: a listener of fit's binary.
-/// Another process may take it meanwhile. akit's own listeners bind port 0 and are asked where
-/// they listen ([`Roles::start_with`]).
+#[path = "../../../akit-tunnel/tests/support/fit.rs"]
+pub mod fit;
+
+/// A port free now, for what must name its port before it binds: a console whose `http_url` is
+/// its address as its member writes it, and a listener of fit's binary that fit does not say
+/// where it bound (its roles' consoles, its proxy's API). Another process may take it meanwhile.
+/// akit's own listeners bind port 0 and are asked where they listen ([`Roles::start_with`]), and
+/// fit's mesh listeners too ([`fit::Fit::port_in`]).
 pub fn free_port() -> u16 {
     TcpListener::bind("127.0.0.1:0")
         .unwrap()

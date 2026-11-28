@@ -422,7 +422,9 @@ fn refused_body_answered_after_its_files() {
             ),
         }
         go.send(()).unwrap();
-        sock.set_read_timeout(Some(T)).unwrap();
+        // Refused when the answer and its close came first (macOS, `EINVAL`): the read then
+        // does not wait.
+        let _ = sock.set_read_timeout(Some(T));
         assert_eq!(read_resp(sock, false).status, 413, "{name}");
         assert_eq!(upload_files(&r), Vec::<String>::new(), "{name}");
         assert_eq!(http(r.api, "GET", &up, &[], b"").status, 404, "{name}");

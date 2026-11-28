@@ -275,8 +275,11 @@ fn shutdown_lets_a_request_in_flight_finish() {
     assert_eq!(idle.read(&mut [0u8; 16]).unwrap(), 0);
     assert!(in_time.join().unwrap());
     assert!(start.elapsed() < Duration::from_secs(3));
-    // The listener no longer accepts.
-    assert!(TcpStream::connect(addr).is_err());
+    // The listener no longer accepts: its port is free, and bound here at once, the engine's
+    // threads ended. A connect could be answered by whatever took the port since, or by itself
+    // (a loopback connect whose own port is the one it dials).
+    let free = std::net::TcpListener::bind(addr);
+    assert!(free.is_ok(), "{addr} still bound: {free:?}");
 }
 
 #[test]

@@ -41,8 +41,9 @@ fn backend() -> Backend {
 }
 
 fn dir(name: &str) -> PathBuf {
+    // This process's own: copies of the test binary may run at once.
     let d = PathBuf::from(env!("CARGO_TARGET_TMPDIR"))
-        .join("console")
+        .join(format!("console-{}", std::process::id()))
         .join(name);
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).unwrap();
@@ -1082,12 +1083,14 @@ impl Raw {
 
     /// Whether the console has closed the connection, waiting up to `within`.
     fn closed_within(&mut self, within: Duration) -> bool {
-        self.s.set_read_timeout(Some(within)).unwrap();
+        // Closed already when the timeout is refused: macOS refuses a socket's options
+        // (`EINVAL`) once its peer has reset it.
+        if self.s.set_read_timeout(Some(within)).is_err() {
+            return true;
+        }
         let mut b = [0u8; 1];
         let r = self.s.read(&mut b);
-        self.s
-            .set_read_timeout(Some(Duration::from_secs(10)))
-            .unwrap();
+        let _ = self.s.set_read_timeout(Some(Duration::from_secs(10)));
         match r {
             Ok(0) => true,
             Ok(_) => panic!("the console sent more on an idle connection"),

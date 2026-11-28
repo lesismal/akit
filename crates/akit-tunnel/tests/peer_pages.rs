@@ -21,10 +21,10 @@ use akit_admin::console::RoleConsoles;
 use akit_config::value::{self, Value};
 use akit_roles::host::{Edit, Editor, Manager};
 
-/// A port free now, for what must name its port before it binds: a listener of fit's binary, and
-/// a forward added through the pages, which name a forward by its address as fit's do. Another
-/// process may take it meanwhile. akit's other listeners bind port 0 and are asked where they
-/// listen.
+/// A port free now, for what must name its port before it binds: a forward added through the
+/// pages, which name a forward by its address as fit's do. Another process may take it
+/// meanwhile. akit's other listeners bind port 0 and are asked where they listen, and fit's too
+/// ([`fit::Fit::port`]).
 fn free_port() -> u16 {
     TcpListener::bind("127.0.0.1:0")
         .unwrap()
@@ -831,15 +831,8 @@ fn the_modules_are_listed() {
     }
 }
 
-struct FitRun(std::process::Child, std::path::PathBuf);
-
-impl Drop for FitRun {
-    fn drop(&mut self) {
-        let _ = self.0.kill();
-        let _ = self.0.wait();
-        let _ = std::fs::remove_dir_all(&self.1);
-    }
-}
+#[path = "support/fit.rs"]
+mod fit;
 
 /// Against fit's binary (`AKIT_FIT_BIN`; skipped without it): akit's node and proxy linked to
 /// fit's hub; the proxy's pages show fit's hub's nodes with their round trips, the node's
@@ -851,30 +844,15 @@ fn with_fits_hub() {
         eprintln!("AKIT_FIT_BIN not set: skipped");
         return;
     };
-    let (link, svc) = (free_port(), echo());
-    let dir = std::env::temp_dir().join(format!("akit-i109b-fit-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("fit.json");
-    std::fs::write(
-        &path,
-        format!(
-            r#"{{"tunnel": {{"hub": {{"name": "fithub", "password": "pw", "allow_proxy_services": true, "listeners": [{{"protocol": "tcp", "address": "127.0.0.1:{link}"}}]}}}}}}"#
-        ),
-    )
-    .unwrap();
-    let log = std::fs::File::create(dir.join("fit.log")).unwrap();
-    let child = std::process::Command::new(bin)
-        .args(["run", "-c"])
-        .arg(&path)
-        .current_dir(&dir)
-        .stdout(log.try_clone().unwrap())
-        .stderr(log)
-        .spawn()
-        .unwrap();
-    let _fit = FitRun(child, dir);
-    wait_for("fit's hub", || {
-        TcpStream::connect(("127.0.0.1", link)).is_ok()
-    });
+    let svc = echo();
+    // fit's hub's link listener on port 0, where it listens read from its log.
+    let fit_hub = fit::start(
+        &bin,
+        std::env::temp_dir().join(format!("akit-i109b-fit-{}", std::process::id())),
+        r#"{"tunnel": {"hub": {"name": "fithub", "password": "pw", "allow_proxy_services": true, "listeners": [{"protocol": "tcp", "address": "127.0.0.1:0"}]}}}"#,
+        |_| {},
+    );
+    let link = fit_hub.port("nodes and proxies link on ");
     let env = start(
         &format!(
             r#""node": {{"name": "lab", "allow_hub_services": true, "hubs": [{}], "services": [{{"name": "echo", "address": "127.0.0.1:{svc}"}}], "console": {}}},

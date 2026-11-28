@@ -13,20 +13,8 @@
 mod support;
 
 use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
 
 use support::{Roles, call, free_port, read_stream, until};
-
-/// fit running a config, killed when dropped.
-struct Fit(Child, PathBuf);
-
-impl Drop for Fit {
-    fn drop(&mut self) {
-        let _ = self.0.kill();
-        let _ = self.0.wait();
-        let _ = std::fs::remove_dir_all(&self.1);
-    }
-}
 
 /// The stand-in `ollama`, which says what it was asked: written once, before any test of this
 /// binary starts a process (each calls this first), so that no child forked meanwhile holds it
@@ -57,21 +45,11 @@ fn dir(tag: &str) -> PathBuf {
     dir
 }
 
-fn fit(tag: &str, config: &str) -> Fit {
+fn fit(tag: &str, config: &str) -> support::fit::Fit {
     let bin = std::env::var("AKIT_FIT_BIN").expect("AKIT_FIT_BIN: the path of fit's binary");
-    let dir = dir(tag);
-    let path = dir.join("fit.json");
-    std::fs::write(&path, config).unwrap();
-    let log = std::fs::File::create(dir.join("fit.log")).unwrap();
-    let child = Command::new(bin)
-        .args(["run", "-c"])
-        .arg(&path)
-        .env("PATH", format!("{}:/usr/bin:/bin", stand_ins().display()))
-        .stdout(Stdio::null())
-        .stderr(log)
-        .spawn()
-        .unwrap();
-    Fit(child, dir)
+    support::fit::start(&bin, dir(tag), config, |c| {
+        c.env("PATH", format!("{}:/usr/bin:/bin", stand_ins().display()));
+    })
 }
 
 fn json(s: &str) -> akit_config::value::Value {
@@ -213,18 +191,20 @@ fn console(port: u16, path: &str, cookie: &str, csrf: &str, body: &str) -> (u16,
 fn fit_hub_manages_akit_node() {
     // The stand-in `ollama` on akit's lookups, so the job runs no real tool.
     akit_llm::exec::tools_in(Some(stand_ins().clone()));
-    // fit's hub's ports are named before it starts.
-    let (hub_port, console_port) = (free_port(), free_port());
+    // fit's hub's mesh listener on port 0, where it listens read from its log; its console's port
+    // named before it starts: fit does not log where its role consoles listen.
+    let console_port = free_port();
     // The bcrypt hash of "secret".
     let hash = "$2b$10$VF3oqQjY3UmazI3yLOspje5eihWk5sQc05lgEHVxOZSbpOgdQqDPa";
-    let _hub = fit(
+    let fit_hub = fit(
         "hub",
         &format!(
             r#"{{"llm": {{"hub": {{"id": "hub-fit0000000000012",
-              "listen": {{"address": "127.0.0.1:{hub_port}", "node_password": "np"}},
+              "listen": {{"address": "127.0.0.1:0", "node_password": "np"}},
               "console": {{"address": "127.0.0.1:{console_port}", "users": [{{"username": "admin", "password_hash": "{hash}"}}]}}}}}}}}"#
         ),
     );
+    let hub_port = fit_hub.port_in("llm.hub: mesh listening", "addr=");
     let roles = Roles::start(&format!(
         r#"{{"llm": {{"node": {{"id": "node-akit000000000012", "name": "abox",
           "peers": [{{"address": "127.0.0.1:{hub_port}", "password": "np", "role": "hub"}}],

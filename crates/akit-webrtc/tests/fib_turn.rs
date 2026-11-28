@@ -16,9 +16,9 @@
 )]
 
 use std::net::{SocketAddr, UdpSocket};
-use std::process::{Child, Command, Stdio};
+use std::process::Command;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use akit_roles::host::Manager;
 
@@ -40,25 +40,7 @@ fn echo() -> SocketAddr {
     addr
 }
 
-/// A port free now, for fib's binary, whose config must name it before it starts: another
-/// process may take it meanwhile.
-fn free_port(udp: bool) -> u16 {
-    if udp {
-        UdpSocket::bind("127.0.0.1:0")
-            .unwrap()
-            .local_addr()
-            .unwrap()
-            .port()
-    } else {
-        std::net::TcpListener::bind("127.0.0.1:0")
-            .unwrap()
-            .local_addr()
-            .unwrap()
-            .port()
-    }
-}
-
-/// The member both servers run: UDP, TCP and TLS on the ports given, the peer allowed.
+/// The member both servers run: UDP, TCP and TLS on the ports given (0: any), the peer allowed.
 fn member(udp: u16, tcp: u16, tls: u16, cert: &str, key: &str, peer: SocketAddr) -> String {
     let bob: String = akio_turn::stun::long_term_key("bob", REALM, "bobpw")
         .iter()
@@ -173,14 +155,8 @@ fn tls_files(dir: &std::path::Path) -> (String, String) {
     (cf.display().to_string(), kf.display().to_string())
 }
 
-struct Fit(Child);
-
-impl Drop for Fit {
-    fn drop(&mut self) {
-        let _ = self.0.kill();
-        let _ = self.0.wait();
-    }
-}
+#[path = "../../akit-tunnel/tests/support/fit.rs"]
+mod fit;
 
 #[test]
 #[ignore = "needs AKIT_FIB_TURN, the probe's binary"]
@@ -229,29 +205,21 @@ fn fib_client_against_akit_and_fit() {
 
     // fit's, with the same member, answering alike.
     if let Ok(bin) = std::env::var("AKIT_FIT_BIN") {
-        let (udp, tcp, tls) = (free_port(true), free_port(false), free_port(false));
-        let path = dir.join("fit.json");
-        std::fs::write(
-            &path,
-            format!(
+        // fit's listeners on port 0, where they listen read from the line it logs.
+        let run = fit::start(
+            &bin,
+            dir.join("fit"),
+            &format!(
                 r#"{{"webrtc": {{"turn": {}}}}}"#,
-                member(udp, tcp, tls, &cert, &key, peer)
+                member(0, 0, 0, &cert, &key, peer)
             ),
-        )
-        .unwrap();
-        let log = std::fs::File::create(dir.join("fit.log")).unwrap();
-        let _fit = Fit(Command::new(bin)
-            .args(["run", "-c"])
-            .arg(&path)
-            .stdout(Stdio::null())
-            .stderr(log)
-            .spawn()
-            .unwrap());
-        let deadline = Instant::now() + Duration::from_secs(10);
-        while std::net::TcpStream::connect(("127.0.0.1", tcp)).is_err() {
-            assert!(Instant::now() < deadline, "fit did not listen");
-            std::thread::sleep(Duration::from_millis(50));
-        }
+            |_| {},
+        );
+        let (udp, tcp, tls) = (
+            run.port_in("listens on ", "listens on "),
+            run.port_in("listens on ", ", tcp "),
+            run.port_in("listens on ", ", tls "),
+        );
         let fit = scenarios(udp, tcp, tls, peer);
         assert_eq!(akit, fit, "akit and fit answer fib's client differently");
     }

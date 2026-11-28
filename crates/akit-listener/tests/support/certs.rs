@@ -47,9 +47,11 @@ impl Ca {
     }
 }
 
-/// A fresh directory under the target's test directory.
+/// A fresh directory under the target's test directory, this process's own: copies of a test
+/// binary may run at once.
 pub fn dir(name: &str) -> PathBuf {
-    let d = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(name);
+    let d =
+        PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(format!("{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).unwrap();
     d

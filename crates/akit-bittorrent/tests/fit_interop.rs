@@ -11,24 +11,14 @@
 )]
 
 use std::io::{Read, Write};
-use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::net::{SocketAddr, TcpStream};
 use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use akio_bittorrent::metainfo::{Builder, MetaInfo};
 use akit_bittorrent::client::{AddRequest, ClientApi, Source};
 use akit_roles::host::Manager;
-
-/// A port free now, for a listener of fit's binary, whose config must name it before it starts:
-/// another process may take it meanwhile.
-fn free() -> SocketAddr {
-    TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-}
 
 fn data(n: usize, seed: u32) -> Vec<u8> {
     let mut x = seed | 1;
@@ -74,14 +64,8 @@ fn http(addr: SocketAddr, method: &str, target: &str, ctype: &str, body: &[u8]) 
     (status, out[at..].to_vec())
 }
 
-struct Fit(Child);
-
-impl Drop for Fit {
-    fn drop(&mut self) {
-        let _ = self.0.kill();
-        let _ = self.0.wait();
-    }
-}
+#[path = "../../akit-tunnel/tests/support/fit.rs"]
+mod fit;
 
 fn torrent(name: &str, payload: &[u8], tracker: &str) -> MetaInfo {
     let mi = Builder::new(name)
@@ -105,36 +89,31 @@ fn akits_client_and_fits_through_fits_tracker() {
     let dir: PathBuf = std::env::temp_dir().join(format!("akit-bt-fit-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    let (web, admin, peer) = (free(), free(), free());
     let fit_dl = dir.join("fit-dl");
     std::fs::create_dir_all(&fit_dl).unwrap();
-    let tracker = format!("http://{web}/announce");
-    // The torrent fit seeds, and the one akit seeds.
     let from_fit = data(2 << 20, 21);
     let from_akit = data(1 << 20, 22);
     std::fs::write(fit_dl.join("from-fit.bin"), &from_fit).unwrap();
-    let mi_fit = torrent("from-fit.bin", &from_fit, &tracker);
-    let mi_akit = torrent("from-akit.bin", &from_akit, &tracker);
-    let cfg = dir.join("fit.json");
-    std::fs::write(
-        &cfg,
-        format!(
-            r#"{{"listeners": [{{"name": "web", "address": "{web}"}}],
+    // fit's listeners on port 0, where they listen read from its log.
+    let run = fit::start(
+        fit.to_str().unwrap(),
+        dir.join("fit"),
+        &format!(
+            r#"{{"listeners": [{{"name": "web", "address": "127.0.0.1:0"}}],
                 "routes": [{{"listeners": ["web"], "match": {{"path": ["/announce", "/scrape"]}}, "handler": {{"module": "bt_tracker"}}}}],
-                "admin": {{"address": "{admin}"}},
-                "bittorrent": {{"tracker": {{}}, "client": {{"listen": "{peer}", "data_dir": {:?}, "download_dir": {:?}, "dht": false, "limits": {{"min_free_bytes": 1}}}}}}}}"#,
+                "admin": {{"address": "127.0.0.1:0"}},
+                "bittorrent": {{"tracker": {{}}, "client": {{"listen": "127.0.0.1:0", "data_dir": {:?}, "download_dir": {:?}, "dht": false, "limits": {{"min_free_bytes": 1}}}}}}}}"#,
             dir.join("fit-data").to_str().unwrap(),
             fit_dl.to_str().unwrap()
         ),
-    )
-    .unwrap();
-    let _fit = Fit(Command::new(&fit)
-        .args(["run", "-c"])
-        .arg(&cfg)
-        .stdout(Stdio::null())
-        .stderr(Stdio::inherit())
-        .spawn()
-        .unwrap());
+        |_| {},
+    );
+    let web: SocketAddr = run.addr(r#"listener "web" on "#).parse().unwrap();
+    let admin: SocketAddr = run.addr("admin API on ").parse().unwrap();
+    let tracker = format!("http://{web}/announce");
+    // The torrent fit seeds, and the one akit seeds.
+    let mi_fit = torrent("from-fit.bin", &from_fit, &tracker);
+    let mi_akit = torrent("from-akit.bin", &from_akit, &tracker);
     wait_for("fit's Admin API", 20, || {
         http(admin, "GET", "/bittorrent/torrents", "text/plain", b"").0 == 200
     });

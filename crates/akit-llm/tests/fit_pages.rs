@@ -13,50 +13,26 @@
 
 mod support;
 
-use std::process::{Child, Command, Stdio};
-
 use akit_llm::json;
-use support::{Roles, Upstream, agent, call, free_port, key_hash, until};
+use support::{Roles, Upstream, agent, call, key_hash, until};
 
 const KEY: &str = "ah-pages-key-0123456789";
 
-/// fit running a config, killed when dropped.
-struct Fit(Child, std::path::PathBuf);
-
-impl Drop for Fit {
-    fn drop(&mut self) {
-        let _ = self.0.kill();
-        let _ = self.0.wait();
-        let _ = std::fs::remove_dir_all(&self.1);
-    }
-}
-
-fn fit(tag: &str, config: &str) -> Fit {
+fn fit(tag: &str, config: &str) -> support::fit::Fit {
     let bin = std::env::var("AKIT_FIT_BIN").expect("AKIT_FIT_BIN: the path of fit's binary");
     let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!(
         "akit-llm-fit-pages-{tag}-{}-{}",
         std::process::id(),
         akit_roles::linktoken::unix_now()
     ));
-    std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("fit.json");
-    std::fs::write(&path, config).unwrap();
-    let log = std::fs::File::create(dir.join("fit.log")).unwrap();
-    let child = Command::new(bin)
-        .args(["run", "-c"])
-        .arg(&path)
-        .stdout(Stdio::null())
-        .stderr(log)
-        .spawn()
-        .unwrap();
-    Fit(child, dir)
+    support::fit::start(&bin, dir, config, |_| {})
 }
 
 #[test]
 #[ignore = "needs fit's binary in AKIT_FIT_BIN"]
 fn akit_pages_with_fit_roles() {
     let up = Upstream::start();
-    // akit's listeners on port 0; fit's hub's port named before it starts.
+    // akit's listeners on port 0, and fit's, where they listen read from its log.
     let roles = Roles::start(&format!(
         r#"{{"llm": {{
           "hub": {{"id": "hub-akit000000000061", "name": "ahub",
@@ -69,19 +45,24 @@ fn akit_pages_with_fit_roles() {
     ));
     let hub = roles.local("llm.hub");
     let proxy = roles.local("llm.proxy");
-    let (ahub, fhub, api) = (roles.mesh_port("llm.hub"), free_port(), roles.api_port());
+    let (ahub, api) = (roles.mesh_port("llm.hub"), roles.api_port());
 
     // A token akit's hub issues from its pages takes fit's node.
     let is = call(&hub, "/mesh/tokens/create", r#"{"name": "fit node"}"#).unwrap();
     // fit names its tokens `fitt1.`, akit `akitt1.` (decision 038): the same token otherwise.
     let token = json::get_str(&json::parse(is.as_bytes()).unwrap(), "token")
         .replacen("akitt1.", "fitt1.", 1);
-    let _fit = fit(
-        "roles",
+    // fit's hub first, its port read from its log; then fit's node, linked to it and to akit's.
+    let fit_hub = fit(
+        "hub",
+        r#"{"llm": {"hub": {"id": "hub-fit00000000000061", "name": "fhub",
+          "listen": {"address": "127.0.0.1:0", "node_password": "np", "proxy_password": "pp"}}}}"#,
+    );
+    let fhub = fit_hub.port_in("llm.hub: mesh listening", "addr=");
+    let _fit_node = fit(
+        "node",
         &format!(
             r#"{{"llm": {{
-              "hub": {{"id": "hub-fit00000000000061", "name": "fhub",
-                "listen": {{"address": "127.0.0.1:{fhub}", "node_password": "np", "proxy_password": "pp"}}}},
               "node": {{"id": "node-fit0000000000061", "name": "fnode",
                 "peers": [{{"address": "127.0.0.1:{fhub}", "password": "np", "role": "hub"}},
                           {{"address": "127.0.0.1:{ahub}", "token": "{token}", "role": "hub"}}],

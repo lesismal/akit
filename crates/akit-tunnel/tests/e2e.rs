@@ -16,17 +16,6 @@ use std::time::{Duration, Instant};
 use akit_roles::host::Manager;
 use akit_roles::linktoken::Secret;
 
-/// A port free now, for a listener of fit's binary, whose config must name it before it starts:
-/// another process may take it before fit binds it. akit's own listeners bind port 0 and are
-/// asked where they listen ([`hub_ports`], [`forward_ports`]).
-fn free_port() -> u16 {
-    TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port()
-}
-
 /// An echo service: what each connection sends comes back.
 fn echo() -> u16 {
     let l = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -1205,31 +1194,12 @@ fn a_listeners_certificate_is_read_again() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// fit's binary, killed when dropped, and its directory removed.
-struct FitRun(std::process::Child, std::path::PathBuf);
+#[path = "support/fit.rs"]
+mod fit;
 
-impl Drop for FitRun {
-    fn drop(&mut self) {
-        let _ = self.0.kill();
-        let _ = self.0.wait();
-        let _ = std::fs::remove_dir_all(&self.1);
-    }
-}
-
-fn fit_run(bin: &str, name: &str, doc: &str) -> FitRun {
-    let dir = tmp(&format!("fit-{name}"));
-    let path = dir.join("fit.json");
-    std::fs::write(&path, doc).unwrap();
-    let log = std::fs::File::create(dir.join("fit.log")).unwrap();
-    let child = std::process::Command::new(bin)
-        .args(["run", "-c"])
-        .arg(&path)
-        .current_dir(&dir)
-        .stdout(log.try_clone().unwrap())
-        .stderr(log)
-        .spawn()
-        .unwrap();
-    FitRun(child, dir)
+/// fit's binary running `doc`, in a directory of its own.
+fn fit_run(bin: &str, name: &str, doc: &str) -> fit::Fit {
+    fit::start(bin, tmp(&format!("fit-{name}")), doc, |_| {})
 }
 
 /// Against fit's binary (`AKIT_FIT_BIN`; skipped without it, as in CI), I102d: fit's node and
@@ -1244,7 +1214,7 @@ fn with_fits_node_and_proxy_over_quic() {
     };
     let dir = tmp("fit-quic");
     let e = quic_engine();
-    let (svc, fwd) = (echo(), free_port());
+    let svc = echo();
     let cert_file = dir.join("c.pem").to_str().unwrap().to_owned();
     let key_file = dir.join("k.pem").to_str().unwrap().to_owned();
     let write = || {
@@ -1265,18 +1235,19 @@ fn with_fits_node_and_proxy_over_quic() {
     assert!(errs.is_empty(), "{errs:?}");
     let hub = hub_ports(&h)[0];
     // Each run's names its own: the hub holds a killed run's links until their idle timeout.
-    let peers_doc = |fp: &str, fwd: u16, n: u8| {
+    // fit's forward on port 0, where it listens read from its log.
+    let peers_doc = |fp: &str, n: u8| {
         let up = format!(
             r#"{{"name": "hub", "endpoints": [{{"address": "quic://127.0.0.1:{hub}"}}], "password": "pw", "pin": "{fp}", "retry_interval": "100ms"}}"#
         );
         format!(
             r#"{{"tunnel": {{
               "node": {{"name": "lab{n}", "hubs": [{up}], "services": [{{"name": "echo", "address": "127.0.0.1:{svc}"}}]}},
-              "proxy": {{"name": "alice{n}", "hubs": [{up}], "forwards": [{{"listen": "127.0.0.1:{fwd}", "node": "lab{n}", "service": "echo"}}]}}}}}}"#
+              "proxy": {{"name": "alice{n}", "hubs": [{up}], "forwards": [{{"listen": "127.0.0.1:0", "node": "lab{n}", "service": "echo"}}]}}}}}}"#
         )
     };
-    let fit1 = fit_run(&bin, "quic-1", &peers_doc(&fp, fwd, 1));
-    let mut s = tunnel(fwd);
+    let fit1 = fit_run(&bin, "quic-1", &peers_doc(&fp, 1));
+    let mut s = tunnel(fit1.port("forwarding "));
     round_trip(&mut s, 8 << 20);
     eprintln!("fit's node and proxy over QUIC to akit's hub: 8 MiB echoed");
     // Renewed and read again: fit's links go on, and fit's new ones pin the new certificate.
@@ -1286,9 +1257,8 @@ fn with_fits_node_and_proxy_over_quic() {
     round_trip(&mut s, 1 << 20);
     drop(s);
     drop(fit1);
-    let fwd2 = free_port();
-    let _fit2 = fit_run(&bin, "quic-2", &peers_doc(&fp2, fwd2, 2));
-    let mut s = tunnel(fwd2);
+    let fit2 = fit_run(&bin, "quic-2", &peers_doc(&fp2, 2));
+    let mut s = tunnel(fit2.port("forwarding "));
     round_trip(&mut s, 1 << 20);
     eprintln!("fit's node and proxy pinning the renewed certificate: linked");
     h.stop(Duration::ZERO);

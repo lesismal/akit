@@ -10,8 +10,6 @@
     clippy::arithmetic_side_effects
 )]
 
-use std::net::TcpListener;
-use std::process::{Child, Command, Stdio};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -26,16 +24,6 @@ fn fit_bin() -> String {
     std::env::var("AKIT_FIT_BIN").expect("AKIT_FIT_BIN: the path of fit's binary")
 }
 
-/// A port free now, for a listener of fit's binary, whose config must name it before it starts:
-/// another process may take it before fit binds it.
-fn free_port() -> u16 {
-    TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port()
-}
-
 fn until(what: &str, f: impl Fn() -> bool) {
     let deadline = Instant::now() + Duration::from_secs(20);
     while !f() {
@@ -44,15 +32,8 @@ fn until(what: &str, f: impl Fn() -> bool) {
     }
 }
 
-/// fit running a config, killed when dropped.
-struct Fit(Child, tempdir::Dir);
-
-impl Drop for Fit {
-    fn drop(&mut self) {
-        let _ = self.0.kill();
-        let _ = self.0.wait();
-    }
-}
+#[path = "../../akit-tunnel/tests/support/fit.rs"]
+mod fit;
 
 mod tempdir {
     /// A directory removed when dropped.
@@ -75,25 +56,14 @@ mod tempdir {
     }
 }
 
-fn fit(tag: &str, config: &str) -> Fit {
-    let dir = tempdir::Dir::new(tag);
-    let path = dir.0.join("fit.json");
-    std::fs::write(&path, config).unwrap();
-    let log = std::fs::File::create(dir.0.join("fit.log")).unwrap();
-    let child = Command::new(fit_bin())
-        .args(["run", "-c"])
-        .arg(&path)
-        .stdout(Stdio::null())
-        .stderr(log)
-        .spawn()
-        .unwrap();
-    Fit(child, dir)
-}
-
-impl Fit {
-    fn log(&self) -> String {
-        std::fs::read_to_string(self.1.0.join("fit.log")).unwrap_or_default()
-    }
+/// fit running a config, its listeners on port 0 read from its log ([`fit::Fit::port_in`]).
+fn fit(tag: &str, config: &str) -> fit::Fit {
+    let dir = std::env::temp_dir().join(format!(
+        "akit-llm-fit-{tag}-{}-{}",
+        std::process::id(),
+        akit_roles::linktoken::unix_now()
+    ));
+    fit::start(&fit_bin(), dir, config, |_| {})
 }
 
 fn engine() -> Arc<akio::Engine> {
@@ -169,7 +139,6 @@ fn fit_token(s: &Secret) -> String {
 #[ignore = "needs fit's binary in AKIT_FIT_BIN"]
 fn akit_node_links_to_fit_hub() {
     let e = engine();
-    let (p1, p2) = (free_port(), free_port());
     let tok = Secret::new().unwrap();
     let dir = tempdir::Dir::new("certs");
     let (cf, kf, fp) = cert_files(&dir.0);
@@ -178,18 +147,20 @@ fn akit_node_links_to_fit_hub() {
         "hub",
         &format!(
             r#"{{"llm": {{"hub": {{"id": "hub-fit00000000000001", "name": "fit-hub",
-              "listen": {{"address": "127.0.0.1:{p1}", "password": "pw"}},
+              "listen": {{"address": "127.0.0.1:0", "password": "pw"}},
               "tokens": [{}]}}}}}}"#,
             token_rec(&tok)
         ),
     );
+    let p1 = hub.port_in("mesh listening", "addr=");
     let hub_tls = fit(
         "hubtls",
         &format!(
             r#"{{"llm": {{"hub": {{"id": "hub-fit00000000000002", "name": "fit-hub-tls",
-              "listen": {{"address": "127.0.0.1:{p2}", "password": "pw", "cert_file": "{cf}", "key_file": "{kf}"}}}}}}}}"#
+              "listen": {{"address": "127.0.0.1:0", "password": "pw", "cert_file": "{cf}", "key_file": "{kf}"}}}}}}}}"#
         ),
     );
+    let p2 = hub_tls.port_in("mesh listening over TLS", "addr=");
     let node = mesh(&e, ROLE_NODE, "node-akit000000000001");
     node.dial(&DialReq {
         addr: format!("127.0.0.1:{p1}"),

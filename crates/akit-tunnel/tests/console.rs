@@ -269,70 +269,13 @@ fn cut_connections() {
     assert_eq!(got, b"bye");
 }
 
-/// fit's binary running `doc` in a directory of its own, stopped when dropped; the lines it
-/// logs, as they come.
-struct Fit {
-    child: std::process::Child,
-    dir: std::path::PathBuf,
-    lines: std::sync::mpsc::Receiver<String>,
-}
+#[path = "support/fit.rs"]
+mod fit;
 
-impl Drop for Fit {
-    fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
-        let _ = std::fs::remove_dir_all(&self.dir);
-    }
-}
-
-impl Fit {
-    /// The address fit logs after `before` (as `ws://127.0.0.1:1234/` or `http://127.0.0.1:1234`)
-    /// once it listens there, within 15 s: its listeners bind port 0, as akit's do, so that no
-    /// other process takes a port between the test choosing it and fit binding it.
-    fn addr(&self, before: &str) -> String {
-        let deadline = Instant::now() + Duration::from_secs(15);
-        loop {
-            let left = deadline.saturating_duration_since(Instant::now());
-            let line = self
-                .lines
-                .recv_timeout(left)
-                .unwrap_or_else(|e| panic!("fit logged no {before:?}: {e}"));
-            if let Some((_, rest)) = line.split_once(before) {
-                return rest
-                    .split(|c: char| c == '/' || c.is_whitespace())
-                    .next()
-                    .unwrap()
-                    .to_owned();
-            }
-        }
-    }
-}
-
-fn fit(bin: &str, name: &str, doc: &str) -> Fit {
+/// fit's binary running `doc` in a directory of its own.
+fn fit(bin: &str, name: &str, doc: &str) -> fit::Fit {
     let dir = std::env::temp_dir().join(format!("akit-i103b-{name}-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("fit.json");
-    std::fs::write(&path, doc).unwrap();
-    let mut child = std::process::Command::new(bin)
-        .args(["run", "-c"])
-        .arg(&path)
-        .current_dir(&dir)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::fs::File::create(dir.join("fit.err")).unwrap())
-        .spawn()
-        .unwrap();
-    let out = child.stdout.take().unwrap();
-    let (tx, lines) = std::sync::mpsc::channel();
-    let name = name.to_owned();
-    std::thread::spawn(move || {
-        use std::io::BufRead as _;
-        for line in std::io::BufReader::new(out).lines() {
-            let Ok(line) = line else { break };
-            eprintln!("fit {name}: {line}");
-            let _ = tx.send(line);
-        }
-    });
-    Fit { child, dir, lines }
+    fit::start(bin, dir, doc, |_| {})
 }
 
 /// A connection to `port` whose reads time out after `limit`, or `None` for a try that got
@@ -433,11 +376,7 @@ fn with_fits_hub_and_proxy() {
             r#"{{"tunnel": {{"proxy": {{"name": "fit", "web_proxies": [{{"name": "hub", "listen": "127.0.0.1:0", "url": "ws://{sock}/", "password": "sock"}}]}}}}}}"#
         ),
     );
-    let web: u16 = proxy
-        .addr(" on http://")
-        .rsplit_once(':')
-        .and_then(|(_, p)| p.parse().ok())
-        .expect("the port of fit's web proxy");
+    let web = proxy.port(" on http://");
     let deadline = Instant::now() + Duration::from_secs(15);
     let mut s = loop {
         if let Some(mut s) = connect_timed(web, Duration::from_secs(5)) {

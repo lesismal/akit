@@ -22,6 +22,34 @@
 
 ## 日志
 
+### 2026-11-28：测试里可能被别的进程干扰的端口和 socket
+
+- 所有运行 fit 二进制的测试都让 fit 的监听器绑定端口 0，并从 fit 输出的日志行读出地址，与
+  `tests/console.rs` 的做法相同（一个辅助文件 `crates/akit-tunnel/tests/support/fit.rs`，通过
+  `#[path]` 共用）：akit-tunnel 的 `e2e.rs`（fit 的 forward）、`pages.rs`（fit 的 web proxy）、
+  `peer_pages.rs`（fit hub 的链接监听器），akit-llm 的 `fit_mesh.rs`、`fit_pages.rs`、`fit_roles.rs`、
+  `fit_manage.rs`（fit 的 mesh 监听器；`fit_pages.rs` 先启动 fit 的 hub，再启动拨号到它的 node），
+  akit-webrtc 的 `fib_turn.rs`（fit 的 TURN 监听器），以及 akit-bittorrent 的 `fit_interop.rs`（fit 的
+  监听器、Admin API 和 client）。测试选好的端口可能在 fit 绑定之前被别的进程占用。仍然需要预先选
+  端口的：fit 的 LLM 角色控制台和 LLM proxy 的 API（fit 不输出它们监听在哪里）、akit 自己那些
+  `http_url` 或控制台 socket 依赖配置端口的控制台（akit 的控制台 socket 拨控制台配置的地址，fit 的拨控
+  制台实际监听的地址）、页面添加的 forward（以地址命名）、Pebble 的端口（被占用时重新启动）、aria2c
+  的端口（不支持端口 0），以及 `crates/akit/tests/media.rs` 的端口（akit 和 fit 的二进制读同一份配置，
+  两者都不输出 HTTP 监听器绑定在哪里）。
+- macOS 在对端 reset 之后拒绝设置 socket 选项（`EINVAL`）。测试中判断"是否已关闭"的辅助函数
+  （akit-listener `limits.rs` 的 `closed`、`l4.rs` 和 `socks.rs` 的 `expect_closed`、akit-handler
+  `forward_proxy.rs` 的 `expect_closed`、akit-admin `console.rs` 的 `closed_within`）把设置超时被拒视为
+  已关闭；`limits.rs` 在 `max_conns` 之后的重试把被拒视为一次没有结果的尝试；可能在 reset 之后读的地方
+  （akit 的 `conformance.rs` 的 `exchange` 和 `closes`、akit-upstream `probe.rs` 的超大应答、`limits.rs`
+  的预算测试、`l4.rs` 的 `round_trip`）都在写之前设置超时。
+- 两处检查监听器已关闭的地方原来是连接它的端口，而之后占用该端口的任何进程、或者 loopback 上恰好以
+  该端口为源端口的连接都可能应答：akit-listener `listeners.rs`
+  （`shutdown_lets_a_request_in_flight_finish`）现在改为绑定该端口，`h3.rs`
+  （`reload_knows_h3_listeners`）改为询问引擎的 `listeners()`：reload 之前列出它，之后不再列出。
+- 同一个测试二进制同时运行多份（这些检查就是每次 6 份同时运行）时会共用文件：akit-listener 的
+  `support/certs.rs` 的 `dir`（所有测试的证书）、`limits.rs` 的 `pending_bytes_budget` 的文件，以及
+  akit-admin `console.rs` 的目录，现在都带上进程 ID。
+
 ### 2026-11-28：I165，助手 VI：问 AI、迁移和审查
 
 - 评测（fit 的 I129，`akit_assistant` 的 `eval` 测试）：`migrate` 和 `security-review` 两个技能像面板那样端到端运行在 fit 的固定集合上

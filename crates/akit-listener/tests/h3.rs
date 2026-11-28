@@ -350,11 +350,18 @@ fn reload_knows_h3_listeners() {
 
     // The h3 listener akit started with is removed (akio's A22), its TCP and UDP sides both.
     let secure = addrs[0];
+    let gone = secure.tcp.unwrap();
+    assert!(e.listeners().iter().any(|i| i.local_addr == gone));
     let (g, _) = compiled(&json(&[plain.clone(), tls("more", ALL)]));
     let r = l.reload(g).unwrap();
     assert_eq!((r.kept, r.added.len(), r.removed.len()), (2, 0, 1));
     assert_eq!(r.removed[0].name, "secure");
-    assert!(std::net::TcpStream::connect(secure.tcp.unwrap()).is_err());
+    // Its TCP side no longer accepts, as the engine says: a connect could be answered by
+    // whatever took the port since, or by itself.
+    assert!(
+        e.listeners().iter().all(|i| i.local_addr != gone),
+        "{gone} still accepting"
+    );
     wait_h3_gone(secure.udp.unwrap(), &p.ca);
     // The one a reload added stays, and goes with the next.
     let seen = h3::get(more, h3::client(&p.ca, None), "a.example", "/").unwrap();

@@ -128,7 +128,11 @@ fn round_trip(c: &mut TcpStream, msg: &[u8]) {
 
 /// Reads until the peer closes, within `d`; what came before.
 fn expect_closed(c: &mut TcpStream, d: Duration) -> Vec<u8> {
-    c.set_read_timeout(Some(d)).unwrap();
+    // Closed already when the timeout is refused: macOS refuses a socket's options
+    // (`EINVAL`) once its peer has reset it.
+    if c.set_read_timeout(Some(d)).is_err() {
+        return Vec::new();
+    }
     let mut all = Vec::new();
     let mut b = [0u8; 4096];
     loop {

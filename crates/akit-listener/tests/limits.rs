@@ -113,8 +113,13 @@ fn header_limit_default() {
 
 /// Whether `s` was closed by the server: a read that ends or fails, within a few seconds.
 fn closed(s: &mut TcpStream) -> bool {
-    s.set_read_timeout(Some(Duration::from_millis(200)))
-        .unwrap();
+    // Closed already when the timeout is refused: macOS refuses a socket's options
+    // (`EINVAL`) once its peer has reset it.
+    if s.set_read_timeout(Some(Duration::from_millis(200)))
+        .is_err()
+    {
+        return true;
+    }
     let deadline = Instant::now() + Duration::from_secs(5);
     let mut b = [0u8; 64];
     while Instant::now() < deadline {
@@ -157,12 +162,16 @@ fn connection_limit() {
     drop(one);
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
+        // A try closed as it is accepted, while the server has not seen the other go, gets
+        // nothing: its write may fail, and its options too (macOS refuses a socket's options,
+        // `EINVAL`, once its peer has reset it).
         let mut s = TcpStream::connect(a).unwrap();
-        s.write_all(b"GET / HTTP/1.1\r\nHost: a.example\r\n\r\n")
-            .unwrap();
-        s.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
         let mut b = [0u8; 256];
-        if matches!(s.read(&mut b), Ok(n) if b[..n].starts_with(b"HTTP/1.1 200")) {
+        if s.set_read_timeout(Some(Duration::from_secs(5))).is_ok()
+            && s.write_all(b"GET / HTTP/1.1\r\nHost: a.example\r\n\r\n")
+                .is_ok()
+            && matches!(s.read(&mut b), Ok(n) if b[..n].starts_with(b"HTTP/1.1 200"))
+        {
             break;
         }
         assert!(Instant::now() < deadline, "no room after a connection went");
@@ -255,7 +264,9 @@ fn wait_until(what: &str, mut done: impl FnMut() -> bool) {
 fn pending_bytes_budget() {
     const BUDGET: usize = 1 << 20;
     const BIG: usize = 32 << 20;
-    let root = std::path::PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("pending-budget");
+    // A directory of this process's own: copies of the test binary run at once.
+    let root = std::path::PathBuf::from(env!("CARGO_TARGET_TMPDIR"))
+        .join(format!("pending-budget-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root).unwrap();
     // Kept in memory, so it goes out whole, queued on the connection rather than read as the
@@ -285,6 +296,9 @@ fn pending_bytes_budget() {
     hog.write_all(b"GET /small.txt HTTP/1.1\r\nHost: x\r\n\r\n")
         .unwrap();
     let mut s = TcpStream::connect(a).unwrap();
+    // Set before the write: once answered, the connection closes, and macOS refuses a socket's
+    // options (`EINVAL`) once its peer has reset it.
+    s.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
     s.write_all(b"GET /small.txt HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
         .unwrap();
     wait_until("both connections were not paused by the budget", || {
@@ -323,7 +337,6 @@ fn pending_bytes_budget() {
         }
         got
     });
-    s.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
     let mut resp = String::new();
     s.read_to_string(&mut resp).unwrap();
     assert!(
@@ -336,4 +349,5 @@ fn pending_bytes_budget() {
     assert_eq!(tel.metrics().total.budget_pauses, 2);
     e.shutdown();
     e.wait();
+    let _ = std::fs::remove_dir_all(&root);
 }

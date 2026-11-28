@@ -201,7 +201,11 @@ fn pattern(n: usize, seed: u8) -> Vec<u8> {
 
 /// Checks that akit closes `c` within `d`: its read ends without data.
 fn expect_closed(c: &mut TcpStream, d: Duration) {
-    c.set_read_timeout(Some(d)).unwrap();
+    // Closed already when the timeout is refused: macOS refuses a socket's options
+    // (`EINVAL`) once its peer has reset it.
+    if c.set_read_timeout(Some(d)).is_err() {
+        return;
+    }
     match c.read(&mut [0u8; 1]) {
         Ok(0) => {}
         Err(e) if !matches!(e.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) => {}
@@ -210,8 +214,8 @@ fn expect_closed(c: &mut TcpStream, d: Duration) {
 }
 
 fn round_trip(c: &mut TcpStream, data: &[u8]) -> std::io::Result<Vec<u8>> {
-    c.write_all(data)?;
     c.set_read_timeout(Some(Duration::from_secs(5)))?;
+    c.write_all(data)?;
     let mut got = vec![0u8; data.len()];
     c.read_exact(&mut got)?;
     Ok(got)

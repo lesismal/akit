@@ -173,9 +173,11 @@ impl Upstream {
                 let _ = s.read(&mut chunk);
             }
             Probe::Huge => {
+                // Before the write: the prober closes once it has the head, and macOS refuses a
+                // socket's options (`EINVAL`) once its peer has reset it.
+                s.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
                 let _ =
                     s.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 1000000000\r\n\r\nsome of it");
-                s.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
                 if matches!(s.read(&mut chunk), Ok(0)) {
                     self.closed.fetch_add(1, Ordering::SeqCst);
                 }

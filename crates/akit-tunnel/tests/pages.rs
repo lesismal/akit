@@ -20,10 +20,10 @@ use akit_admin::console::RoleConsoles;
 use akit_config::value::{self, Value};
 use akit_roles::host::{Edit, Editor, Manager};
 
-/// A port free now, for what must name its port before it binds: a listener of fit's binary, and
-/// a console its hub's console socket dials (at the console's `address`, as fit's). Another
+/// A port free now, for what must name its port before it binds: a console its hub's console
+/// socket dials (at the console's `address`; fit's dials where its console listens). Another
 /// process may take it meanwhile. akit's other listeners bind port 0 and are asked where they
-/// listen.
+/// listen, and fit's too ([`fit::Fit::port`]).
 fn free_port() -> u16 {
     TcpListener::bind("127.0.0.1:0")
         .unwrap()
@@ -31,6 +31,9 @@ fn free_port() -> u16 {
         .unwrap()
         .port()
 }
+
+#[path = "support/fit.rs"]
+mod fit;
 
 fn hash() -> String {
     akio_crypto::bcrypt::hash(b"pw", akio_crypto::bcrypt::MIN_COST).unwrap()
@@ -675,26 +678,16 @@ fn akits_hub_pages_through_fits_web_proxy() {
         |_| String::new(),
     );
     let sock = env.hub().socket_addr().unwrap().port();
-    let web = free_port();
-    let dir = std::env::temp_dir().join(format!("akit-i109-proxy-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("fit.json");
-    std::fs::write(
-        &path,
-        format!(
-            r#"{{"tunnel": {{"proxy": {{"name": "fit", "web_proxies": [{{"name": "hub", "listen": "127.0.0.1:{web}", "url": "ws://127.0.0.1:{sock}/", "password": "sock"}}]}}}}}}"#
+    // fit's web proxy on port 0, where it listens read from its log.
+    let proxy = fit::start(
+        &bin,
+        std::env::temp_dir().join(format!("akit-i109-proxy-{}", std::process::id())),
+        &format!(
+            r#"{{"tunnel": {{"proxy": {{"name": "fit", "web_proxies": [{{"name": "hub", "listen": "127.0.0.1:0", "url": "ws://127.0.0.1:{sock}/", "password": "sock"}}]}}}}}}"#
         ),
-    )
-    .unwrap();
-    let log = std::fs::File::create(dir.join("fit.log")).unwrap();
-    let mut child = std::process::Command::new(bin)
-        .args(["run", "-c"])
-        .arg(&path)
-        .current_dir(&dir)
-        .stdout(log.try_clone().unwrap())
-        .stderr(log)
-        .spawn()
-        .unwrap();
+        |_| {},
+    );
+    let web = proxy.port(" on http://");
     let web = SocketAddr::from(([127, 0, 0, 1], web));
     let deadline = Instant::now() + Duration::from_secs(15);
     let index = loop {
@@ -723,7 +716,4 @@ fn akits_hub_pages_through_fits_web_proxy() {
         "{}",
         st.body
     );
-    let _ = child.kill();
-    let _ = child.wait();
-    let _ = std::fs::remove_dir_all(&dir);
 }

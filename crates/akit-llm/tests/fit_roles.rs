@@ -12,42 +12,18 @@
 
 mod support;
 
-use std::process::{Child, Command, Stdio};
-
 use support::{Roles, Upstream, agent, free_port, key_hash, until};
 
 const KEY: &str = "ah-mixed-key-0123456789";
 
-/// fit running a config, killed when dropped.
-struct Fit(Child, std::path::PathBuf);
-
-impl Drop for Fit {
-    fn drop(&mut self) {
-        let _ = self.0.kill();
-        let _ = self.0.wait();
-        let _ = std::fs::remove_dir_all(&self.1);
-    }
-}
-
-fn fit(tag: &str, config: &str) -> Fit {
+fn fit(tag: &str, config: &str) -> support::fit::Fit {
     let bin = std::env::var("AKIT_FIT_BIN").expect("AKIT_FIT_BIN: the path of fit's binary");
     let dir = std::env::temp_dir().join(format!(
         "akit-llm-fit-roles-{tag}-{}-{}",
         std::process::id(),
         akit_roles::linktoken::unix_now()
     ));
-    std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("fit.json");
-    std::fs::write(&path, config).unwrap();
-    let log = std::fs::File::create(dir.join("fit.log")).unwrap();
-    let child = Command::new(bin)
-        .args(["run", "-c"])
-        .arg(&path)
-        .stdout(Stdio::null())
-        .stderr(log)
-        .spawn()
-        .unwrap();
-    Fit(child, dir)
+    support::fit::start(&bin, dir, config, |_| {})
 }
 
 fn keys() -> String {
@@ -117,15 +93,13 @@ fn calls(api: u16, node: &str) {
 #[ignore = "needs fit's binary in AKIT_FIT_BIN"]
 fn fit_hub_between_akit_node_and_akit_proxy() {
     let up = Upstream::start();
-    // fit's hub's port is named before it starts.
-    let hub = free_port();
-    let _fit = fit(
+    // fit's hub on port 0, where it listens read from its log.
+    let fit_hub = fit(
         "hub",
-        &format!(
-            r#"{{"llm": {{"hub": {{"id": "hub-fit00000000000001",
-              "listen": {{"address": "127.0.0.1:{hub}", "node_password": "np", "proxy_password": "pp"}}}}}}}}"#
-        ),
+        r#"{"llm": {"hub": {"id": "hub-fit00000000000001",
+          "listen": {"address": "127.0.0.1:0", "node_password": "np", "proxy_password": "pp"}}}}"#,
     );
+    let hub = fit_hub.port_in("llm.hub: mesh listening", "addr=");
     let _akit = Roles::start(&format!(
         r#"{{"llm": {{
           "node": {{"id": "node-akit000000000001",
@@ -150,6 +124,7 @@ fn akit_hub_between_fit_node_and_fit_proxy() {
         r#"{"llm": {"hub": {"id": "hub-akit000000000001",
           "listen": {"address": "127.0.0.1:0", "node_password": "np", "proxy_password": "pp"}}}}"#,
     );
+    // fit's proxy's API is named before it starts: fit does not log where it listens.
     let (hub, api) = (_akit.mesh_port("llm.hub"), free_port());
     let _node = fit(
         "node",
@@ -176,17 +151,17 @@ fn akit_hub_between_fit_node_and_fit_proxy() {
 #[ignore = "needs fit's binary in AKIT_FIT_BIN"]
 fn akit_proxy_to_fit_node_directly() {
     let up = Upstream::start();
-    // fit's node's port is named before it starts.
-    let node = free_port();
-    let _node = fit(
+    // fit's node on port 0, where it listens read from its log.
+    let fit_node = fit(
         "direct",
         &format!(
             r#"{{"llm": {{"node": {{"id": "node-fit0000000000002",
-              "listen": {{"address": "127.0.0.1:{node}", "proxy_password": "pp"}},
+              "listen": {{"address": "127.0.0.1:0", "proxy_password": "pp"}},
               "models": {}}}}}}}"#,
             models(up.port)
         ),
     );
+    let node = fit_node.port_in("llm.node: mesh listening", "addr=");
     let _akit = Roles::start(&format!(
         r#"{{"llm": {{"proxy": {{"id": "proxy-akit00000000002",
           "peers": [{{"address": "127.0.0.1:{node}", "password": "pp", "role": "node"}}],
