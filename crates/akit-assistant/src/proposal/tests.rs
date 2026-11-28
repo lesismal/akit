@@ -649,12 +649,12 @@ fn propose_edges() {
     let many = start_with("", vec![text("-")], |o| {
         let api = Fake::new(&base());
         api.with(|c| {
-            c.validate = Some(|_| {
+            c.validate = Some(Arc::new(|_| {
                 let items: Vec<String> = (0..60)
                     .map(|i| format!(r#"{{"path":"x{i}","msg":"bad"}}"#))
                     .collect();
                 format!(r#"{{"valid":false,"errors":[{}]}}"#, items.join(","))
-            });
+            }));
         });
         o.api = Some(Arc::new(api));
     });
@@ -1579,4 +1579,76 @@ fn audit_endpoint() {
     );
     let e = f.audit("?conversation=x&before=2");
     assert!(e.len() == 1 && s(&e[0], "user") == "bob", "{e:?}");
+}
+
+/// fit's `TestProposeUnconverted` (`migrate_test.go`): `config_propose`'s unconverted items, what
+/// a migration did not carry over, are kept with the step and shown with the proposal, in order,
+/// each once and redacted; too many, or an empty or long one, refuse the step.
+#[test]
+fn propose_unconverted() {
+    let route = r#"{"op": "add", "path": "/routes/-", "value": {"name": "site", "handler": {"module": "respond"}}}"#;
+    let too_many = format!("[{}]", vec![r#""x""#; 101].join(","));
+    let long = "y".repeat(501);
+    let f = start(
+        r#", "default_level": "propose""#,
+        vec![
+            Turn::Tools(vec![
+                (CONFIG_PROPOSE.to_owned(), format!(r#"{{"summary": "The site", "ops": [{route}], "unconverted": ["line 3: sub_filter: no body rewriting", " line 9: password=hunter22 in auth "]}}"#)),
+                (CONFIG_PROPOSE.to_owned(), r#"{"summary": "Its limit", "ops": [{"op": "add", "path": "/routes/1/middleware", "value": [{"module": "rate_limit", "params": {"rate": 5, "key": "header:X-Client"}}]}], "unconverted": ["line 3: sub_filter: no body rewriting", "line 12: error_page: none"]}"#.to_owned()),
+                (CONFIG_PROPOSE.to_owned(), format!(r#"{{"summary": "Too many", "ops": [{route}], "unconverted": {too_many}}}"#)),
+                (CONFIG_PROPOSE.to_owned(), format!(r#"{{"summary": "Empty", "ops": [{route}], "unconverted": ["  "]}}"#)),
+                (CONFIG_PROPOSE.to_owned(), format!(r#"{{"summary": "Long", "ops": [{route}], "unconverted": ["{long}"]}}"#)),
+                (PURGE_PROPOSE.to_owned(), r#"{"summary": "Purge", "zone": "main", "all": true}"#.to_owned()),
+            ]),
+            text("Proposed."),
+        ],
+    );
+    let c = f.chat(r#"{"message": "move my nginx config"}"#);
+    assert!(c.end().is_some(), "{:?}", c.err());
+    let res = c.of("tool_result");
+    assert!(
+        !b(res[0], "error") && !b(res[1], "error") && !b(res[5], "error"),
+        "{res:?}"
+    );
+    for (i, want) in [
+        (2, "at most 100 items"),
+        (3, "1 to 500 bytes"),
+        (4, "1 to 500 bytes"),
+    ] {
+        assert!(
+            b(res[i], "error") && s(res[i], "content").contains(want),
+            "{i}: {:?}",
+            res[i]
+        );
+    }
+    let (_, v, body) = f.view(&c.conv());
+    let v = v.unwrap_or_else(|| panic!("{body}"));
+    assert!(b(&v, "valid") && arr(&v, "steps").len() == 3, "{body}");
+    assert_eq!(
+        strs(&v, "unconverted"),
+        [
+            "line 3: sub_filter: no body rewriting",
+            "line 9: password=[redacted] in auth",
+            "line 12: error_page: none"
+        ]
+    );
+    // A rate limit's key is a selector, written and shown as it is.
+    let json_diff = s(v.get("diff").unwrap(), "json");
+    assert!(
+        json_diff.contains(r#""key": "header:X-Client""#),
+        "{json_diff}"
+    );
+    let steps = [
+        Step {
+            tool: CONFIG_PROPOSE.into(),
+            args: r#"{"unconverted": 1}"#.into(),
+            ..Step::default()
+        },
+        Step {
+            tool: PURGE_PROPOSE.into(),
+            args: r#"{"unconverted": ["z"]}"#.into(),
+            ..Step::default()
+        },
+    ];
+    assert!(unconverted(&steps).is_empty());
 }

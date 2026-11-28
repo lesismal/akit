@@ -30,5 +30,14 @@ akit-router = { workspace = true }
 # The console module the assistant is served as (akit_roles::pages::Module).
 akit-roles = { workspace = true }
 
+[dev-dependencies]
+# The evaluation (I165): a migration's config compiled with akit's modules and its requests
+# routed, its certificates made for the test. None of these crates depends on this one.
+akio-x509 = { workspace = true }
+akit-handler = { workspace = true }
+akit-middleware = { workspace = true }
+akit-proxy = { workspace = true }
+akit-runtime = { workspace = true }
+
 [lints]
 workspace = true

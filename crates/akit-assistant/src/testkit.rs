@@ -70,8 +70,16 @@ pub(crate) struct Cfgs {
     /// A purge of a zone fails, as when it went since the check.
     pub(crate) fail_purge: bool,
     /// The check's answer to a config, when not the config's own.
-    pub(crate) validate: Option<fn(&str) -> String>,
+    pub(crate) validate: Option<Check>,
+    /// `GET /status`'s answer for a version and its config, when not the fixed one.
+    pub(crate) status: Option<Status>,
 }
+
+/// The answer of `POST /config/validate` to a config.
+pub(crate) type Check = Arc<dyn Fn(&str) -> String + Send + Sync>;
+
+/// The answer of `GET /status` to a version and its config.
+pub(crate) type Status = Arc<dyn Fn(u64, &str) -> String + Send + Sync>;
 
 /// The Admin API's stand-in, fit's `fakeConfigs`.
 #[derive(Clone, Default)]
@@ -170,6 +178,20 @@ impl Api for Fake {
                 }
             }
             ("GET", "/config/check") => answer(200, &c.check),
+            // The schema the Admin API serves: the console's, fit's renamed.
+            ("GET", "/schema") => answer(200, include_str!("../../akit-admin/console/schema.json")),
+            ("GET", "/config/effective") => answer(
+                200,
+                &format!(
+                    r#"{{"version":{},"config":{},"sources":[]}}"#,
+                    c.versions.len(),
+                    c.versions.last().unwrap()
+                ),
+            ),
+            ("GET", "/status") if c.status.is_some() => {
+                let f = c.status.as_ref().unwrap();
+                answer(200, &f(c.versions.len() as u64, c.versions.last().unwrap()))
+            }
             ("GET", "/status") => answer(
                 200,
                 r#"{"version":1,"listeners":[{"name":"web","address":"127.0.0.1:0"}],"upstreams":[{"name":"app","backends":[{"address":"10.0.0.7:9000","healthy":false,"in_flight":0}]}]}"#,
@@ -192,7 +214,7 @@ impl Api for Fake {
                     Err(e) => answer(400, &format!(r#"{{"error":{}}}"#, quoted(&e))),
                 }
             }
-            ("POST", "/config/validate") => match c.validate {
+            ("POST", "/config/validate") => match &c.validate {
                 Some(f) => answer(200, &f(&body)),
                 None => answer(200, &check_config(&body)),
             },
@@ -446,6 +468,27 @@ pub(crate) fn serve(
 pub(crate) fn start_with(extra: &str, turns: Vec<Turn>, tune: impl FnOnce(&mut Options)) -> Fx {
     let (model, sc) = standin::script(turns);
     let cfgs = Fake::new(&base());
+    let store = Arc::new(Mem::default());
+    let logs = Logs::default();
+    let mut o = options(
+        &model.url(),
+        extra,
+        cfgs.clone(),
+        Some(Arc::clone(&store)),
+        &logs,
+    );
+    tune(&mut o);
+    serve(Assistant::new(o), cfgs, sc, model, store, logs)
+}
+
+/// [`start_with`], on the Admin API's stand-in `cfgs`.
+pub(crate) fn start_on(
+    cfgs: Fake,
+    extra: &str,
+    turns: Vec<Turn>,
+    tune: impl FnOnce(&mut Options),
+) -> Fx {
+    let (model, sc) = standin::script(turns);
     let store = Arc::new(Mem::default());
     let logs = Logs::default();
     let mut o = options(

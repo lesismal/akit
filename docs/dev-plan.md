@@ -295,7 +295,7 @@ Tunnel and LLM track; I110–I114 are the WebRTC track, and I115–I119 are rese
 | I162b | The assistant III b: `log_tail` on a ring of akit's own log, `access_log_sample`, `adapt_convert` | I162 | done |
 | I163 | The assistant IV: proposals, levels and the audit log | I162 | done |
 | I164 | The assistant V: skills | I162 | done |
-| I165 | The assistant VI: Ask AI, migration and review | I163, I164, I74 | todo |
+| I165 | The assistant VI: Ask AI, migration and review | I163, I164, I74 | done |
 | I166 | The assistant VII: the MCP server | I163, I164 | todo |
 | I167 | The assistant VIII: edits on the page | I163 | todo |
 | I168 | The assistant IX: the media library's tools and skills | I163, I164, I149 | todo |
@@ -2797,7 +2797,7 @@ of the model APIs on port 0, never to a real API or with a real key.
 - **Touches**: `akit-assistant`, `akit-config` (`adapt`), `Makefile`, `docs`.
 - **fit**: `assistant/{eval_test,migrate_test,eval_check_test}.go`, `assistant/testdata/eval`; I128,
   I129.
-- **Status**: todo.
+- **Status**: done (2026-11-28); see the progress log.
 
 ### I166 The assistant VII: the MCP server
 

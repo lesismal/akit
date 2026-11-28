@@ -19,9 +19,30 @@ done and where the work differs from the plan.
 | akio requests | A1–A24, A29, A30, A32, A33, A35–A38, A45, A48, A49, A51–A54, A57, A58, A63–A66, A75, A78, A79, A90–A94, A105, A108, A109, A111–A113, A117, A132–A135, A148, A165–A172, A180, A200, A214, A215, A220, A230–A238, A245 and A247–A249 on akio's main and pinned; A225 (an external review, L15) requested ([akio API requests](akio-api-requests.md)) |
 | Streaming and media auth | [I120–I126](dev-plan.md#streaming-and-media-auth), fit's I115–I117 (decision 040): I120 (`media_auth` and `streaming` in the config), I121 (the policies, the checks, `akit media-token`), I122 (the role's hub, RTMP, RTSP and SRT), I123 (`httpflv`, `hls`), I124 (the WebRTC port, `stream_whip`, `stream_whep`), I125 (`media_pages`) and I126 (`auth` on `whip`, `whep` and `webrtc_proxy`) done; the media library's `libraries`, `vod` and `channels` wait for its track; akio requests A263–A268 |
 | Media library and channels | [I140–I149](dev-plan.md#media-library-and-channels), fit's I131–I139 and I119 (decision 043): I140 (`media_library` in the config) I141 (the catalog, the role `media_library`, `/media/library`) I142 (`vod`), I143 (`keys`, `media_tokens`), I144 (`url_signing`), I145 (channels), I146 (push targets), I147 (encrypted segments), I148 (the video site) and I149 (the console's media pages, the files managed) done: the track is done; akio requests A295–A298 |
-| AI assistant | [I160–I169](dev-plan.md#ai-assistant), fit's I124–I130 and I152–I154 (decision 044): I160 (`admin.assistant`, the module `ai`, its settings and keys in the store) I161 (the model client, the provider test) I162 (the chat and the read tools), I162b (the logs' tools, the converter) and I163 (proposals, levels, the audit log) and I164 (skills) done; I165 next |
+| AI assistant | [I160–I169](dev-plan.md#ai-assistant), fit's I124–I130 and I152–I154 (decision 044): I160 (`admin.assistant`, the module `ai`, its settings and keys in the store) I161 (the model client, the provider test) I162 (the chat and the read tools), I162b (the logs' tools, the converter) and I163 (proposals, levels, the audit log), I164 (skills) and I165 (the evaluation) done; I166 next |
 
 ## Log
+
+### 2026-11-28: I165, the assistant VI: Ask AI, migration and review
+
+- The evaluation (fit's I129, `akit_assistant`'s `eval` tests): the skills `migrate` and
+  `security-review` run end to end, as the panel runs them, on fit's fixed set
+  (`crates/akit-assistant/testdata/eval`, with akit's names): five migrations (nginx, Caddy,
+  Traefik's file and labels), each proposal checked, applied, compiled with akit's modules and its
+  requests routed where the case says they must go, the items not converted named; two reviews,
+  each finding with a fix read from the answer and matched to the planted problems.
+- Against the recorded answers, as CI runs it: every case comes to what it should, and fit's
+  catches hold (a route left open, an upstream moved, a redirect lost, no proposal, one that does
+  not check, a finding missed or without a fix). `make assistant-eval` runs the set against the
+  model `AKIT_EVAL_KIND` and `AKIT_EVAL_MODEL` name, its key from `AKIT_EVAL_API_KEY` (read by the
+  provider's `api_key_env`, never written), and reports; `AKIT_EVAL_RECORD=1` writes a run's answers
+  back. Never in CI nor `make check`; tried against a stand-in model on loopback.
+- Ask AI (fit's I128) is the console's pages' (I91's), which open the panel with a skill, its
+  inputs and a message; the server bounds what they send as I162 and I164 do (the page context,
+  16 KiB; a skill's inputs, 8 of 2 KiB).
+- fit's `TestProposeUnconverted` ported (`propose_unconverted`). akit-assistant's tests now
+  dev-depend on akit-runtime, akit-handler, akit-middleware and akit-proxy, none of which depends
+  on it. Next: I166.
 
 ### 2026-11-28: I164, the assistant V: skills
 

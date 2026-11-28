@@ -1,4 +1,4 @@
-.PHONY: all build check test test-changed lint fmt fmt-check clippy deny docs-check reference compat-check compat-gate compat-bless v1-bless \
+.PHONY: all build check test test-changed lint fmt fmt-check clippy deny docs-check reference compat-check compat-gate compat-bless v1-bless assistant-eval \
 	dist dist-check image packaging-check
 
 CARGO ?= cargo
@@ -36,6 +36,15 @@ image:
 
 # What every change passes before a push (docs/rules.md rules 17, 25, 26).
 check: fmt-check clippy test deny docs-check compat-check packaging-check
+
+# The assistant's evaluation (I165, fit's I129): the skills migrate and security-review on their
+# fixed sets of configs (crates/akit-assistant/testdata/eval), against the model AKIT_EVAL_KIND
+# and AKIT_EVAL_MODEL name, its key in AKIT_EVAL_API_KEY; see crates/akit-assistant/src/eval.rs.
+# Never in CI, nor by `make check`, which run the same sets against the recorded answers.
+assistant-eval:
+	@if [ -z "$$AKIT_EVAL_KIND" ] || [ -z "$$AKIT_EVAL_MODEL" ]; then \
+		echo "make assistant-eval: set AKIT_EVAL_KIND and AKIT_EVAL_MODEL, and AKIT_EVAL_API_KEY for a model that takes a key"; exit 2; fi
+	$(CARGO) test -p akit-assistant --lib -- eval::assistant_eval --exact --nocapture
 
 test:
 	$(CARGO) test --workspace

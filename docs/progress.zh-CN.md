@@ -18,9 +18,24 @@
 | akio 需求 | A1–A24、A29、A30、A32、A33、A35–A38、A45、A48、A49、A51–A54、A57、A58、A63–A66、A75、A78、A79、A90–A94、A105、A108、A109、A111–A113、A117、A132–A135、A148、A165–A172、A180、A200、A214、A215、A220、A230–A238、A245 和 A247–A249 已进入 akio 的 main 并锁定；A225（外部审查，L15）已提出（[akio API 请求](akio-api-requests.zh-CN.md)） |
 | 流媒体与媒体认证 | [I120–I126](dev-plan.zh-CN.md#流媒体与媒体认证)，fit 的 I115–I117（决定 040）：I120（配置中的 `media_auth` 和 `streaming`）、I121（策略、检查、`akit media-token`）I122（角色的媒体中心、RTMP、RTSP 和 SRT）、I123（`httpflv`、`hls`）、I124（WebRTC 端口、`stream_whip`、`stream_whep`）、I125（`media_pages`）和 I126（`whip`、`whep` 和 `webrtc_proxy` 上的 `auth`）已完成；媒体库的 `libraries`、`vod` 和 `channels` 等待其那条线；akio 请求 A263–A268 |
 | 媒体库与频道 | [I140–I149](dev-plan.zh-CN.md#媒体库与频道)，fit 的 I131–I139 和 I119（决定 043）：I140（配置中的 `media_library`）、I141（目录、角色 `media_library`、`/media/library`）、I142（`vod`）、I143（`keys`、`media_tokens`）、I144（`url_signing`）、I145（频道）、I146（推送目标）、I147（加密分片）、I148（视频网站）和 I149（控制台的媒体页面、文件管理）已完成：这条线已完成；akio 需求 A295–A298 |
-| AI 助手 | [I160–I169](dev-plan.zh-CN.md#ai-助手)，fit 的 I124–I130 和 I152–I154（决定 044）：I160（`admin.assistant`、模块 `ai`、存储中的设置和密钥）、I161（模型客户端、提供方测试）、I162（对话和读取工具）、I162b（日志工具、转换器）和 I163（提案、级别、审计日志）和 I164（技能）已完成；下一个是 I165 |
+| AI 助手 | [I160–I169](dev-plan.zh-CN.md#ai-助手)，fit 的 I124–I130 和 I152–I154（决定 044）：I160（`admin.assistant`、模块 `ai`、存储中的设置和密钥）、I161（模型客户端、提供方测试）、I162（对话和读取工具）、I162b（日志工具、转换器）和 I163（提案、级别、审计日志）、I164（技能）和 I165（评测）已完成；下一个是 I166 |
 
 ## 日志
+
+### 2026-11-28：I165，助手 VI：问 AI、迁移和审查
+
+- 评测（fit 的 I129，`akit_assistant` 的 `eval` 测试）：`migrate` 和 `security-review` 两个技能像面板那样端到端运行在 fit 的固定集合上
+  （`crates/akit-assistant/testdata/eval`，已改用 akit 的名字）：五个迁移（nginx、Caddy、Traefik 的文件和标签），每个提案都经检查、
+  应用、用 akit 的模块编译，并按用例所说检查请求的路由去向，以及未迁移项是否被列出；两个审查，从回答中读出每条带修复建议的发现并与预埋
+  的问题匹配。
+- 对照录制的回答（CI 的跑法）：每个用例都达到应有的结果，fit 的"能抓住错误"检查也都成立（路由被放开、上游被改、重定向丢失、没有提案、
+  提案不通过检查、发现遗漏或没有修复建议）。`make assistant-eval` 对 `AKIT_EVAL_KIND` 和 `AKIT_EVAL_MODEL` 指定的模型运行整套评测，密钥
+  取自 `AKIT_EVAL_API_KEY`（由提供方的 `api_key_env` 读取，从不写出），并给出报告；`AKIT_EVAL_RECORD=1` 把一次运行的回答写回。CI 和
+  `make check` 都不会运行它；已对回环上的替身模型试过。
+- "问 AI"（fit 的 I128）由控制台页面提供（I91 的页面），以技能、其输入和一条消息打开面板；服务端按 I162 和 I164 的方式限制它们发来的内容
+  （页面上下文 16 KiB；技能输入 8 个、每个 2 KiB）。
+- 移植了 fit 的 `TestProposeUnconverted`（`propose_unconverted`）。akit-assistant 的测试现在开发依赖 akit-runtime、akit-handler、
+  akit-middleware 和 akit-proxy，它们都不依赖 akit-assistant。下一个：I166。
 
 ### 2026-11-28：I164，助手 V：技能
 

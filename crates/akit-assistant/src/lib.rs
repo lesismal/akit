@@ -63,6 +63,8 @@ pub mod tools;
 pub mod tree;
 
 pub use test::{CALL_WAIT, MAX_TESTS, MODELS_WAIT};
+#[cfg(test)]
+mod eval;
 #[cfg(any(test, feature = "stand-ins"))]
 pub mod standin;
 #[cfg(test)]
