@@ -26,9 +26,8 @@ use akit_listener::Listeners;
 use akit_runtime::upstream::EngineSlot;
 use akit_runtime::{Env, Graph, GraphCell, HandlerParams, Registry, compile};
 
-/// The tests that open hundreds of sockets (`tcp_echo`, `udp_echo_sessions`) run alone: with an
-/// engine's threads, one per core, and every test's engine at once, they would pass a soft limit
-/// of 1,024 open files on a host with many cores.
+/// The tests that open hundreds of sockets (`tcp_echo`, `udp_echo_sessions`) run alone: with
+/// every test's engine at once, they would pass a soft limit of 1,024 open files.
 static FILES: RwLock<()> = RwLock::new(());
 
 fn shared() -> RwLockReadGuard<'static, ()> {
@@ -85,8 +84,12 @@ struct Akit {
     addr: SocketAddr,
 }
 
+/// The config's graph, its akit on two I/O threads, not one a core: the tests run at once, and
+/// each thread holds an epoll or io_uring and an eventfd. A reload's graph says the same, though a
+/// reload keeps the threads akit started with.
 fn graph(json: &str, slot: &EngineSlot) -> Graph {
-    let config = akit_config::from_json(json, None).unwrap();
+    let mut config = akit_config::from_json(json, None).unwrap();
+    config.engine.event_loops = 2;
     let registry: Registry<HandlerParams> = Registry::new(&[akit_handler::MODULES]).unwrap();
     compile(&config, &registry, &Env::new(slot.clone())).unwrap()
 }

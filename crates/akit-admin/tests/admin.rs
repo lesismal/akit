@@ -106,7 +106,11 @@ fn start(doc: &str, settings: akit_config::Admin) -> Fixture {
 }
 
 fn start_with(doc: &str, settings: akit_config::Admin, mut opts: Options) -> Fixture {
-    let config = akit_config::from_json(doc, None).unwrap();
+    let mut config = akit_config::from_json(doc, None).unwrap();
+    // Two I/O threads, not one a core: the tests run at once, and each thread holds an epoll or
+    // io_uring and an eventfd. Only the engine's: what is applied and read back is the text, and
+    // a reload keeps the threads akit started with.
+    config.engine.event_loops = 2;
     let registry: Registry<HandlerParams> = Registry::new(&[akit_handler::MODULES]).unwrap();
     let cell = GraphCell::new(compile(&config, &registry, &Env::default()).unwrap());
     let mut lo = akit_listener::Options::default();
