@@ -221,8 +221,9 @@
 
 ### 2026-11-28：I157，Admin API 的 `/bittorrent/...`、事件、`akit bt`、指标
 
-- 同 fit 的 I203 和 I210（`akit_bittorrent::admin`、`client::{events,inspect,metrics}`）：Admin API 通过 akit-admin 新的扩展点
-  `Options::endpoints`（一个前缀和一个函数，经过 API 的守卫和控制台的会话检查，请求体流式读入），在 `/bittorrent/` 下提供
+- 同 fit 的 I203 和 I210（`akit_bittorrent::admin`、`client::{events,inspect,metrics}`）：Admin API 通过 akit-admin 的
+  `Options::endpoints`（I141 的扩展点：一个前缀和一个函数，经过 API 的守卫和控制台的会话检查），请求体经新增的
+  `Options::streamed` 流式读入，在 `/bittorrent/` 下提供
   BitTorrent 角色，运行中的角色从 `akit_roles::host::Manager::apis` 读取：列出种子（按状态、分类和名称过滤，分页）、添加（JSON、
   .torrent 文件、表单）、读取（带文件）、暂停、恢复、重新校验、修改（`paused`、`category`、`limits`、`queue_position`）和删除；
   其文件、peer 和 tracker；备用速率；发布条目；tracker 的统计。客户端的调用在 akio 的逻辑池上执行，从不在 API 的 I/O 线程上。

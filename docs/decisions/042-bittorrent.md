@@ -74,7 +74,7 @@ and a client with fast resume, wire compatible with libtorrent and aria2.
    context).
 
 8. **I157, as fit's I203 and I210**: the endpoints below `/bittorrent/` are akit-bittorrent's,
-   served through akit-admin's `Options::endpoints`, so that akit-admin does not depend on the
+   served through akit-admin's `Options::endpoints` (I141's), their bodies streamed through `Options::streamed`, so that akit-admin does not depend on the
    roles; akit-admin's v1 test leaves them to akit-bittorrent's, which holds them to
    tests/compat/v1. The client's calls (which write the state files) run on akio's logical pool;
    the event stream writes to akio's `BodyStream` without waiting, a stream that falls 256 KiB

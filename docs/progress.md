@@ -302,9 +302,9 @@ done and where the work differs from the plan.
 ### 2026-11-28: I157, the Admin API's `/bittorrent/...`, events, `akit bt`, metrics
 
 - As fit's I203 and I210 (`akit_bittorrent::admin`, `client::{events,inspect,metrics}`): the
-  Admin API serves the BitTorrent roles below `/bittorrent/` through a new extension point of
-  akit-admin's, `Options::endpoints` (a prefix and a function, past the API's guard and the
-  console's sessions, bodies streamed in), reading the running roles from
+  Admin API serves the BitTorrent roles below `/bittorrent/` through akit-admin's
+  `Options::endpoints` (I141's: a prefix and a function, past the API's guard and the console's
+  sessions), their bodies streamed in through a new `Options::streamed`, reading the running roles from
   `akit_roles::host::Manager::apis`: the torrents listed (filtered by state, category and name,
   paged), added (JSON, a .torrent file, a form), read with their files, paused, resumed,
   rechecked, changed (`paused`, `category`, `limits`, `queue_position`) and removed; their files,
