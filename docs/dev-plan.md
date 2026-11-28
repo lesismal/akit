@@ -293,7 +293,7 @@ Tunnel and LLM track; I110–I114 are the WebRTC track, and I115–I119 are rese
 | I161 | The assistant II: the model client and the provider test | I160, I107 | done |
 | I162 | The assistant III: the chat and the read tools | I161 | done |
 | I162b | The assistant III b: `log_tail` on a ring of akit's own log, `access_log_sample`, `adapt_convert` | I162 | done |
-| I163 | The assistant IV: proposals, levels and the audit log | I162 | todo |
+| I163 | The assistant IV: proposals, levels and the audit log | I162 | done |
 | I164 | The assistant V: skills | I162 | todo |
 | I165 | The assistant VI: Ask AI, migration and review | I163, I164, I74 | todo |
 | I166 | The assistant VII: the MCP server | I163, I164 | todo |
@@ -2773,7 +2773,8 @@ of the model APIs on port 0, never to a real API or with a real key.
 - **Done when**: fit's proposal, apply and audit tests pass ported.
 - **Touches**: `akit-assistant`, `akit-admin`, `docs`.
 - **fit**: `assistant/{proposals,apply,audit,jsontree,linediff}.go`; I126.
-- **Status**: todo.
+- **Status**: done (2026-11-28). The apply's change goes to the control thread through
+  `akit_assistant::Api::change`, answered without the assistant waiting; see the progress log.
 
 ### I164 The assistant V: skills
 

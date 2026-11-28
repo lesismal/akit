@@ -281,7 +281,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I161 | 助手 II：模型客户端和提供方测试 | I160, I107 | done |
 | I162 | 助手 III：对话和读取工具 | I161 | done |
 | I162b | 助手 III b：基于 akit 自身日志环的 `log_tail`、`access_log_sample`、`adapt_convert` | I162 | done |
-| I163 | 助手 IV：提案、级别和审计日志 | I162 | todo |
+| I163 | 助手 IV：提案、级别和审计日志 | I162 | done |
 | I164 | 助手 V：技能 | I162 | todo |
 | I165 | 助手 VI：问 AI、迁移和审查 | I163, I164, I74 | todo |
 | I166 | 助手 VII：MCP 服务器 | I163, I164 | todo |
@@ -2303,7 +2303,7 @@ fit 的 I124–I130 和 I152–I154（fit 的 [工作台中的 AI
 - **完成标准**：fit 的提案、应用和审计测试移植后通过。
 - **涉及**：`akit-assistant`、`akit-admin`、`docs`。
 - **fit**：`assistant/{proposals,apply,audit,jsontree,linediff}.go`；I126。
-- **状态**：todo。
+- **状态**：done（2026-11-28）。应用的变更经 `akit_assistant::Api::change` 交给控制线程，助手不等待其应答；见进展日志。
 
 ### I164 助手 V：技能
 

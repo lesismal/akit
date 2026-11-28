@@ -19,9 +19,46 @@ done and where the work differs from the plan.
 | akio requests | A1–A24, A29, A30, A32, A33, A35–A38, A45, A48, A49, A51–A54, A57, A58, A63–A66, A75, A78, A79, A90–A94, A105, A108, A109, A111–A113, A117, A132–A135, A148, A165–A172, A180, A200, A214, A215, A220, A230–A238, A245 and A247–A249 on akio's main and pinned; A225 (an external review, L15) requested ([akio API requests](akio-api-requests.md)) |
 | Streaming and media auth | [I120–I126](dev-plan.md#streaming-and-media-auth), fit's I115–I117 (decision 040): I120 (`media_auth` and `streaming` in the config), I121 (the policies, the checks, `akit media-token`), I122 (the role's hub, RTMP, RTSP and SRT), I123 (`httpflv`, `hls`), I124 (the WebRTC port, `stream_whip`, `stream_whep`), I125 (`media_pages`) and I126 (`auth` on `whip`, `whep` and `webrtc_proxy`) done; the media library's `libraries`, `vod` and `channels` wait for its track; akio requests A263–A268 |
 | Media library and channels | [I140–I149](dev-plan.md#media-library-and-channels), fit's I131–I139 and I119 (decision 043): I140 (`media_library` in the config) I141 (the catalog, the role `media_library`, `/media/library`) I142 (`vod`), I143 (`keys`, `media_tokens`), I144 (`url_signing`), I145 (channels), I146 (push targets), I147 (encrypted segments), I148 (the video site) and I149 (the console's media pages, the files managed) done: the track is done; akio requests A295–A298 |
-| AI assistant | [I160–I169](dev-plan.md#ai-assistant), fit's I124–I130 and I152–I154 (decision 044): I160 (`admin.assistant`, the module `ai`, its settings and keys in the store) I161 (the model client, the provider test) I162 (the chat and the read tools) and I162b (the logs' tools, the converter) done; I163 next |
+| AI assistant | [I160–I169](dev-plan.md#ai-assistant), fit's I124–I130 and I152–I154 (decision 044): I160 (`admin.assistant`, the module `ai`, its settings and keys in the store) I161 (the model client, the provider test) I162 (the chat and the read tools), I162b (the logs' tools, the converter) and I163 (proposals, levels, the audit log) done; I164 next |
 
 ## Log
+
+### 2026-11-28: I163, the assistant IV: proposals, levels and the audit log
+
+- The propose tools (fit's I126): `config_propose` (top-level members, or add, replace and remove at
+  JSON pointers), `reconcile_propose`, `rollback_propose` and `cache_purge_propose`, for a user
+  whose level is propose or apply. Each adds a step to the conversation's one pending proposal
+  (at most 32 steps, 256 KiB), checked as a whole on the running config, as the Admin API in
+  process gives it, and kept with the conversation in fit's form; a step that is wrong is not
+  added, one that leaves the whole invalid is kept to be mended. `admin` is out of reach; a
+  `[redacted]` value written back where it was is the config's own again, and a secret the config
+  does not have there is refused. The chat shows each step (`proposal` event); the system prompt
+  carries the proposals' rules and the proposal's state, or what became of the last one.
+- `GET /api/m/ai/proposals[/<conversation>]`: the pending ones (every user's for a user who
+  applies), and one with its steps, errors and the diff of the members it changes in `.conf`, YAML
+  and JSON (a line diff, fit's `linediff`), redacted. `POST .../apply` names the revision and the
+  ETag the person confirmed: the config steps go as one change through the endpoint of their kind
+  (`PUT /config/text?format=json&members=`, `POST /config/reconcile`, `POST /rollback/{n}`), with
+  `If-Match`, then the purges. A stale proposal is moved to the running config and offered again
+  (412); a change the API refuses applies nothing and leaves the proposal with why. One apply at a
+  time, the next waiting its turn. `POST .../discard`, and a conversation deleted with its
+  proposal, drop it.
+- The change goes to the control thread as the console's (`akit_admin`'s `LocalApi::change`: a
+  `Job` whose answer is handed back in process instead of on a connection), answered without the
+  assistant's pool waiting on it; what follows runs on the pool again. `POST /cache/purge` is
+  answered at once. `POST /config/validate` counts the errors past the 50 it lists.
+- The audit log (`akit_assistant::audit`, fit's `audit.go`): each answer that called tools (its
+  calls redacted and cut, its proposal, its reason), each apply and discard (its outcome, the
+  version made), numbered across restarts, bounded by `limits.max_audit_entries`, kept in the
+  store's section `assistant.audit`; `GET /api/m/ai/audit` filters by user, conversation and kind
+  and pages.
+- Fixed: a tool call whose arguments held `//` in a string (a URL) was taken for one with
+  comments, and refused as not JSON.
+- Checked: fit's proposal, apply and audit tests ported (`akit_assistant`'s
+  `proposal::tests`, on a stand-in of the Admin API whose changes are answered from another
+  thread); end to end through the console (`assistant_propose`): a route added and a backend
+  changed applied as version 2 with the route's password hash put back, a proposal made stale by a
+  change elsewhere offered again and applied, a rollback applied as a new version. Next: I164.
 
 ### 2026-11-28: I162b, the assistant III b: the logs' tools and the converter
 

@@ -224,7 +224,26 @@ struct Change {
     source: &'static str,
     if_match: Option<String>,
     mode: Mode,
-    reply: Detached,
+    reply: Reply,
+}
+
+/// Where a [`Job`]'s answer goes. A job's change is boxed whole, so its size is not moved about.
+#[allow(clippy::large_enum_variant)]
+enum Reply {
+    /// A request detached: answered on its connection.
+    Http(Detached),
+    /// A change called in process (I163, the assistant's apply of a proposal): the answer handed
+    /// to the caller, on the control thread.
+    Local(Box<dyn FnOnce(Response) + Send>),
+}
+
+impl Reply {
+    fn respond(self, resp: Response) {
+        match self {
+            Reply::Http(d) => d.respond(resp),
+            Reply::Local(f) => f(resp),
+        }
+    }
 }
 
 /// What a [`Job`] changes.
@@ -1192,9 +1211,29 @@ pub(crate) fn submit_detached(
     op: Op,
     mode: Mode,
 ) {
+    submit_reply(
+        shared,
+        shared.source,
+        Reply::Http(reply),
+        if_match,
+        op,
+        mode,
+    );
+}
+
+/// Hands `op`, from `source`, to the control thread, to answer `reply` there; 503 when it cannot
+/// take it now.
+fn submit_reply(
+    shared: &Shared,
+    source: &'static str,
+    reply: Reply,
+    if_match: Option<String>,
+    op: Op,
+    mode: Mode,
+) {
     let job = Job(Box::new(Change {
         op,
-        source: shared.source,
+        source,
         if_match,
         mode,
         reply,
@@ -1302,6 +1341,11 @@ fn local_validate(configs: &Configs, body: &[u8]) -> Response {
                 b.push('}');
             }
             b.push(']');
+            // The errors past the 50 listed, counted (I163: a proposal says how many more).
+            let more = errs.0.len().saturating_sub(50);
+            if more > 0 {
+                b.push_str(&format!(",\"more\":{more}"));
+            }
         }
     }
     b.push_str("}\n");
@@ -1314,12 +1358,92 @@ struct LocalApi(Shared);
 impl akit_assistant::Api for LocalApi {
     fn call(&self, method: &str, target: &str, body: Vec<u8>) -> akit_assistant::ApiAnswer {
         let (path, query) = target.split_once('?').unwrap_or((target, ""));
-        let r = local_answer(&self.0, method, path, query, body);
-        akit_assistant::ApiAnswer {
-            status: r.status,
-            body: r.body,
-        }
+        answer_of(local_answer(&self.0, method, path, query, body))
     }
+
+    fn change(
+        &self,
+        method: &str,
+        target: &str,
+        if_match: &str,
+        body: Vec<u8>,
+        done: Box<dyn FnOnce(akit_assistant::ApiAnswer) + Send>,
+    ) {
+        local_change(&self.0, method, target, if_match, body, done);
+    }
+}
+
+fn answer_of(r: Response) -> akit_assistant::ApiAnswer {
+    akit_assistant::ApiAnswer {
+        status: r.status,
+        headers: r
+            .headers
+            .iter()
+            .map(|(k, v)| (k.to_owned(), v.to_owned()))
+            .collect(),
+        body: r.body,
+    }
+}
+
+/// The Admin API's changes a proposal applies, called in process by the console's assistant
+/// (I163, fit's `applyConfig` and its purges): `PUT /config/text?format=&members=`, `POST
+/// /config/reconcile`, `POST /rollback/{n}`, each with `If-Match` `if_match`, handed to the
+/// control thread as the console's change and answered there, as the API answers it; and `POST
+/// /cache/purge`, answered at once. `done` is called once, on the control thread or here.
+fn local_change(
+    shared: &Shared,
+    method: &str,
+    target: &str,
+    if_match: &str,
+    body: Vec<u8>,
+    done: Box<dyn FnOnce(akit_assistant::ApiAnswer) + Send>,
+) {
+    let (path, query) = target.split_once('?').unwrap_or((target, ""));
+    let op = match (method, path) {
+        ("PUT", "/config/text") => crate::text::local_op(query, body),
+        ("POST", "/config/reconcile") if if_match.is_empty() => Err(error(
+            428,
+            "If-Match is needed: send the ETag GET /config/check answers with",
+        )),
+        ("POST", "/config/reconcile") => local_reconcile(shared, &body),
+        ("POST", "/cache/purge") => return done(answer_of(crate::cache::answer(&body))),
+        ("POST", p) => match p.strip_prefix("/rollback/").map(str::parse::<u64>) {
+            Some(Ok(n)) => Ok(Op::Rollback(n)),
+            Some(Err(_)) => Err(error(400, "the version is not a number")),
+            None => Err(error(404, "no such change")),
+        },
+        _ => Err(error(404, "no such change")),
+    };
+    let reply = Reply::Local(Box::new(move |r| done(answer_of(r))));
+    match op {
+        Ok(op) => submit_reply(
+            shared,
+            crate::console::SOURCE_CONSOLE,
+            reply,
+            (!if_match.is_empty()).then(|| if_match.to_owned()),
+            op,
+            Mode::Apply,
+        ),
+        Err(r) => reply.respond(r),
+    }
+}
+
+/// `POST /config/reconcile`'s body, in process: the consistency check's fixes as patches. Its
+/// error is the answer, made once.
+#[allow(clippy::result_large_err)]
+fn local_reconcile(shared: &Shared, body: &[u8]) -> Result<Op, Response> {
+    let body = std::str::from_utf8(body)
+        .ok()
+        .and_then(|t| akit_config::value::parse(t).ok())
+        .ok_or_else(|| error(400, "the body: not a JSON object"))?;
+    crate::check::fixes(
+        &shared.configs,
+        shared.status.as_ref(),
+        shared.node.as_ref(),
+        &body,
+    )
+    .map(Op::Reconcile)
+    .map_err(|msg| error(400, &msg))
 }
 
 /// What must not reach the API, refused as fit refuses it: with a token asked for, a request

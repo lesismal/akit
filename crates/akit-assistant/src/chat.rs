@@ -3,7 +3,8 @@
 //! and calls it again, until an answer, a question to the person (`ask_user`) or a limit.
 //!
 //! The events are fit's: `start`, `text`, `thinking`, `tool_call`, `tool_result`, `ask`, `usage`,
-//! `summary`, and last the SSE event `end` (`done` with its reason) or `error`. The tools run on a
+//! `summary`, `proposal` (a step joined the conversation's proposal, I163), and last the SSE event
+//! `end` (`done` with its reason) or `error`. An answer that called tools is in the audit log. The tools run on a
 //! pool of the assistant's own, each within 30 s; nothing blocks an I/O thread.
 //!
 //! The browser's stream and the model's are linked (rule 8, decision row 102): once more than
@@ -20,7 +21,6 @@ use akio_http::BodyStream;
 use akit_config::assistant::{Assistant as Settings, Level};
 use akit_config::value::Value;
 
-use crate::Assistant;
 use crate::conv::{Msg, now_ms};
 use crate::json::{self, Obj};
 use crate::model::{self, Answer, Event as ModelEvent, Message, Request, Role, ToolCall};
@@ -28,6 +28,7 @@ use crate::prompt::{self, Budget};
 use crate::redact::Redactor;
 use crate::registry::{Call, Kind, Tool};
 use crate::tools::MAX_ASK_OPTIONS;
+use crate::{Assistant, audit};
 
 /// A tool's call is given up on past it: the model is told it failed.
 pub const TOOL_TIMEOUT: Duration = Duration::from_secs(30);
@@ -48,6 +49,8 @@ pub const REASON_TOOL_CALLS: &str = "max_tool_calls";
 pub const REASON_TOKENS: &str = "max_tokens_per_day";
 /// See [`REASON_ANSWER`].
 pub const REASON_STOPPED: &str = "stopped";
+/// See [`REASON_ANSWER`]: a model call failed.
+pub const REASON_ERROR: &str = "error";
 
 /// An event of a chat's stream, as fit's `Event` writes it (members left out when empty).
 #[derive(Debug, Default)]
@@ -68,6 +71,7 @@ pub(crate) struct Ev<'a> {
     pub(crate) title: &'a str,
     pub(crate) model: &'a str,
     pub(crate) folded: usize,
+    pub(crate) revision: u64,
     pub(crate) reason: &'a str,
 }
 
@@ -104,6 +108,9 @@ impl Ev<'_> {
             .str_omit("model", self.model);
         if self.folded > 0 {
             o = o.num("folded", self.folded);
+        }
+        if self.revision > 0 {
+            o = o.num("revision", self.revision);
         }
         o.str_omit("reason", self.reason).end()
     }
@@ -162,6 +169,8 @@ pub(crate) struct Chat {
     st: Mutex<State>,
     /// The browser's stream, behind a lock of its own: what it calls back takes `st`.
     stream: Mutex<Option<BodyStream>>,
+    /// The tools called, for the chat's audit entry, and the proposal its propose tools left.
+    audit: Mutex<(Vec<audit::Call>, Option<audit::Prop>)>,
 }
 
 #[derive(Default)]
@@ -219,6 +228,7 @@ impl Chat {
             summarized: AtomicBool::new(false),
             st: Mutex::new(State::default()),
             stream: Mutex::new(None),
+            audit: Mutex::new((Vec::new(), None)),
         }
     }
 
@@ -376,6 +386,19 @@ impl Chat {
         for t in [ping, stall].into_iter().flatten() {
             let _ = t.cancel();
         }
+        let (calls, prop) = std::mem::take(&mut *lock(&self.audit));
+        if !calls.is_empty() {
+            self.a.audit(audit::Entry {
+                user: self.user.clone(),
+                kind: audit::KIND_CHAT.to_owned(),
+                conversation: self.conv.clone(),
+                calls,
+                proposal: prop,
+                outcome: if err.is_empty() { reason } else { REASON_ERROR }.to_owned(),
+                detail: err.to_owned(),
+                ..audit::Entry::default()
+            });
+        }
         {
             let mut chats = self.a.chats();
             let u = chats.users.entry(self.user.clone()).or_default();
@@ -458,15 +481,20 @@ impl Chat {
     /// The next call, or, when the conversation outgrew its window and its early turns may be
     /// summarized, up to where.
     fn request(&self) -> Result<Request, usize> {
-        let (msgs, from, summary) = {
+        let (msgs, from, summary, proposal) = {
             let mut chats = self.a.chats();
             match chats
                 .users
                 .get_mut(&self.user)
                 .and_then(|u| u.get(&self.conv))
             {
-                Some(c) => (c.messages.clone(), c.folded, c.summary.clone()),
-                None => (Vec::new(), 0, String::new()),
+                Some(c) => (
+                    c.messages.clone(),
+                    c.folded,
+                    c.summary.clone(),
+                    crate::proposal::state(c.proposal.as_ref(), &c.proposal_note),
+                ),
+                None => (Vec::new(), 0, String::new(), String::new()),
             }
         };
         let system = prompt::system(&prompt::Parts {
@@ -474,6 +502,7 @@ impl Chat {
             lang: &self.lang,
             page: &self.page,
             summary: &summary,
+            proposal: &self.red.text(&proposal),
         });
         let tools: Vec<model::Tool> = self.tools.iter().map(Tool::model).collect();
         let tools_text: String = tools
@@ -527,7 +556,7 @@ impl Chat {
         };
         lock(&self.st).partial.clear();
         let Some(client) = self.a.client() else {
-            return self.finish("error", "the assistant has no engine to call with");
+            return self.finish(REASON_ERROR, "the assistant has no engine to call with");
         };
         let (on, done) = (Arc::clone(self), Arc::clone(self));
         let k = client.stream(
@@ -571,7 +600,7 @@ impl Chat {
             ..Request::default()
         };
         let Some(client) = self.a.client() else {
-            return self.finish("error", "the assistant has no engine to call with");
+            return self.finish(REASON_ERROR, "the assistant has no engine to call with");
         };
         let me = Arc::clone(self);
         let k = client.stream(
@@ -643,7 +672,7 @@ impl Chat {
         }
         let a = match r {
             Ok(a) => a,
-            Err(e) => return self.finish("error", &self.red.text(&e.to_string())),
+            Err(e) => return self.finish(REASON_ERROR, &self.red.text(&e.to_string())),
         };
         self.add_usage(&a.usage);
         lock(&self.st).partial.clear();
@@ -794,7 +823,7 @@ impl Chat {
             )));
         })
         .ok();
-        let (me, d3, run) = (Arc::clone(self), Arc::clone(&deliver), t.run);
+        let (me, d3, run, late) = (Arc::clone(self), Arc::clone(&deliver), t.run, done);
         let args = if tc.arguments.is_empty() {
             Value::Object(Vec::new())
         } else {
@@ -807,6 +836,9 @@ impl Chat {
                 args,
                 user: &me.user,
                 settings: &s,
+                conv: &me.conv,
+                expired: Some(&*late),
+                chat: Some(&me),
             };
             let out = match run {
                 Some(f) => f(&call),
@@ -820,6 +852,23 @@ impl Chat {
         if self.a.0.tools_pool.try_execute(job).is_err() {
             deliver(Err("the assistant is busy; try again shortly".to_owned()));
         }
+    }
+
+    /// A propose tool's step joined `p`, which changes `changed`: kept for the chat's audit entry,
+    /// and shown.
+    pub(crate) fn on_proposed(self: &Arc<Self>, p: &crate::proposal::Proposal, changed: &[String]) {
+        lock(&self.audit).1 = Some(audit::Prop::of(p, changed));
+        let (name, summary) = p.steps.last().map_or(("", String::new()), |s| {
+            (s.tool.as_str(), self.red.text(&s.summary))
+        });
+        self.emit(&Ev {
+            typ: "proposal",
+            id: &p.id,
+            revision: p.revision,
+            name,
+            text: &summary,
+            ..Ev::default()
+        });
     }
 
     /// Keeps a call's result, redacted and bounded, as the model gets it, and shows it to the
@@ -836,6 +885,11 @@ impl Chat {
             &self.red.text(out),
             usize::try_from(limit).unwrap_or(usize::MAX),
         );
+        lock(&self.audit).0.push(audit::Call {
+            tool: tc.name.clone(),
+            args: prompt::clip(&self.red.text(&tc.arguments), audit::MAX_ARGS),
+            error: is_err,
+        });
         let mut m = Message::tool(tc, &out, is_err);
         m.tool_name.clone_from(&tc.name);
         let mut msg = Msg::of(m);

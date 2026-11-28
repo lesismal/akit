@@ -1,8 +1,9 @@
 //! The users' conversations (I162, fit's `assistant/conversations.go`): kept in the store, a
 //! section a user (`assistant.chats.<hash>`, fit's document), bounded in number, in size each
 //! and in size together; read the first time a user asks, written back by the assistant's pool
-//! after each chat. What akit does not use of a conversation yet (a proposal, a skill's inputs)
-//! is kept as it was read, so that a store moves between akit and fit.
+//! after each chat, with the pending proposal (I163) and what became of the last one. What akit
+//! does not use of a conversation yet (a skill's inputs) is kept as it was read, so that a store
+//! moves between akit and fit.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -179,17 +180,29 @@ pub struct Conversation {
     pub summary: String,
     /// See [`summary`](Conversation::summary).
     pub folded: usize,
+    /// Its pending proposal (I163).
+    pub proposal: Option<crate::proposal::Proposal>,
+    /// What the model is told of its last proposal: applied, or discarded.
+    pub proposal_note: String,
     /// The skill it runs (I164), kept as read.
     pub skill: String,
-    /// The members akit does not use yet (`proposal`, `proposal_note`, `skill_inputs`), kept
-    /// as read.
+    /// The members akit does not use yet (`skill_inputs`), kept as read.
     pub extra: Vec<(String, Value)>,
     /// Whether a chat is under way in it.
     pub busy: bool,
 }
 
 const OWN: &[&str] = &[
-    "id", "title", "created", "updated", "messages", "summary", "folded", "skill",
+    "id",
+    "title",
+    "created",
+    "updated",
+    "messages",
+    "summary",
+    "folded",
+    "proposal",
+    "proposal_note",
+    "skill",
 ];
 
 impl Conversation {
@@ -212,11 +225,14 @@ impl Conversation {
             Some((_, v)) => o.raw(k, &json::compact(v)),
             None => o,
         };
-        o = extra(extra(o, "proposal"), "proposal_note");
+        if let Some(p) = &self.proposal {
+            o = o.raw("proposal", &p.json());
+        }
+        o = o.str_omit("proposal_note", &self.proposal_note);
         o = o.str_omit("skill", &self.skill);
         o = extra(o, "skill_inputs");
         for (k, v) in &self.extra {
-            if !["proposal", "proposal_note", "skill_inputs"].contains(&k.as_str()) {
+            if k != "skill_inputs" {
                 o = o.raw(k, &json::compact(v));
             }
         }
@@ -252,6 +268,8 @@ impl Conversation {
             folded: folded.min(messages.len()),
             messages,
             summary: json::str_of(v, "summary").to_owned(),
+            proposal: v.get("proposal").and_then(crate::proposal::Proposal::from),
+            proposal_note: json::str_of(v, "proposal_note").to_owned(),
             skill: json::str_of(v, "skill").to_owned(),
             extra,
             busy: false,
@@ -277,6 +295,10 @@ impl Conversation {
             self.title.len(),
             self.summary.len(),
             self.skill.len(),
+            self.proposal_note.len(),
+            self.proposal
+                .as_ref()
+                .map_or(0, crate::proposal::Proposal::bytes),
         ]);
         for (k, v) in &self.extra {
             n = sum(&[n, k.len(), json::compact(v).len()]);
@@ -502,13 +524,15 @@ mod tests {
     /// A conversation as fit's store holds it reads back the same, its proposal kept.
     #[test]
     fn fit_documents() {
-        let fit = r#"{"conversations":[{"id":"abc","title":"t","created":1,"updated":2,"messages":[{"role":"user","content":"hi","at":1},{"role":"assistant","tool_calls":[{"id":"c1","name":"status_get","arguments":{}}],"at":2},{"role":"tool","content":"{}","tool_call_id":"c1","tool_name":"status_get","at":3,"cut":true}],"proposal":{"id":"p1","steps":[]},"skill":"explain"}],"day":"2026-11-28","tokens":42}"#;
+        let fit = r#"{"conversations":[{"id":"abc","title":"t","created":1,"updated":2,"messages":[{"role":"user","content":"hi","at":1},{"role":"assistant","tool_calls":[{"id":"c1","name":"status_get","arguments":{}}],"at":2},{"role":"tool","content":"{}","tool_call_id":"c1","tool_name":"status_get","at":3,"cut":true}],"proposal":{"id":"p1","created":5,"updated":6,"revision":2,"base_version":3,"base_etag":"\"e3\"","steps":[{"tool":"cache_purge_propose","summary":"Purge <all>","args":{"summary":"Purge <all>","all":true},"at":5}],"valid":true,"problems":1,"error":"no"},"proposal_note":"ada applied the proposal p0.","skill":"explain"}],"day":"2026-11-28","tokens":42}"#;
         let u = UserChats::read(fit.as_bytes()).unwrap();
         assert_eq!(u.tokens, 42);
         let c = &u.convs[0];
         assert_eq!(c.messages.len(), 3);
         assert!(c.messages[2].cut);
         assert_eq!(c.messages[1].message.tool_calls[0].arguments, "{}");
+        let p = c.proposal.as_ref().unwrap();
+        assert_eq!((p.revision, p.base_version, p.steps.len()), (2, 3, 1));
         assert_eq!(u.section(), fit);
     }
 

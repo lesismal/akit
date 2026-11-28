@@ -29,22 +29,35 @@
 //! GET  /api/tools           the tools, and which this user may call
 //! GET  /api/conversations   the user's conversations, the latest first
 //! GET  /api/conversations/<id>, DELETE  one, with the question it waits on; deleted
+//! GET  /api/proposals       the pending proposals: the user's, and for a user who applies,
+//!                           every user's ([`proposal`])
+//! GET  /api/proposals/<conversation>  its proposal checked on the running config, with its
+//!                           diff in three formats; ?user= another user's
+//! POST /api/proposals/<conversation>/apply  {"id", "revision", "etag", "user"}: applied as
+//!                           the console's change, with If-Match
+//! POST /api/proposals/<conversation>/discard  {"id", "user"}: dropped
+//! GET  /api/audit           the audit log, the latest first ([`audit`])
 //! ```
 //!
 //! Nothing here blocks an I/O thread (rule 1): what writes the store runs on a pool of the
 //! assistant's own, one write at a time.
 
+mod apply;
+pub mod audit;
 pub mod chat;
 pub mod conv;
 mod endpoints;
 pub mod json;
+pub mod linediff;
 pub mod model;
 pub mod prompt;
+pub mod proposal;
 pub mod redact;
 pub mod registry;
 pub mod settings;
 mod test;
 pub mod tools;
+pub mod tree;
 
 pub use test::{CALL_WAIT, MAX_TESTS, MODELS_WAIT};
 #[cfg(any(test, feature = "stand-ins"))]
@@ -77,6 +90,9 @@ const TOOL_QUEUE: usize = 64;
 pub const NO_STORE: &str = "the assistant's settings are not saved: akit has no admin.store, so \
      they are admin.assistant's in the config file, and the keys come from api_key_env";
 
+/// What a tool that needs the Admin API says without it: fit's `errNoAPI`.
+pub const NO_API: &str = "the Admin API is not reachable from the assistant here";
+
 /// Keeps sections beside the config, as the encrypted store does
 /// (`akit_admin::store::Store::section`, `set_section`). Its writes are called on the
 /// assistant's own pool, never on an I/O thread.
@@ -99,19 +115,71 @@ pub type Log = Arc<dyn Fn(String) + Send + Sync>;
 pub type Running = Arc<dyn Fn() -> String + Send + Sync>;
 
 /// An answer of the Admin API, called in process.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ApiAnswer {
     /// Its status.
     pub status: u16,
+    /// Its header fields.
+    pub headers: Vec<(String, String)>,
     /// Its body.
     pub body: Vec<u8>,
 }
 
-/// The Admin API's reads, called in process (fit's `admincall.go`): what the read tools ask of
-/// it, as the console's pages do. Called on the assistant's tools' pool, where it may block.
+impl ApiAnswer {
+    /// The header field `name`, its case ignored.
+    #[must_use]
+    pub fn header(&self, name: &str) -> Option<&str> {
+        self.headers
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case(name))
+            .map(|(_, v)| v.as_str())
+    }
+
+    /// The body as text.
+    #[must_use]
+    pub fn text(&self) -> String {
+        String::from_utf8_lossy(&self.body).into_owned()
+    }
+
+    /// The message of an answer that is not a 2xx, as fit's `apiError`: its `error`, or its body
+    /// cut.
+    #[must_use]
+    pub fn message(&self) -> String {
+        let text = self.text();
+        akit_config::value::parse(&text)
+            .ok()
+            .map(|v| json::str_of(&v, "error").to_owned())
+            .filter(|m| !m.is_empty())
+            .unwrap_or_else(|| prompt::clip(&text, 512))
+    }
+}
+
+/// The Admin API, called in process (fit's `admincall.go`): what the read tools ask of it, as
+/// the console's pages do, and the changes a proposal applies.
 pub trait Api: Send + Sync {
-    /// `method` on `target` (a path and its query) with `body`.
+    /// `method` on `target` (a path and its query) with `body`: a read, answered at once. Called
+    /// on the assistant's tools' pool, where it may block.
     fn call(&self, method: &str, target: &str, body: Vec<u8>) -> ApiAnswer;
+
+    /// `method` on `target` with `body` and `If-Match` `if_match` (none when empty): a change,
+    /// which the control thread makes, answered through `done`, called once, on whichever thread
+    /// the answer is made: never blocking for it. None by default: 501.
+    fn change(
+        &self,
+        method: &str,
+        target: &str,
+        if_match: &str,
+        body: Vec<u8>,
+        done: Box<dyn FnOnce(ApiAnswer) + Send>,
+    ) {
+        let _ = (method, target, if_match, body);
+        done(ApiAnswer {
+            status: 501,
+            headers: Vec::new(),
+            body: b"{\"error\":\"the Admin API takes no change from the assistant here\"}\n"
+                .to_vec(),
+        });
+    }
 }
 
 /// Where `llm.proxy`'s agents' API listens, its port as bound; `None` while it does not run.
@@ -182,8 +250,12 @@ struct Inner {
     running: Mutex<HashMap<(String, String), Arc<chat::Chat>>>,
     /// The chats under way, against `max_concurrent_chats`.
     slots: AtomicUsize,
-    /// Where the tools run.
+    /// Where the tools run, and the views and applies of proposals.
     tools_pool: Arc<Pool>,
+    /// The audit log.
+    audit: Mutex<audit::Log>,
+    /// The apply under way and those waiting their turn.
+    applies: Mutex<apply::Applies>,
     /// When the assistant started.
     started: Instant,
 }
@@ -244,17 +316,32 @@ impl Assistant {
         tc.min_threads = 0;
         tc.max_threads = TOOL_THREADS;
         tc.queue_capacity = TOOL_QUEUE;
+        let mut log = audit::Log::default();
+        if let Some(sec) = o.store.as_ref().and_then(|s| s.section(audit::SECTION)) {
+            match audit::Log::read(&sec) {
+                Ok(l) => log = l,
+                Err(e) => (o.log)(format!(
+                    "assistant: the audit log kept in the store does not load, and is started \
+                     again: {e}"
+                )),
+            }
+        }
+        log.bound(state.settings.limits.audit_entries());
+        let mut tools = tools::read_tools();
+        tools.extend(proposal::tools());
         Assistant(Arc::new(Inner {
             o,
             state: Mutex::new(state),
             pool: Pool::new(cfg),
             client,
             tests: AtomicUsize::new(0),
-            registry: registry::Registry::new(tools::read_tools()),
+            registry: registry::Registry::new(tools),
             chats: Mutex::new(conv::Chats::default()),
             running: Mutex::new(HashMap::new()),
             slots: AtomicUsize::new(0),
             tools_pool: Pool::new(tc),
+            audit: Mutex::new(log),
+            applies: Mutex::new(apply::Applies::default()),
             started: Instant::now(),
         }))
     }
@@ -299,19 +386,29 @@ impl Assistant {
     /// The API is not reachable here, or answered otherwise than 2xx.
     pub fn api_json(&self, method: &str, target: &str, body: Vec<u8>) -> Result<String, String> {
         let Some(api) = &self.0.o.api else {
-            return Err("the Admin API is not reachable from the assistant here".to_owned());
+            return Err(NO_API.to_owned());
         };
         let a = api.call(method, target, body);
-        let text = String::from_utf8_lossy(&a.body).into_owned();
         if (200..300).contains(&a.status) {
-            return Ok(text);
+            return Ok(a.text());
         }
-        let msg = akit_config::value::parse(&text)
-            .ok()
-            .map(|v| json::str_of(&v, "error").to_owned())
-            .filter(|m| !m.is_empty())
-            .unwrap_or_else(|| prompt::clip(&text, 512));
-        Err(format!("the Admin API answered {}: {msg}", a.status))
+        Err(format!(
+            "the Admin API answered {}: {}",
+            a.status,
+            a.message()
+        ))
+    }
+
+    /// The Admin API's answer to `method` on `target`, in process, whatever its status.
+    ///
+    /// # Errors
+    ///
+    /// The API is not reachable here.
+    pub fn api_call(&self, method: &str, target: &str, body: Vec<u8>) -> Result<ApiAnswer, String> {
+        match &self.0.o.api {
+            Some(api) => Ok(api.call(method, target, body)),
+            None => Err(NO_API.to_owned()),
+        }
     }
 
     fn chats(&self) -> MutexGuard<'_, conv::Chats> {
@@ -342,14 +439,27 @@ impl Assistant {
         u
     }
 
+    fn audit_log(&self) -> MutexGuard<'_, audit::Log> {
+        self.0.audit.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
     /// Has `user`'s conversations written to the store, on the pool, after what waits.
     fn save_chats(&self, user: &str) {
         if self.0.o.store.is_none() {
             return;
         }
+        self.chats().dirty.insert(user.to_owned());
+        self.schedule_save();
+    }
+
+    /// Has what changed, the users' conversations and the audit log, written to the store on the
+    /// pool, after what waits.
+    fn schedule_save(&self) {
+        if self.0.o.store.is_none() {
+            return;
+        }
         {
             let mut chats = self.chats();
-            chats.dirty.insert(user.to_owned());
             if chats.saving {
                 return;
             }
@@ -363,11 +473,44 @@ impl Assistant {
         }
     }
 
+    /// Waits for the writes on the pool, then writes what is left: for tests, which read the
+    /// store after.
+    #[cfg(test)]
+    pub(crate) fn settle(&self) {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let job = Box::new(move || {
+            let _ = tx.send(());
+        });
+        if self.0.pool.try_execute(job).is_ok() {
+            let _ = rx.recv();
+        }
+        self.save_dirty();
+    }
+
     fn save_dirty(&self) {
         loop {
+            let section = {
+                let mut log = self.audit_log();
+                log.dirty.then(|| {
+                    log.dirty = false;
+                    log.section()
+                })
+            };
+            if let (Some(data), Some(store)) = (section, &self.0.o.store) {
+                if let Err(e) = store.set_section(audit::SECTION, data.as_bytes()) {
+                    (self.0.o.log)(format!(
+                        "assistant: the audit log is kept in memory only: {e}"
+                    ));
+                }
+            }
             let (user, data) = {
                 let mut chats = self.chats();
                 let Some(user) = chats.dirty.pop_first() else {
+                    // The log's lock is taken under the chats': an entry added since is written
+                    // by the save it schedules, which finds `saving` false.
+                    if self.audit_log().dirty {
+                        continue;
+                    }
                     chats.saving = false;
                     return;
                 };
@@ -606,6 +749,20 @@ impl Module for Assistant {
             ("/api/chat/stop", Method::Post) => self.stop_chat(ctx, user),
             ("/api/tools", Method::Get) => ctx.respond(pages::json(200, self.tools_view(user))),
             ("/api/conversations", Method::Get) => self.conversations(ctx, user),
+            ("/api/proposals", Method::Get) => self.proposals(ctx, user),
+            (p, _) if p.starts_with("/api/proposals/") => {
+                let rest = p.trim_start_matches("/api/proposals/").to_owned();
+                self.proposal(ctx, user, &rest);
+            }
+            ("/api/audit", Method::Get) => {
+                let query = ctx
+                    .req()
+                    .raw_target()
+                    .split_once('?')
+                    .map_or("", |(_, q)| q)
+                    .to_owned();
+                ctx.respond(self.audit_view(&query));
+            }
             (p, Method::Get | Method::Delete) if p.starts_with("/api/conversations/") => {
                 let id = p.trim_start_matches("/api/conversations/").to_owned();
                 let delete = method == Method::Delete;

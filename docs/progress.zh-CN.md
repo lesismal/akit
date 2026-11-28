@@ -18,9 +18,31 @@
 | akio 需求 | A1–A24、A29、A30、A32、A33、A35–A38、A45、A48、A49、A51–A54、A57、A58、A63–A66、A75、A78、A79、A90–A94、A105、A108、A109、A111–A113、A117、A132–A135、A148、A165–A172、A180、A200、A214、A215、A220、A230–A238、A245 和 A247–A249 已进入 akio 的 main 并锁定；A225（外部审查，L15）已提出（[akio API 请求](akio-api-requests.zh-CN.md)） |
 | 流媒体与媒体认证 | [I120–I126](dev-plan.zh-CN.md#流媒体与媒体认证)，fit 的 I115–I117（决定 040）：I120（配置中的 `media_auth` 和 `streaming`）、I121（策略、检查、`akit media-token`）I122（角色的媒体中心、RTMP、RTSP 和 SRT）、I123（`httpflv`、`hls`）、I124（WebRTC 端口、`stream_whip`、`stream_whep`）、I125（`media_pages`）和 I126（`whip`、`whep` 和 `webrtc_proxy` 上的 `auth`）已完成；媒体库的 `libraries`、`vod` 和 `channels` 等待其那条线；akio 请求 A263–A268 |
 | 媒体库与频道 | [I140–I149](dev-plan.zh-CN.md#媒体库与频道)，fit 的 I131–I139 和 I119（决定 043）：I140（配置中的 `media_library`）、I141（目录、角色 `media_library`、`/media/library`）、I142（`vod`）、I143（`keys`、`media_tokens`）、I144（`url_signing`）、I145（频道）、I146（推送目标）、I147（加密分片）、I148（视频网站）和 I149（控制台的媒体页面、文件管理）已完成：这条线已完成；akio 需求 A295–A298 |
-| AI 助手 | [I160–I169](dev-plan.zh-CN.md#ai-助手)，fit 的 I124–I130 和 I152–I154（决定 044）：I160（`admin.assistant`、模块 `ai`、存储中的设置和密钥）、I161（模型客户端、提供方测试）、I162（对话和读取工具）和 I162b（日志工具、转换器）已完成；下一个是 I163 |
+| AI 助手 | [I160–I169](dev-plan.zh-CN.md#ai-助手)，fit 的 I124–I130 和 I152–I154（决定 044）：I160（`admin.assistant`、模块 `ai`、存储中的设置和密钥）、I161（模型客户端、提供方测试）、I162（对话和读取工具）、I162b（日志工具、转换器）和 I163（提案、级别、审计日志）已完成；下一个是 I164 |
 
 ## 日志
+
+### 2026-11-28：I163，助手 IV：提案、级别和审计日志
+
+- 提案工具（fit 的 I126）：`config_propose`（顶层成员，或在 JSON 指针处 add、replace、remove）、`reconcile_propose`、
+  `rollback_propose` 和 `cache_purge_propose`，提供给级别为 propose 或 apply 的用户。每次调用都把一个步骤加到会话唯一的待定提案中
+  （最多 32 步、256 KiB），在进程内 Admin API 给出的运行中配置上整体检查，并以 fit 的形式随会话保存；本身有错的步骤不加入，使整体
+  无效的步骤保留以待修补。`admin` 不可触及；写回原处的 `[redacted]` 值恢复为配置自己的值，配置在该处没有的密钥被拒绝。对话显示每个步骤
+  （`proposal` 事件）；系统提示携带提案规则和提案状态，或上一个提案的结果。
+- `GET /api/m/ai/proposals[/<conversation>]`：待定提案（级别为 apply 的用户可见所有用户的），以及单个提案的步骤、错误和所改成员在
+  `.conf`、YAML、JSON 三种格式下的差异（行差异，fit 的 `linediff`），均已脱敏。`POST .../apply` 带上用户确认时的修订号和 ETag：
+  配置步骤作为一次变更经其类型的端点提交（`PUT /config/text?format=json&members=`、`POST /config/reconcile`、`POST /rollback/{n}`），
+  带 `If-Match`，然后执行清除缓存。过期的提案移到运行中的配置上并重新提供（412）；API 拒绝的变更不应用任何内容，提案保留并注明原因。
+  同一时间只执行一个应用，下一个排队等候。`POST .../discard` 以及连同提案一起删除会话都会丢弃提案。
+- 变更作为控制台的变更交给控制线程（`akit_admin` 的 `LocalApi::change`：一个 `Job`，其应答在进程内交回而不是写到连接上），
+  助手的线程池不等待它；之后的工作再回到线程池执行。`POST /cache/purge` 立即应答。`POST /config/validate` 统计列出的 50 条之外的错误数。
+- 审计日志（`akit_assistant::audit`，fit 的 `audit.go`）：每次调用了工具的回答（调用经脱敏并截断、其提案、结束原因）、每次应用和丢弃
+  （结果、生成的版本），跨重启编号，受 `limits.max_audit_entries` 限制，保存在存储分区 `assistant.audit`；
+  `GET /api/m/ai/audit` 可按用户、会话和类型过滤并分页。
+- 修复：参数中字符串里含 `//`（如 URL）的工具调用被当作带注释的内容，被拒为非 JSON。
+- 核对：移植了 fit 的提案、应用和审计测试（`akit_assistant` 的 `proposal::tests`，基于一个在另一线程应答变更的 Admin API 替身）；
+  经控制台端到端（`assistant_propose`）：新增路由并修改后端，作为版本 2 应用且路由的密码哈希被恢复；被其他变更弄过期的提案重新提供后应用；
+  回滚作为新版本应用。下一个：I164。
 
 ### 2026-11-28：I162b，助手 III b：日志工具和转换器
 

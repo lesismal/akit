@@ -616,6 +616,26 @@ pub enum Turn {
     Tools(Vec<(String, String)>),
     /// An answer of `n` bytes of text, in pieces of 64 KiB, for the bounds and backpressure.
     Big(usize),
+    /// A call refused with this status.
+    Status(u16),
+}
+
+/// The turns a [`script`]ed model answers with, which a test may set again.
+#[derive(Debug, Clone, Default)]
+pub struct Script(Arc<Mutex<(Vec<Turn>, usize)>>);
+
+impl Script {
+    /// The turns from now on, from the first.
+    pub fn set(&self, turns: Vec<Turn>) {
+        *self.0.lock().unwrap() = (turns, 0);
+    }
+
+    fn next(&self) -> Option<Turn> {
+        let mut g = self.0.lock().unwrap();
+        let i = g.1.min(g.0.len().saturating_sub(1));
+        g.1 += 1;
+        g.0.get(i).cloned()
+    }
 }
 
 /// A model speaking Chat Completions (an `openai_compatible` provider at its `/v1`) that answers
@@ -623,8 +643,16 @@ pub enum Turn {
 /// kept, for tests to look for secrets in.
 #[must_use]
 pub fn scripted(turns: Vec<Turn>) -> Server {
-    let next = Arc::new(Mutex::new(0usize));
-    Server::start(move |r, c| {
+    script(turns).0
+}
+
+/// [`scripted`], with the [`Script`] its turns can be set again with.
+#[must_use]
+pub fn script(turns: Vec<Turn>) -> (Server, Script) {
+    let sc = Script::default();
+    sc.set(turns);
+    let script = sc.clone();
+    let server = Server::start(move |r, c| {
         if r.method == "GET" {
             return c.whole(
                 200,
@@ -632,15 +660,13 @@ pub fn scripted(turns: Vec<Turn>) -> Server {
                 br#"{"object":"list","data":[{"id":"m"}]}"#,
             );
         }
-        let i = {
-            let mut n = next.lock().unwrap();
-            let i = (*n).min(turns.len().saturating_sub(1));
-            *n += 1;
-            i
-        };
-        let Some(turn) = turns.get(i) else {
+        let i = script.0.lock().unwrap().1;
+        let Some(turn) = script.next() else {
             return fail(c, 500, "no turn scripted");
         };
+        if let Turn::Status(status) = turn {
+            return fail(c, status, "refused by the script");
+        }
         c.head(200, &[("Content-Type", "text/event-stream")]);
         let usage = r#"{"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":5}}"#;
         match turn {
@@ -666,6 +692,7 @@ pub fn scripted(turns: Vec<Turn>) -> Server {
                     c.chunk(format!("data: {ev}\n\n").as_bytes());
                 }
             }
+            Turn::Status(_) => {}
             Turn::Big(n) => {
                 let piece = format!(
                     "data: {{\"choices\":[{{\"delta\":{{\"content\":\"{}\"}}}}]}}\n\n",
@@ -684,5 +711,6 @@ pub fn scripted(turns: Vec<Turn>) -> Server {
             )
             .as_bytes(),
         );
-    })
+    });
+    (server, sc)
 }

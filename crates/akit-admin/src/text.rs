@@ -265,37 +265,59 @@ pub(crate) fn put(shared: &Arc<Shared>, ctx: &mut Context, import: bool) {
     let shared2 = Arc::clone(shared);
     let types = f.types;
     read_body(shared, ctx, types, move |ctx, data| {
-        let text = match utf8(data) {
-            Ok(t) => t,
-            Err(r) => return ctx.respond(r),
-        };
-        let frag = match adapt(&f, &text) {
-            Ok(v) => v,
-            Err(r) => return ctx.respond(r),
-        };
-        if !import && !members.is_empty() {
-            if let Value::Object(ms) = &frag {
-                if let Some((k, _)) = ms.iter().find(|(k, _)| !members.contains(k)) {
-                    return ctx.respond(error(
-                        400,
-                        &format!("the text sets {k:?}, which this page does not edit"),
-                    ));
-                }
+        match text_op(&f, members, import, data) {
+            Ok(op) => submit(&shared2, ctx, op, mode),
+            Err(r) => ctx.respond(r),
+        }
+    });
+}
+
+/// The change a text makes: `data` in the format `f`, whole or its `members`.
+fn text_op(
+    f: &TextFormat,
+    members: Vec<String>,
+    import: bool,
+    data: Vec<u8>,
+) -> Result<Op, Response> {
+    let text = utf8(data)?;
+    let frag = adapt(f, &text)?;
+    if !import && !members.is_empty() {
+        if let Value::Object(ms) = &frag {
+            if let Some((k, _)) = ms.iter().find(|(k, _)| !members.contains(k)) {
+                return Err(error(
+                    400,
+                    &format!("the text sets {k:?}, which this page does not edit"),
+                ));
             }
         }
-        submit(
-            &shared2,
-            ctx,
-            Op::Text {
-                frag,
-                members,
-                import,
-                text,
-                format: f.format,
-            },
-            mode,
-        );
-    });
+    }
+    Ok(Op::Text {
+        frag,
+        members,
+        import,
+        text,
+        format: f.format,
+    })
+}
+
+/// `PUT /config/text?format=&members=`'s change, called in process (I163, a proposal applied):
+/// its query `query` and its body `data`.
+pub(crate) fn local_op(query: &str, data: Vec<u8>) -> Result<Op, Response> {
+    let param = |name: &str| {
+        query
+            .split('&')
+            .filter_map(|kv| kv.split_once('='))
+            .find(|(k, _)| *k == name)
+            .map(|(_, v)| akio_http::message::percent_decode(v).unwrap_or_default())
+    };
+    let members = match param("members") {
+        Some(q) => clean(q.split(','))?,
+        None => Vec::new(),
+    };
+    let Some(f) = format_of(param("format").as_deref()) else {
+        return Err(bad_format(false));
+    };
+    text_op(&f, members, false, data)
 }
 
 /// `POST /config/import?format=store`: a `fitstore` file, opened on the pool with the password in

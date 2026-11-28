@@ -230,9 +230,30 @@ fn push_url(path: &str, key: &str) -> bool {
     key == "url" && (path == "push" || path.ends_with(".push"))
 }
 
+/// Whether the value at `tokens`, a JSON pointer's, holds a secret by its own name: a member
+/// [`secret_name`] names, or a push target's `url`. fit's `secretPath`.
+#[must_use]
+pub fn secret_path<S: AsRef<str>>(tokens: &[S]) -> bool {
+    let Some((k, rest)) = tokens.split_last() else {
+        return false;
+    };
+    let k = k.as_ref();
+    if secret_name(k) {
+        return true;
+    }
+    if k != "url" {
+        return false;
+    }
+    rest.iter()
+        .rev()
+        .map(AsRef::as_ref)
+        .find(|t| t.parse::<i64>().is_err())
+        .is_some_and(|t| t == "push")
+}
+
 /// Whether `s`, under a member named `name` taken for a secret's, is a selector rather than
 /// one: `rate_limit`'s `key`, `ip`, `route` or `header:Name`.
-fn selector_value(name: &str, s: &str) -> bool {
+pub(crate) fn selector_value(name: &str, s: &str) -> bool {
     if name != "key" {
         return false;
     }

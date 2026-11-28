@@ -141,12 +141,13 @@ impl Gather {
 }
 
 /// Whether `s` is JSON as Go's `json.Valid` takes it: akit's reader, which also takes comments
-/// and trailing commas, and none of them.
+/// and trailing commas, and none of them (a `//` in a string, as a URL's, is not a comment).
 pub(crate) fn strict_json(s: &str) -> bool {
-    !s.contains("//") && !s.contains("/*") && super::json_value(s).is_some() && !trailing_comma(s)
+    super::json_value(s).is_some() && !lenient(s)
 }
 
-fn trailing_comma(s: &str) -> bool {
+/// Whether `s` has, outside its strings, a comment or a trailing comma.
+fn lenient(s: &str) -> bool {
     let mut in_str = false;
     let mut esc = false;
     let mut last = b' ';
@@ -165,6 +166,7 @@ fn trailing_comma(s: &str) -> bool {
         match b {
             b'"' => in_str = true,
             b'}' | b']' if last == b',' => return true,
+            b'/' | b'*' if last == b'/' => return true,
             _ => {}
         }
         if !b.is_ascii_whitespace() {

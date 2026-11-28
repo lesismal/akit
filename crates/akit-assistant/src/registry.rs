@@ -2,10 +2,14 @@
 //! JSON Schema of its arguments, the level a user needs for it, an optional bound of its result,
 //! where a call runs, and whether the settings let it run.
 
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use akit_config::assistant::{Assistant as Settings, Level};
 use akit_config::value::Value;
 
 use crate::Assistant;
+use crate::chat::Chat;
 use crate::json::Obj;
 
 /// Where a tool's call runs.
@@ -29,9 +33,29 @@ pub struct Call<'a> {
     pub user: &'a str,
     /// The settings the chat runs with.
     pub settings: &'a Settings,
+    /// The conversation the call is made in; empty outside one.
+    pub conv: &'a str,
+    /// Set once the call is past its timeout: what it would keep then is dropped.
+    pub expired: Option<&'a AtomicBool>,
+    /// The chat the call is made for, which hears of a proposal's step.
+    pub(crate) chat: Option<&'a Arc<Chat>>,
 }
 
 impl Call<'_> {
+    /// Whether the call is past its timeout.
+    #[must_use]
+    pub fn expired(&self) -> bool {
+        self.expired.is_some_and(|e| e.load(Ordering::SeqCst))
+    }
+
+    /// A propose tool's step joined `p`, which changes the members `changed`: the chat keeps it
+    /// for its audit entry and shows it.
+    pub(crate) fn proposed(&self, p: &crate::proposal::Proposal, changed: &[String]) {
+        if let Some(c) = self.chat {
+            c.on_proposed(p, changed);
+        }
+    }
+
     /// String argument `k`, `""` when left out.
     ///
     /// # Errors

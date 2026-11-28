@@ -17,7 +17,7 @@ use std::time::{Duration, Instant};
 use akit_config::assistant::ProviderKind;
 use akit_config::value::Value;
 
-use super::answer::{Gather, STOPPED};
+use super::answer::{Gather, STOPPED, strict_json};
 use super::codec::{Codec, parse_models};
 use super::frame::Framer;
 use super::*;
@@ -596,6 +596,18 @@ fn parse_edges() {
     assert_eq!(a.tool_calls[0].arguments, "{}");
     assert!(a.tool_calls[1].invalid && a.tool_calls[1].arguments == r#""oops""#);
     assert_eq!(a.usage.output_tokens, 2);
+    // A URL in a string is JSON as Go takes it; a comment, or a trailing comma, is not.
+    for (args, invalid) in [
+        (
+            r#"{"urls": ["https://example.com/a"], "c": "/*x*/"}"#,
+            false,
+        ),
+        ("{\"a\": 1 // one\n}", true),
+        (r#"{"a": 1 /* one */}"#, true),
+        (r#"{"a": [1,]}"#, true),
+    ] {
+        assert_eq!(strict_json(args), !invalid, "{args}");
+    }
     let (a, r) = parse(
         OpenAiCompatible,
         &[

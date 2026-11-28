@@ -30,7 +30,7 @@ pub(crate) fn purge(shared: &Arc<Shared>, ctx: &mut Context) {
     });
 }
 
-fn answer(data: &[u8]) -> Response {
+pub(crate) fn answer(data: &[u8]) -> Response {
     let (zone, sel) = match request(data) {
         Ok(r) => r,
         Err(msg) => return error(400, &format!("the body: {msg}")),

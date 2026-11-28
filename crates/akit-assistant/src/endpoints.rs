@@ -1,6 +1,6 @@
 //! The chat's endpoints (I162, fit's `chat.go` and `endpoints.go`): `POST /api/chat` and
 //! `/api/chat/stop`, `GET /api/tools`, `GET /api/conversations`, and `GET` and `DELETE
-//! /api/conversations/<id>`.
+//! /api/conversations/<id>` (a conversation deleted with its proposal is in the audit log).
 
 use std::sync::Arc;
 
@@ -427,8 +427,12 @@ impl Assistant {
                         "the conversation is answering: stop it first",
                     ));
                 }
+                let p = c.proposal.clone();
                 u.convs.retain(|c| c.id != id);
                 drop(chats);
+                if let Some(p) = p {
+                    me.deleted_with(&user, &id, &p);
+                }
                 me.save_chats(&user);
                 return d.respond(pages::json(200, Obj::new().str("deleted", &id).end()));
             }
