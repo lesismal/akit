@@ -276,6 +276,17 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I139 | 集群 X：用户、角色和审计日志 | I137 | done |
 | I139b | 集群 XI：NAT 之后主动外连的成员 | I132 | todo |
 | I139c | 集群 XII：跨成员的指标、日志和证书；`akit cluster` | I138 | todo |
+| **1.0 之后：AI 助手** | | | |
+| I160 | 助手 I：配置中的 `admin.assistant`、存储中的设置和密钥、模块 `ai` | I93c, I91 | todo |
+| I161 | 助手 II：模型客户端和提供方测试 | I160, I107 | todo |
+| I162 | 助手 III：对话和读取工具 | I161 | todo |
+| I163 | 助手 IV：提案、级别和审计日志 | I162 | todo |
+| I164 | 助手 V：技能 | I162 | todo |
+| I165 | 助手 VI：问 AI、迁移和审查 | I163, I164, I74 | todo |
+| I166 | 助手 VII：MCP 服务器 | I163, I164 | todo |
+| I167 | 助手 VIII：在页面上编辑 | I163 | todo |
+| I168 | 助手 IX：媒体库的工具和技能 | I163, I164, I149 | todo |
+| I169 | 助手 X：跨集群（fit 的 I153） | I163, I164, I139；其中三个工具需要 I139c | todo |
 
 状态：`todo`、`doing` 或 `done`。下一个可用的迭代编号是 I127（为日志路线和访问控制列表路线预留的 I84 和 I88 未使用；I95 和 I96 为控制台路线预留；I97 改名了 fit 的对外名字；I98–I109、I102b、I102c、I102d、I103b、I109b、I109c 和 I109d 是隧道与 LLM 路线；I110–I114 是 WebRTC 路线，I115–I119 为它预留；I120–I126 是流媒体与媒体认证路线）。
 ## 基准与优化状态
@@ -337,6 +348,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | 访问控制列表 | I85–I87 | 否 | 否（已实现，未测量） | 同 fit 的 `BenchmarkAllows`：一个策略的查找（一个含 10、10,000 和 1,000,000 个前缀、从文件读入的列表，以及串联的三个列表），IPv4 和 IPv6 地址，1 和 16 个线程，不分配内存。与不带 `access` 的同一配置做同一轮 A/B、交替轮次：带大型拒绝列表时，监听器在 accept 时拒绝或接受的每秒连接数（akio 的过滤器，A3：每次 accept 一次 `Arc` 读取加一次查找）；路由带自己的列表（逐请求检查：一次图读取加一次查找）与不带时，fixed 和 proxy 场景在 HTTP/1.1、h2c 和 h3 上的表现；由 akit-l4 的入口决定的 `tcp` 服务每秒连接数；被拒绝的 `udp` 数据报洪泛（在 akio 的过滤器处丢弃，A220）对正常会话延迟的影响。 |
 | 控制台与加密的 store | I89–I93c | 否 | 否（控制面） | 控制台属于控制面（规则 24：自身无需基准），但与数据面共用主机。同一轮 A/B、交替轮次：fixed 和 proxy 场景在控制台遭受大量失败登录（成本 10 的 bcrypt 在其单线程登录池上，16 个等待，其余 503）时和没有时，并有一个已登录客户端每秒轮询 `GET /api/m/admin/status`：数据面的每秒请求数和 p99 不应变化。控制台自身的数字仅作记录：成本 10 和 12 时每秒登录数；工作台首次加载（其 2.5 MB 文件，从内存提供）在 HTTP/1.1 和 TLS 上的耗时。I93：启动时 store 的密钥派生（fit 的 Argon2id 参数 3、64 MiB、4 线程：耗时和峰值内存），以及 4 MiB 配置一次写入（密封、同步、重命名）的延迟。 |
 | 集群管理：管理端的轮询器和对成员的调用 | I132–I139c | 否 | 否（控制面） | 控制面（规则 24），但与数据面共用主机。同轮 A/B、交替进行：在每秒轮询 256 个替身成员（`max_concurrency` 8，各读 `/node` 和 `/status`）的管理端上跑 fixed 和 proxy 场景，与不轮询相比；在每秒被轮询的成员上跑，与未被轮询相比：每秒请求数和 p99 不应变化。记录：256 个成员一轮轮询的耗时；50 个成员、每批 10 个、门槛 5 s 的滚动发布从头到尾的耗时；有 256 个成员及其状态时管理端的内存。 |
+| 助手：模型调用和对话的流 | I160–I169 | 否 | 否（控制面） | 控制面（规则 24），但其模型调用和对话与监听器共用 engine。同轮 A/B、交替进行：在 4 个对话以模型替身所能的最快速度流式输出（其中一个浏览器读得慢）时跑 fixed 和 proxy 场景，与没有对话相比：每秒请求数和 p99 不应变化。记录：浏览器停止读取时一个对话的内存（受水位约束，待定决定第 102 行）；替身立即应答时对话首个事件的耗时；一个令牌在 `max_concurrent_calls` 下每秒的 MCP 调用数。 |
 | akio 请求替换掉的权宜实现（A12、A79、A45、A117、A30、A54、A29、A75、A78、A22、A170、A24、A49、A35、A148） | —（akio 请求） | 否 | 否（已实现，未测量） | 对照这些提交之前的 main，同一轮 A/B 测 fixed 和 proxy 场景，HTTP/1.1、h2c 和 h3：访问日志和指标走监听器的响应观察者（`set_observed`，不分配）对比装箱的过滤器，以及每个请求都调用 `limit_body`；代理在 HTTP/1.1 上按长度成帧的下载对比 chunked；第 4 层转发由 akio 的每连接空闲超时关闭对比 akit 的扫描（大量空闲连接）；sockmap 转发经 `akio::ebpf::Tunnel`（以 root 测 TCP 吞吐，同 I51b 一行）；健康检查探测负载走 `akio::timer::after_send` 对比 akit 原来的定时线程。 |
 | BitTorrent：客户端和 tracker | I151, I152 | no | no（尚未构建） | 对照 fit 的角色（fit 对 fit、akit 对 akit 以及混合），在回环地址上和两台主机之间：从一个做种者和从多个做种者下载一个种子的 MiB/s（TCP 和 uTP，加密和明文）、慢磁盘下磁盘池的队列、有和没有 resume 数据时重启到做种的时间、每个种子和每个 peer 的内存；tracker 在 100,000 个种子和 500,000 个 peer 下 HTTP 和 UDP 每秒的 announce 数及其内存；如 fit 的 I205 那样以 fit 的 `bench/bt.sh` 对照 anacrolix 和 libtorrent。 |
 | 监听器的调度：akio 的默认（epoll 上的工作窃取）对比事件循环 | —（akio 的 A303，决定 91） | 是（2026-11-28，`e3473df3`，[`bench/results/ab-scheduling-2026-11-28`](../bench/results/ab-scheduling-2026-11-28/report.md)） | 否 | 同一个二进制，`AKIO_DEFAULT_SCHEDULING=event-loops` 对比不设置，HTTP/1.1，交替 5 轮（`bench/ab.sh -env-a`）：工作窃取下 `static` 每秒请求少 6.0%（730k 对 776k，每一轮都如此），每个请求的 CPU 多 1.8%，p50 0.36 ms 对 0.16，但 p99 0.58 ms 对 1.25；代理每秒请求相当（+1.5%，在噪声内），每个请求的 CPU 多 18%（25.2 µs 对 21.4），p99 1.09 ms 对 3.83；匿名内存峰值相近（2.6–2.8 和 6.9–7.4 MiB）。akit 跟随 akio 的默认；这部分开销留给 akio 的工作窃取去降低，或由维护者选择事件循环。剩下：h2c 和 TLS，以及完整测试框架。 |
@@ -1110,7 +1122,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | 6 | 流媒体与媒体认证 | I115–I117 | 基于 `akio-media` 的流媒体角色；`media_auth` |
 | 7 | 媒体库与频道 | I119、I131–I139 | [I140–I149](#媒体库与频道)：`media_library` 及其基于 akio-media 的 MP4 读取器的目录、`vod`、媒体 token 的密钥、签名播放 URL、频道和推送目标、加密分片、视频网站页面、控制台页面 |
 | 8 | 集群管理 | I140–I150, I153 | [I130–I139c](#集群管理)：配置、成员需要什么、管理端及其成员、页面、分组、模板、带健康门槛的发布、漂移和告警、角色、NAT 之后的成员、指标和 CLI；I153 随 AI 助手路线 |
-| 9 | AI 助手 | I124–I130, I152–I154 | 对话面板、工具、MCP 服务器 |
+| 9 | AI 助手 | I124–I130, I152–I154 | [I160–I169](#ai-助手)：`admin.assistant` 和模块 `ai`、模型客户端、对话和读取工具、提案和审计日志、技能、问 AI 与迁移、MCP 服务器、在页面上编辑、媒体库的工具、跨集群的助手（fit 的 I153） |
 | 10 | BitTorrent | I196–I210 | [I150–I159](#bittorrent)：配置中的角色、基于 `akio-bittorrent` 的 tracker 和客户端、添加种子、时间表和访问控制、`bt_stream`、发布、Admin API 和事件、页面、RSS |
 | 11 | 数据同步 | I163–I194, I211–I222 | 先做流水线核心和检查点，再按 fit 的顺序做连接器 |
 | 12 | Prefork 与 NUMA | fit 中已规划 | 取消（2026-11-25）：akit 不使用 prefork，akio 已删除 `akio-prefork`。不再计划。 |
@@ -2206,3 +2218,129 @@ fit 工作台页面。成员尽量少改动：管理端使用成员已有的 API
 - **完成标准**：fit 的 `insight`、`logtail` 和 `adminapi` 测试移植后通过；CLI 能从头到尾驱动一次发布。
 - **涉及**：`akit-cluster`、`akit-admin`（`/logs/recent`）、`akit`（`cluster`）。
 - **fit**：`cluster/{insight,logtail,adminapi}.go`、`cli/cluster.go`、`admin/logsrecent.go`；I150。
+
+### AI 助手
+
+fit 的 I124–I130 和 I152–I154（fit 的 [工作台中的 AI
+助手](https://github.com/lesismal/fit/blob/main/docs/dev-plan.md#ai-assistant-in-the-workbench) 一章、它的
+[决定 031](https://github.com/lesismal/fit/blob/main/docs/decisions/031-assistant.md)、它的包 `assistant`、`assistant/model`
+和 `assistant/mcp`，以及 `config/assistant.go`），分十个迭代 I160–I169 完成（[决定 044](decisions/044-assistant.md)）。控制台
+获得 fit 的助手：每个页面旁的对话面板，经进程内的 Admin API 读取运行中的 akit 在做什么、加以解释，并起草改动：写进打开的页面成为
+未保存的草稿，或成为经过检查的提案，由人点击并确认后应用；没有人，什么都不会被应用。它是其设置所指定的模型 API 的客户端（带密钥的
+托管 API、本地服务器，或本 akit 自己的 `llm.proxy`），自己不是模型；它的 MCP 服务器让外部代理使用同样的工具。页面是 fit 工作台的
+模块 `ai`，I91 已随其余页面复制过来；线上协议是 fit 的（决定 044 第 3 条）：模块的 API、对话的 Server-Sent Events、存储的 `assistant`
+分区及其同级分区，以及 MCP 协议，使页面不改即可运行，存储可在 akit 与 fit 之间迁移，任一方的 MCP 客户端都能连上两者。默认关闭：
+没有 `admin.assistant` 就没有模块 `ai`，什么都不会发往任何地方。测试只与在端口 0 上的模型 API 替身通信，从不调用真实 API、
+从不使用真实密钥。
+
+### I160 助手 I：配置中的 `admin.assistant`、存储中的设置和密钥、模块 `ai`
+
+- **做什么**：决定 044。按 fit 的字段、默认值、上限和检查读取 `admin.assistant`（`config/assistant.go`：八种 `providers`、
+  `default_model`、`params`、`limits`、`data`、`users`、`default_level`、`mcp`），它需要 `admin.console`，不再以"尚不支持"
+  拒绝。新 crate `akit-assistant`：设置在"设置"页保存之前取自 `admin.assistant`，此后取自存储（分区 `assistant`，fit 的
+  `{"settings", "keys"}`）；密钥只写一次、遮掩显示，从不应答、记录日志或导出。控制台模块 `ai` 由 `admin.console` 在配置本身的
+  模块旁创建（`GET /api/workbench` 列出它），带 `GET` 和 `PUT /api/m/ai/settings`（无存储时 409，版本过期时 412，按路径给出
+  fit 的错误）。
+- **完成标准**：fit 的 `config/assistant_test.go` 和 `assistant/assistant_test.go` 中设置部分的测试移植后通过；密钥不出现在
+  任何应答、日志行或导出中；fit 写入了该分区的存储在 akit 中打开时带着其设置和密钥，反之亦然；兼容性闸门的示例有效；字段以
+  `make v1-bless` 标记；参考文档重新生成。
+- **涉及**：`akit-config`、`akit-assistant`（新）、`akit-admin`（`console`）、`akit`（`run`）、`tests/compat`、`docs`。
+- **fit**：`config/assistant.go`、`assistant/assistant.go`；I124。
+- **状态**：todo。
+
+### I161 助手 II：模型客户端和提供方测试
+
+- **做什么**：在 akio-http 的异步客户端上（规则 1）、在监听器的 engine 上实现 fit 的 `assistant/model`：每种 kind 的请求
+  （系统提示、消息、工具、参数）以及流式应答（SSE；Ollama 为 NDJSON），边到达边解析为文本、思考和工具调用，并记下 API 计数的
+  用量；按 fit 的上限约束（一行或一个事件 1 MiB、应答 `max_stream_bytes`、64 个工具调用、失败应答的消息 8 KiB），并受提供方的
+  连接、首字节、空闲和总超时约束；只在尚未取得任何应答、且只在连接失败或关闭时立即重试（待定决定第 100 行）；取消会关闭该调用的
+  连接；密钥只经 https 或发往回环地址，在每个错误中遮掩。`llm_proxy` 走回环上 `llm.proxy.api` 的端口，固定其证书。
+  `POST /api/m/ai/providers/test`（同时 4 个，列表 15 s，调用 30 s）。
+- **完成标准**：fit 的模型测试（`codec`、`kinds`、`edge`、`call`）移植后，对端口 0 上各 API 的替身通过，每种 kind 的工具调用
+  往返一次；`llm_proxy` 提供方经 akit 自己的 `llm.proxy`、hub 和上游为替身的 node 得到应答；慢、断开或超大的流被约束并失败；
+  密钥不出现在任何错误中。
+- **涉及**：`akit-assistant`、`akit-admin`、`docs`。
+- **fit**：`assistant/model`、`assistant/internal/fakeapi`；I124。
+- **状态**：todo。
+
+### I162 助手 III：对话和读取工具
+
+- **做什么**：fit 的 I125：代理循环及其上下文（系统提示、页面上下文、截断结果和总结早期轮次的预算、`ask_user`）；工具注册表和
+  读取工具，在助手自己的线程池上对进程内的 Admin API 运行；对每个结果脱敏；为 `log_tail` 提供 akit 自身日志的有界环；
+  `POST /api/m/ai/chat` 以 Server-Sent Events 应答 fit 的事件，浏览器未取走的字节超过水位时暂停模型的流（待定决定第 102 行）；
+  `POST /api/m/ai/chat/stop`；按用户保存在存储分区 `assistant.chats.<hash>` 中的会话，有上限；`GET /api/m/ai/tools` 和
+  `/conversations`。
+- **完成标准**：fit 的对话和读取工具测试移植后，对脚本化的模型替身通过；没有秘密到达记录下的请求；读得慢的浏览器约束长应答的
+  内存；面板在浏览器中可用。
+- **涉及**：`akit-assistant`、`akit-admin`、`akit-observe`（日志环）、`docs`。
+- **fit**：`assistant/{chat,prompt,registry,tools_read,redact,conversations,admincall}.go`；I125。
+- **状态**：todo。
+
+### I163 助手 IV：提案、级别和审计日志
+
+- **做什么**：fit 的 I126：提案工具把步骤加到每个会话唯一的待定提案中，带 `.conf`、YAML 和 JSON 三种格式的差异及其校验；
+  对话框确认之后的"应用"以该用户身份、带 `If-Match` 经进程内 Admin API 执行（`PUT /config/text?members=`、
+  `/config/reconcile`、`/rollback/{n}`、`/cache/purge`）；每次调用工具和应用都检查级别；审计日志在存储分区 `assistant.audit`；
+  `/api/m/ai/proposals` 和 `/audit`。
+- **完成标准**：fit 的提案、应用和审计测试移植后通过。
+- **涉及**：`akit-assistant`、`akit-admin`、`docs`。
+- **fit**：`assistant/{proposals,apply,audit,jsontree,linediff}.go`；I126。
+- **状态**：todo。
+
+### I164 助手 V：技能
+
+- **做什么**：fit 的 I127：技能格式（带 front matter 的 Markdown），以 akit 的名字内嵌 fit 的内置技能，用户技能在存储分区
+  `assistant.skills`，"技能"页的 API，`/name`、技能目录和 `skill_load`。
+- **完成标准**：fit 的技能测试移植后通过。
+- **涉及**：`akit-assistant`、`docs`。
+- **fit**：`assistant/{skills,skillstore,chatskill}.go`、`assistant/skills`；I127。
+- **状态**：todo。
+
+### I165 助手 VI：问 AI、迁移和审查
+
+- **做什么**：fit 的 I128（页面上的按钮是 I91 复制的；服务端对它们所发内容的上限）和 I129：`migrate` 先经 `akit adapt` 的
+  转换器，`security-review`，评测集由 `make assistant-eval` 对环境指定的模型运行、从不在 CI 中运行，CI 中对录制的应答运行。
+- **完成标准**：fit 的评测和迁移测试移植后对录制的应答通过。
+- **涉及**：`akit-assistant`、`akit-config`（`adapt`）、`Makefile`、`docs`。
+- **fit**：`assistant/{eval_test,migrate_test,eval_check_test}.go`、`assistant/testdata/eval`；I128、I129。
+- **状态**：todo。
+
+### I166 助手 VII：MCP 服务器
+
+- **做什么**：fit 的 I130：`admin.assistant.mcp`，控制台地址上的 `/mcp`（Streamable HTTP，fit 的协议修订版），注册表的工具、
+  作为提示的技能，以及作为资源的配置、状态、版本、schema 和参考文档（`akit://`，待定决定第 101 行）；MCP 令牌以哈希保存在存储分区
+  `assistant.mcp` 中，带其级别、地址和上限；审计日志的来源 `mcp`。
+- **完成标准**：fit 的 `assistant/mcp` 测试移植后通过；一个该协议的 MCP 客户端能列出并调用 akit 和 fit 的工具，经 MCP 提出的
+  提案只在控制台中应用。
+- **涉及**：`akit-assistant`、`akit-admin`、`docs`。
+- **fit**：`assistant/mcp`；I130。
+- **状态**：todo。
+
+### I167 助手 VIII：在页面上编辑
+
+- **做什么**：fit 的 I154：级别 `edit`，`page_get`、`page_edit` 和 `page_revert` 经对话流发给打开的页面，由
+  `POST /api/m/ai/chat/page` 应答；从不提交。
+- **完成标准**：fit 的页面工具测试移植后通过；页面在浏览器中画出草稿。
+- **涉及**：`akit-assistant`、`docs`。
+- **fit**：`assistant/pagetools.go`；I154。
+- **状态**：todo。
+
+### I168 助手 IX：媒体库的工具和技能
+
+- **做什么**：在 akit 的媒体库（I140–I149）上实现 fit 的 I152：`media_library_search`、`media_item_get`、`channels_status`、
+  `playback_sessions` 和媒体提案工具，技能 `vod-setup`、`channel-scheduler`、`library-health` 和 `playback-troubleshoot`。
+- **完成标准**：fit 助手的媒体测试移植后通过。
+- **涉及**：`akit-assistant`、`akit-media`、`docs`。
+- **fit**：`assistant/{tools_media,proposals_media}.go`；I152。
+- **状态**：todo。
+
+### I169 助手 X：跨集群
+
+- **做什么**：在 `akit-cluster` 上实现 fit 的 I153：`cluster_members`、`cluster_templates`、`cluster_rollouts`，读取工具经
+  管理端会话的 `member` 参数，提案工具成为由人在集群页面上启动的发布计划和操作；助手级别与管理端角色取较窄者；管理端的
+  `GET /api/m/cluster/me` 应答用户的助手级别（此前为空）。`cluster_metrics`、`cluster_log_tail` 和 `cluster_certs` 读取 I139c
+  的时间序列、日志和清单，在它之前应答尚无。
+- **完成标准**：fit 的 `assistant/cluster_test.go` 移植后对成员替身通过。
+- **涉及**：`akit-assistant`、`akit-cluster`、`docs`。
+- **fit**：`assistant/tools_cluster.go`、`cluster/assistant.go`；I153。
+- **状态**：todo。

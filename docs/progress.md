@@ -19,8 +19,22 @@ done and where the work differs from the plan.
 | akio requests | A1–A24, A29, A30, A32, A33, A35–A38, A45, A48, A49, A51–A54, A57, A58, A63–A66, A75, A78, A79, A90–A94, A105, A108, A109, A111–A113, A117, A132–A135, A148, A165–A172, A180, A200, A214, A215, A220, A230–A238, A245 and A247–A249 on akio's main and pinned; A225 (an external review, L15) requested ([akio API requests](akio-api-requests.md)) |
 | Streaming and media auth | [I120–I126](dev-plan.md#streaming-and-media-auth), fit's I115–I117 (decision 040): I120 (`media_auth` and `streaming` in the config), I121 (the policies, the checks, `akit media-token`), I122 (the role's hub, RTMP, RTSP and SRT), I123 (`httpflv`, `hls`), I124 (the WebRTC port, `stream_whip`, `stream_whep`), I125 (`media_pages`) and I126 (`auth` on `whip`, `whep` and `webrtc_proxy`) done; the media library's `libraries`, `vod` and `channels` wait for its track; akio requests A263–A268 |
 | Media library and channels | [I140–I149](dev-plan.md#media-library-and-channels), fit's I131–I139 and I119 (decision 043): I140 (`media_library` in the config) I141 (the catalog, the role `media_library`, `/media/library`) I142 (`vod`), I143 (`keys`, `media_tokens`), I144 (`url_signing`), I145 (channels), I146 (push targets), I147 (encrypted segments), I148 (the video site) and I149 (the console's media pages, the files managed) done: the track is done; akio requests A295–A298 |
+| AI assistant | [I160–I169](dev-plan.md#ai-assistant), fit's I124–I130 and I152–I154 (decision 044): planned; I160 next |
 
 ## Log
+
+### 2026-11-28: the AI assistant track planned (I160–I169)
+
+- fit's I124–I130 and I152–I154 (fit's decision 031) planned as ten iterations, I160–I169, in the
+  dev plan's [AI assistant](dev-plan.md#ai-assistant) section, with [decision
+  044](decisions/044-assistant.md): a crate of its own, `akit-assistant`, made by `admin.console`
+  and served as the module `ai` that fit's workbench pages (I91's copy) already call; fit's wire
+  (the module's API, the chat's events, the store's sections, MCP) with akit's names; the model
+  calls on akio-http's asynchronous client on the listeners' engine, bounded, a chat's stream
+  linked to the model's, tried again only at once and only when the connection failed (no timer
+  waits); tests only against stand-ins of the model APIs. fit's I153, the assistant across a
+  cluster, is I169, after the cluster track's I139 (I139c for its metrics, logs and certificates).
+  Decision rows 98–102. Next: I160.
 
 ### 2026-11-28: the scheduling A/B: work stealing against event loops
 

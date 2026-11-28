@@ -18,8 +18,18 @@
 | akio 需求 | A1–A24、A29、A30、A32、A33、A35–A38、A45、A48、A49、A51–A54、A57、A58、A63–A66、A75、A78、A79、A90–A94、A105、A108、A109、A111–A113、A117、A132–A135、A148、A165–A172、A180、A200、A214、A215、A220、A230–A238、A245 和 A247–A249 已进入 akio 的 main 并锁定；A225（外部审查，L15）已提出（[akio API 请求](akio-api-requests.zh-CN.md)） |
 | 流媒体与媒体认证 | [I120–I126](dev-plan.zh-CN.md#流媒体与媒体认证)，fit 的 I115–I117（决定 040）：I120（配置中的 `media_auth` 和 `streaming`）、I121（策略、检查、`akit media-token`）I122（角色的媒体中心、RTMP、RTSP 和 SRT）、I123（`httpflv`、`hls`）、I124（WebRTC 端口、`stream_whip`、`stream_whep`）、I125（`media_pages`）和 I126（`whip`、`whep` 和 `webrtc_proxy` 上的 `auth`）已完成；媒体库的 `libraries`、`vod` 和 `channels` 等待其那条线；akio 请求 A263–A268 |
 | 媒体库与频道 | [I140–I149](dev-plan.zh-CN.md#媒体库与频道)，fit 的 I131–I139 和 I119（决定 043）：I140（配置中的 `media_library`）、I141（目录、角色 `media_library`、`/media/library`）、I142（`vod`）、I143（`keys`、`media_tokens`）、I144（`url_signing`）、I145（频道）、I146（推送目标）、I147（加密分片）、I148（视频网站）和 I149（控制台的媒体页面、文件管理）已完成：这条线已完成；akio 需求 A295–A298 |
+| AI 助手 | [I160–I169](dev-plan.zh-CN.md#ai-助手)，fit 的 I124–I130 和 I152–I154（决定 044）：已规划；下一个是 I160 |
 
 ## 日志
+
+### 2026-11-28：规划 AI 助手路线（I160–I169）
+
+- fit 的 I124–I130 和 I152–I154（fit 的决定 031）在开发计划的 [AI 助手](dev-plan.zh-CN.md#ai-助手)一节中规划为十个迭代
+  I160–I169，并写入[决定 044](decisions/044-assistant.zh-CN.md)：独立的 crate `akit-assistant`，由 `admin.console` 创建并作为
+  模块 `ai` 提供，fit 的工作台页面（I91 的副本）已经在调用它；fit 的线上协议（模块的 API、对话的事件、存储的分区、MCP）配 akit
+  的名字；模型调用在监听器 engine 上的 akio-http 异步客户端上发出，有上限，对话的流与模型的流相连，只在连接失败时立即重试（不用
+  定时器等待）；测试只对模型 API 的替身进行。fit 的 I153（跨集群的助手）为 I169，在集群路线的 I139 之后（其指标、日志和证书需要
+  I139c）。待定决定第 98–102 行。下一个：I160。
 
 ### 2026-11-28：调度的 A/B：工作窃取对比事件循环
 

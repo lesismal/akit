@@ -288,6 +288,17 @@ Tunnel and LLM track; I110–I114 are the WebRTC track, and I115–I119 are rese
 | I139 | Cluster X: users, roles and the audit log | I137 | done |
 | I139b | Cluster XI: members behind NAT, linking out | I132 | todo |
 | I139c | Cluster XII: metrics, logs and certificates across members; `akit cluster` | I138 | todo |
+| **After 1.0: AI assistant** | | | |
+| I160 | The assistant I: `admin.assistant` in the config, its settings and keys in the store, the module `ai` | I93c, I91 | todo |
+| I161 | The assistant II: the model client and the provider test | I160, I107 | todo |
+| I162 | The assistant III: the chat and the read tools | I161 | todo |
+| I163 | The assistant IV: proposals, levels and the audit log | I162 | todo |
+| I164 | The assistant V: skills | I162 | todo |
+| I165 | The assistant VI: Ask AI, migration and review | I163, I164, I74 | todo |
+| I166 | The assistant VII: the MCP server | I163, I164 | todo |
+| I167 | The assistant VIII: edits on the page | I163 | todo |
+| I168 | The assistant IX: the media library's tools and skills | I163, I164, I149 | todo |
+| I169 | The assistant X: across a cluster (fit's I153) | I163, I164, I139; I139c for three tools | todo |
 
 Status: `todo`, `doing` or `done`. The next free iteration number is I127 (I84 and I88, reserved for the
 ## Benchmark and optimization status
@@ -352,6 +363,7 @@ commit and result.
 | Access lists | I85–I87 | no | no (built, not measured) | As fit's `BenchmarkAllows`: a policy's lookup (one list of 10, 10,000 and 1,000,000 prefixes from a file, and three lists chained) for IPv4 and IPv6 addresses, 1 and 16 threads, no allocation. Same-run A/B, alternating rounds, against the same config without `access`: connections a second through a listener refused or served at accept (akio's filter, A3: an `Arc` read and the lookup per accept) with a large deny list; the fixed and proxy scenarios over HTTP/1.1, h2c and h3 with a route's own access (checked per request: a graph read and the lookup) and without; a `tcp` service's connections a second decided by akit-l4's entry; a flood of refused `udp` datagrams (dropped at akio's filter, A220) against the served sessions' latency. |
 | Console and encrypted store | I89–I93c | no | no (control plane) | The console is control plane (rule 24: no benchmark of its own), but it shares the host with the data plane. Same-run A/B, alternating rounds, of the fixed and proxy scenarios with and without a console being flooded with failed logins (bcrypt at cost 10 on its one-thread login pool, 16 waiting, the rest 503) and with a logged-in client polling `GET /api/m/admin/status` every second: the data plane's requests a second and p99 should not move. The console's own numbers, for the record: logins a second at costs 10 and 12; the workbench's first load (its 2.5 MB of files, from memory) over HTTP/1.1 and TLS. For I93: the store's key derivation at start (Argon2id at fit's 3, 64 MiB, 4 threads: time and peak memory), and a write's latency with a 4 MiB config (sealed, synced, renamed). |
 | Cluster management: the manager's poller and calls to members | I132–I139c | no | no (control plane) | Control plane (rule 24), sharing the host with the data plane. Same-run A/B, alternating rounds, of the fixed and proxy scenarios on a manager polling 256 stand-in members every second (`max_concurrency` 8, `/node` and `/status` each) against none, and on a member polled every second against one not polled: requests a second and p99 should not move. For the record: a poll round's time for 256 members; a rolling rollout over 50 members in batches of 10 with 5 s gates, end to end; the manager's memory with 256 members and their states. |
+| The assistant: model calls and the chat's stream | I160–I169 | no | no (control plane) | Control plane (rule 24), but its model calls and chats share the listeners' engine. Same-run A/B, alternating rounds, of the fixed and proxy scenarios while 4 chats stream from a stand-in model as fast as it can (one browser reading slowly) against none: requests a second and p99 should not move. For the record: a chat's memory while its browser stops reading (bounded by the watermark, decision row 102); the time to the first event of a chat with a stand-in that answers at once; MCP calls a second of one token at `max_concurrent_calls`. |
 | akio requests moved off their stopgaps (A12, A79, A45, A117, A30, A54, A29, A75, A78, A22, A170, A24, A49, A35, A148) | — (akio requests) | no | no (built, not measured) | Same-run A/B of the fixed and proxy scenarios, HTTP/1.1, h2c and h3, against main before these commits: the access log and metrics through the listener's response observer (`set_observed`, no allocation) against the boxed filter, and `limit_body` called on every request; the proxy's downloads framed by their length on HTTP/1.1 against chunked; layer 4 relays timed out by akio's per-connection idle timeout against akit's sweep (many idle connections); the sockmap relay through `akio::ebpf::Tunnel` (TCP throughput as root, as I51b's row); a health-check probe load on `akio::timer::after_send` against akit's old timer thread. |
 | BitTorrent: client and tracker | I151, I152 | no | no (not built yet) | Against fit's roles (fit with fit, akit with akit, and mixed), on loopback and between two hosts: one torrent's download in MiB a second from one seeder and from several (TCP and uTP, encrypted and plain), the disk pool's queue under a slow disk, a restart's time to seeding with resume data and without, memory per torrent and per peer; the tracker's announces a second over HTTP and UDP with 100,000 torrents and 500,000 peers, and its memory; fit's `bench/bt.sh` against anacrolix and libtorrent as fit's I205 ran it. |
 | Listener scheduling: akio's default (work stealing on epoll) against event loops | — (akio's A303, decision 91) | yes (2026-11-28, `e3473df3`, [`bench/results/ab-scheduling-2026-11-28`](../bench/results/ab-scheduling-2026-11-28/report.md)) | no | One binary, `AKIO_DEFAULT_SCHEDULING=event-loops` against unset, HTTP/1.1, 5 alternating rounds (`bench/ab.sh -env-a`): under work stealing `static` served 6.0% fewer requests a second (730k against 776k, every round), 1.8% more CPU a request, p50 0.36 ms against 0.16 but p99 0.58 ms against 1.25; the proxy served as many (+1.5%, within noise) at 18% more CPU a request (25.2 µs against 21.4), p99 1.09 ms against 3.83; peak anonymous memory alike (2.6–2.8 and 6.9–7.4 MiB). akit follows akio's default; the cost is for akio's work stealing to bring down, or for the maintainer to choose event loops. Left: h2c and TLS, and the full harness. |
@@ -1239,7 +1251,7 @@ below is the planned order; tracks with no dependency between them may run in pa
 | 6 | Streaming and media auth | I115–I117 | the streaming role on `akio-media`; `media_auth` |
 | 7 | Media library and channels | I119, I131–I139 | [I140–I149](#media-library-and-channels): `media_library` and its catalog on akio-media's MP4 reader, `vod`, media tokens' keys, signed playback URLs, channels and push targets, encrypted segments, the video site's pages, the console's pages |
 | 8 | Cluster management | I140–I150, I153 | [I130–I139c](#cluster-management): the config, what a member needs, the manager and its members, the pages, groups, templates, rollouts with health gates, drift and alerts, roles, members behind NAT, metrics and the CLI; I153 with the AI assistant track |
-| 9 | AI assistant | I124–I130, I152–I154 | the chat panel, tools, MCP server |
+| 9 | AI assistant | I124–I130, I152–I154 | [I160–I169](#ai-assistant): `admin.assistant` and the module `ai`, the model client, the chat and the read tools, proposals and the audit log, skills, Ask AI and migration, the MCP server, edits on the page, the media library's tools, the assistant across a cluster (fit's I153) |
 | 10 | BitTorrent | I196–I210 | [I150–I159](#bittorrent): the roles in the config, the tracker and the client on `akio-bittorrent`, adding torrents, schedules and access, `bt_stream`, publishing, the Admin API and events, the pages, RSS |
 | 11 | Sync | I163–I194, I211–I222 | the pipeline core and checkpoints, then connectors by fit's order |
 | 12 | Prefork and NUMA | planned in fit | dropped (2026-11-25): akit does not use prefork, and akio removed `akio-prefork`. Not planned. |
@@ -2653,3 +2665,158 @@ default: no `admin.cluster`, no Cluster menu, no outgoing calls.
   rollout end to end.
 - **Touches**: `akit-cluster`, `akit-admin` (`/logs/recent`), `akit` (`cluster`).
 - **fit**: `cluster/{insight,logtail,adminapi}.go`, `cli/cluster.go`, `admin/logsrecent.go`; I150.
+
+### AI assistant
+
+fit's I124–I130 and I152–I154 (fit's chapter [AI assistant in the
+workbench](https://github.com/lesismal/fit/blob/main/docs/dev-plan.md#ai-assistant-in-the-workbench),
+its [decision 031](https://github.com/lesismal/fit/blob/main/docs/decisions/031-assistant.md), its
+packages `assistant`, `assistant/model` and `assistant/mcp`, and `config/assistant.go`), in ten
+iterations, I160–I169 ([decision 044](decisions/044-assistant.md)). The console gains fit's
+assistant: a chat panel beside every page that reads what the running akit does, through the Admin
+API in process, explains it, and drafts changes, into the open page as an unsaved draft or as a
+checked proposal that a person applies with a click and a confirm; nothing is ever applied without
+a person. It is a client of the model APIs its settings name (a hosted API with its key, a local
+server, or this akit's own `llm.proxy`), never a model of its own, and its MCP server lets outside
+agents use the same tools. The pages are fit's workbench's module `ai`, which I91 copied with the
+rest; the wire is fit's (decision 044, 3): the module's API, the chat's Server-Sent Events, the
+store's section `assistant` and its siblings, and the MCP protocol, so that the pages run
+unchanged, a store moves between akit and fit, and an MCP client of either reaches both. Off by
+default: no `admin.assistant`, no module `ai`, nothing sent anywhere. The tests talk to stand-ins
+of the model APIs on port 0, never to a real API or with a real key.
+
+### I160 The assistant I: `admin.assistant` in the config, its settings and keys in the store, the module `ai`
+
+- **Do**: decision 044. `admin.assistant` read with fit's fields, defaults, bounds and checks
+  (`config/assistant.go`: `providers` of eight kinds, `default_model`, `params`, `limits`, `data`,
+  `users`, `default_level`, `mcp`), needing `admin.console`, no longer refused as not supported
+  yet. A new crate, `akit-assistant`: the settings, `admin.assistant`'s until the Settings page
+  saves and the store's from then on (the section `assistant`, fit's `{"settings", "keys"}`); the
+  keys written once, shown masked, never answered, logged or exported. The console module `ai`,
+  made by `admin.console` beside the config's own (`GET /api/workbench` lists it), with `GET` and
+  `PUT /api/m/ai/settings` (409 without a store, 412 for a stale version, fit's errors by path).
+- **Done when**: fit's `config/assistant_test.go` and the settings' tests of
+  `assistant/assistant_test.go` pass ported; a key appears in no answer, log line or export; a
+  store whose section fit wrote opens in akit with its settings and keys, and the reverse; the
+  gate's examples are valid; the fields marked with `make v1-bless`; the reference regenerated.
+- **Touches**: `akit-config`, `akit-assistant` (new), `akit-admin` (`console`), `akit` (`run`),
+  `tests/compat`, `docs`.
+- **fit**: `config/assistant.go`, `assistant/assistant.go`; I124.
+- **Status**: todo.
+
+### I161 The assistant II: the model client and the provider test
+
+- **Do**: fit's `assistant/model` on akio-http's asynchronous client (rule 1), on the listeners'
+  engine: for each kind the request (system prompt, messages, tools, params) and the streamed
+  answer (SSE, NDJSON for Ollama) parsed as it arrives into text, thinking and tool calls, with
+  the usage the API counts; bounded as fit's (a line or an event 1 MiB, the answer
+  `max_stream_bytes`, 64 tool calls, a failed answer's message 8 KiB) and by the provider's
+  connect, first-byte, idle and total timeouts; tried again at once, only before any answer and
+  only for a connection that failed or closed (decision row 100); a cancel closes the call's
+  connection; a key only over https or to loopback, masked in every error. `llm_proxy` on
+  `llm.proxy.api`'s port on loopback, its certificate pinned. `POST /api/m/ai/providers/test` (4 at
+  once, 15 s for the list, 30 s for the call).
+- **Done when**: fit's model tests (`codec`, `kinds`, `edge`, `call`) pass ported against stand-ins
+  of each API on port 0, a tool call round-tripping for each kind; an `llm_proxy` provider answers
+  through akit's own `llm.proxy`, hub and node whose upstream is a stand-in; a slow, cut or
+  oversized stream is bounded and failed; a key appears in no error.
+- **Touches**: `akit-assistant`, `akit-admin`, `docs`.
+- **fit**: `assistant/model`, `assistant/internal/fakeapi`; I124.
+- **Status**: todo.
+
+### I162 The assistant III: the chat and the read tools
+
+- **Do**: fit's I125: the agent loop and its context (the system prompt, the page context, the
+  budget with cut results and summarized turns, `ask_user`); the tool registry and the read tools,
+  run on a pool of the assistant's own against the Admin API in process; redaction of every
+  result; a bounded ring of akit's own log for `log_tail`; `POST /api/m/ai/chat` as Server-Sent
+  Events, fit's events, the model's stream held while the browser's unsent bytes are over a
+  watermark (decision row 102); `POST /api/m/ai/chat/stop`; conversations per user in the store's
+  sections `assistant.chats.<hash>`, bounded; `GET /api/m/ai/tools` and `/conversations`.
+- **Done when**: fit's chat and read tools' tests pass ported against a scripted stand-in model; no
+  secret reaches a recorded request; a browser that reads slowly bounds a long answer's memory;
+  the panel works in a browser.
+- **Touches**: `akit-assistant`, `akit-admin`, `akit-observe` (the log's ring), `docs`.
+- **fit**: `assistant/{chat,prompt,registry,tools_read,redact,conversations,admincall}.go`; I125.
+- **Status**: todo.
+
+### I163 The assistant IV: proposals, levels and the audit log
+
+- **Do**: fit's I126: the propose tools adding steps to one pending proposal a conversation, its
+  diff in `.conf`, YAML and JSON and its validation; Apply, after the dialog's confirm, as the
+  user with `If-Match` through the Admin API in process (`PUT /config/text?members=`,
+  `/config/reconcile`, `/rollback/{n}`, `/cache/purge`); the levels checked on every tool and
+  apply; the audit log in the store's section `assistant.audit`; `/api/m/ai/proposals` and
+  `/audit`.
+- **Done when**: fit's proposal, apply and audit tests pass ported.
+- **Touches**: `akit-assistant`, `akit-admin`, `docs`.
+- **fit**: `assistant/{proposals,apply,audit,jsontree,linediff}.go`; I126.
+- **Status**: todo.
+
+### I164 The assistant V: skills
+
+- **Do**: fit's I127: the skill format (Markdown with front matter), fit's built-in skills
+  embedded with akit's names, user skills in the store's section `assistant.skills`, the Skills
+  page's API, `/name`, the catalog and `skill_load`.
+- **Done when**: fit's skills tests pass ported.
+- **Touches**: `akit-assistant`, `docs`.
+- **fit**: `assistant/{skills,skillstore,chatskill}.go`, `assistant/skills`; I127.
+- **Status**: todo.
+
+### I165 The assistant VI: Ask AI, migration and review
+
+- **Do**: fit's I128 (the pages' buttons are I91's; the server's bounds of what they send) and I129:
+  `migrate` through `akit adapt`'s converters first, `security-review`, the evaluation set run by
+  `make assistant-eval` against a model the environment names, never in CI, and in CI against
+  recorded answers.
+- **Done when**: fit's evaluation and migration tests pass ported against recorded answers.
+- **Touches**: `akit-assistant`, `akit-config` (`adapt`), `Makefile`, `docs`.
+- **fit**: `assistant/{eval_test,migrate_test,eval_check_test}.go`, `assistant/testdata/eval`; I128,
+  I129.
+- **Status**: todo.
+
+### I166 The assistant VII: the MCP server
+
+- **Do**: fit's I130: `admin.assistant.mcp`, `/mcp` on the console's address (Streamable HTTP,
+  fit's protocol revisions), the registry's tools, the skills as prompts and the config, status,
+  versions, schema and reference as resources (`akit://`, decision row 101); MCP tokens kept hashed
+  in the store's section `assistant.mcp`, their levels, addresses and bounds; the audit log's
+  source `mcp`.
+- **Done when**: fit's `assistant/mcp` tests pass ported; an MCP client of the protocol lists and
+  calls akit's tools and fit's, and a proposal made over MCP applies only in the console.
+- **Touches**: `akit-assistant`, `akit-admin`, `docs`.
+- **fit**: `assistant/mcp`; I130.
+- **Status**: todo.
+
+### I167 The assistant VIII: edits on the page
+
+- **Do**: fit's I154: the level `edit`, `page_get`, `page_edit` and `page_revert` sent to the open
+  page over the chat's stream and answered with `POST /api/m/ai/chat/page`; never a submit.
+- **Done when**: fit's page tools' tests pass ported; the pages draw the draft in a browser.
+- **Touches**: `akit-assistant`, `docs`.
+- **fit**: `assistant/pagetools.go`; I154.
+- **Status**: todo.
+
+### I168 The assistant IX: the media library's tools and skills
+
+- **Do**: fit's I152 on akit's media library (I140–I149): `media_library_search`,
+  `media_item_get`, `channels_status`, `playback_sessions` and the media propose tools, the
+  skills `vod-setup`, `channel-scheduler`, `library-health` and `playback-troubleshoot`.
+- **Done when**: fit's media tests of the assistant pass ported.
+- **Touches**: `akit-assistant`, `akit-media`, `docs`.
+- **fit**: `assistant/{tools_media,proposals_media}.go`; I152.
+- **Status**: todo.
+
+### I169 The assistant X: across a cluster
+
+- **Do**: fit's I153 on `akit-cluster`: `cluster_members`, `cluster_templates`,
+  `cluster_rollouts`, the read tools' `member` argument through the manager's session, the propose
+  tools as rollout plans and operations a person starts on the Cluster pages; the narrower of the
+  assistant's level and the manager's role wins; the manager's `GET /api/m/cluster/me` answers the
+  user's level of the assistant (empty until then). `cluster_metrics`, `cluster_log_tail` and
+  `cluster_certs` read I139c's series, logs and inventory, and answer that they are not there
+  before it.
+- **Done when**: fit's `assistant/cluster_test.go` passes ported against stand-in members.
+- **Touches**: `akit-assistant`, `akit-cluster`, `docs`.
+- **fit**: `assistant/tools_cluster.go`, `cluster/assistant.go`; I153.
+- **Status**: todo.
