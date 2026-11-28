@@ -138,6 +138,7 @@
 | A302 | io_uring 上的 `Conn::close` 像 epoll 上一样重置一个收到了未交付数据的 TCP 连接（或提供以重置方式关闭的 `Conn::abort`）：目前进行中的接收在 shutdown 之后取走数据，面对零窗口的对端永远收不到重置 | 已进入 akio 的 main 并锁定（自 `5893a0ed` 起）：建议 (a)，akio 的 ADR-188（未交付输入时以 `SO_LINGER` 0 关闭；`akio_sys::reset_on_close`）；fastcgi.rs 的 `cut_connections` 在 io_uring 上通过 | — | I75 |
 | A303 | 在工作窃取（ADR-104）下依然成立的联动背压：暂停的上游读取（akio-http 的 `ResponseBody::hold_reads`，akit 的 `Download::hold_reads` 在其上）与写满的下游（`BodyStream::queued_bytes`、`on_drain`）像在事件循环上一样限制流式转发占用的内存 | 已进入 akio 的 main 并锁定（自 `2575a253` 起）：原因不是背压，而是 akio-buf 的每线程缓存，现在每个线程每个大小类最多保留 256 KiB（akio 的 ADR-190）；akit 的权宜做法（`akit_runtime::scheduled`，决定 91）已去掉：akit 的监听器采用 akio 的默认调度 | 8, 11 | I16, I17, I18b |
 | A305 | 普通（plain）WebSocket 的迟到队列（其处理器的批次打开期间其他线程发送的内容）计入 `WsSender::queued_bytes` 并由 `on_drain` 等待，以连接的 `max_queued_bytes` 而不是固定的 4 MiB 为上限，并且在批次结束时绝不静默丢弃 | 已进入 akio 的 main 并锁定（自 `2575a253` 起）：akio 的 ADR-189；`large_transfers_both_ways` 在负载下通过；加密的 WebSocket 在发送被拒时仍会结束 | 8, 9 | I103b |
+| A306 | 由 `akio_http::Service` 回答在进程内构造的请求：用方法、路径、头字段和请求体构造请求来运行其处理器，其回答（或分离后的回答）交给回调 | 已请求；临时方案：成员的 Admin API 经由到自己回环监听的一跳回答其链接上的调用 | 93 | I139b |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -2632,3 +2633,17 @@ akio 改动带来的（akio-ws 的迟到队列更早就有）。每次失败中�
 
 **akit 如何使用。** akit 不需要改动：控制台套接字的闸门（`akit-tunnel/src/pace.rs`）届时会在迟到队列填满时暂停控制台的读取，
 `large_transfers_both_ways` 在负载下也能通过。发送失败的处理保留，用于其他原因导致的发送失败。
+
+## A306 在进程内构造的请求，由 Service 回答
+
+**状态。** 已请求（2026-11-28，I139b）。临时方案：向管理端外连的成员用其 Admin API 经由到自己回环监听的一跳回答管理端的调用
+（`akit_cluster::linkmember::loopback_api`），因此 API 必须监听 TCP（决定待定行 93）。
+
+**问题。** NAT 之后的成员拨号连接其管理端（fit 的 I149），管理端对其 Admin API 的调用以消息的形式经该 WebSocket 到达：方法、路径、
+头字段和请求体。fit 在进程内调用其 Admin API 的 `http.Handler` 回答它们（`admin.LinkAPI`）。akit 的 Admin API 是一个
+`akio_http::Service`，其处理器接收只有 akio-http 为从连接上读到的请求才会构造的 `Context`：无法为进程内构造的请求运行它。
+
+**建议。** `akio_http::serve_local(&service, LocalRequest { method, path, query, headers, body, peer }, reply: impl FnOnce(Response) + Send)`
+（或同样的 `Context::local`）：处理器像对完整读到的请求那样运行，`ctx.body()` 即给出的请求体，`ctx.respond` 以及分离后回答的
+`respond` 只调用一次 `reply`，既不回答也不分离的处理器像现在一样以 500 回答。流式请求体（`BodyMode::Stream`）可以把整个请求体作为
+一个分块再加结束交付。

@@ -2293,3 +2293,162 @@ fn roles_and_audit() {
     );
     let _ = (m.stop(), am.stop(), bm.stop());
 }
+
+/// A manager taking links on `127.0.0.1:0` (I139b), its console user ada.
+fn link_manager(d: &Dir, name: &str, pw_hash: &str) -> PathBuf {
+    d.file(
+        name,
+        &format!(
+            r#"{{"admin": {{"address": "127.0.0.1:0", "console": {{"address": "127.0.0.1:0",
+                "users": [{{"username": "ada", "password_hash": "{pw_hash}"}}]}},
+                "cluster": {{"poll_interval": "1s", "timeout": "3s", "link_address": "127.0.0.1:0"}}}}, {WEB}}}"#
+        ),
+    )
+}
+
+/// A member linking out with `cm`, its `cluster_member` as JSON.
+fn linking_member(d: &Dir, name: &str, cm: &str) -> PathBuf {
+    d.file(
+        &format!("{name}.json"),
+        &format!(r#"{{"admin": {{"address": "127.0.0.1:0", "cluster_member": {cm}}}, {WEB}}}"#),
+    )
+}
+
+/// Enrolls member `name` on the manager `b`: its `cluster_member` as JSON.
+fn enroll(b: &Browser, name: &str) -> String {
+    let (st, _, v) = b.call(
+        "POST",
+        "/api/m/cluster/enroll",
+        &format!(r#"{{"name": "{name}", "labels": {{"region": "eu"}}}}"#),
+    );
+    assert_eq!(st, 201, "{v}");
+    let e = parse(&v);
+    let cfg = e.get("config").unwrap();
+    assert!(
+        str_member(&e, "config_line").starts_with("\"cluster_member\": "),
+        "{v}"
+    );
+    akit_config::value::Value::to_json(cfg).trim().to_owned()
+}
+
+/// Members behind NAT linking out (I139b, fit's `link` tests): a member enrolled on the
+/// manager's Nodes page links out with its token, keeps its credential and links with it after a
+/// restart; the manager polls it, reads it and opens its pages over the link; a token used once
+/// is refused again; a member removed has its link revoked.
+#[test]
+fn members_linking_out() {
+    let d = Dir::new("link");
+    let h = hash("pw");
+    let m = Run::start(&[
+        "-admin",
+        "-c",
+        s(&link_manager(&d, "manager.json", &h)),
+        "-watch-certs=false",
+    ]);
+    let mut b = Browser::new(m.addr("console on http://"));
+    assert_eq!(b.login("ada", "pw").0, 200);
+    let (st, _, info) = b.call("GET", "/api/m/cluster/link", "");
+    assert_eq!(st, 200, "{info}");
+    assert!(
+        info.contains(r#""enabled":true"#) && info.contains("wss://127.0.0.1:"),
+        "{info}"
+    );
+    let cm = enroll(&b, "edge");
+    assert!(cm.contains("akite1."), "{cm}");
+    let st = state_of(&b, "edge");
+    assert!(member(&st, "link").contains("enroll_by"), "{st:?}");
+    let mcfg = linking_member(&d, "edge", &cm);
+    let edge = Run::start(&["-c", s(&mcfg), "-watch-certs=false"]);
+    let st = wait_state(&b, "edge", "up", "");
+    assert!(
+        member(&st, "link").contains("\"linked\": Bool(true)")
+            || format!("{st:?}").contains("linked"),
+        "{st:?}"
+    );
+    let (st, _, v) = b.call("GET", "/api/m/cluster/nodes/edge/read/status", "");
+    assert_eq!(st, 200, "{v}");
+    assert!(v.contains("\"reloads\""), "{v}");
+    let (st, _, v) = b.call("GET", "/api/n/edge/m/admin/config", "");
+    assert_eq!(st, 200, "{v}");
+    assert!(v.contains("cluster_member"), "{v}");
+    // Restarted, it links with its credential; its token is spent.
+    let (code, _, err) = edge.stop();
+    assert_eq!(code, Some(0), "{err}");
+    wait_state(&b, "edge", "down", "not_linked");
+    let edge = Run::start(&["-c", s(&mcfg), "-watch-certs=false"]);
+    wait_state(&b, "edge", "up", "");
+    assert!(d.0.join("edge.cluster-member").exists());
+    let again = linking_member(&d, "edge2", &cm);
+    let e2 = Run::start(&["-c", s(&again), "-watch-certs=false"]);
+    e2.wait_for("the enrollment token was used already");
+    // Removed: its link is revoked, and it links no more.
+    let (st, _, v) = b.call("DELETE", "/api/m/cluster/nodes/edge", "");
+    assert_eq!(st, 200, "{v}");
+    edge.wait_for("revoked this akit's credential");
+    let (_, _, audit) = b.call("GET", "/api/m/cluster/audit?action=node.enroll", "");
+    assert!(
+        audit.contains("node.enroll_token") && audit.contains("node.enrolled"),
+        "{audit}"
+    );
+    let _ = (m.stop(), edge.stop(), e2.stop());
+}
+
+/// Links across akit and fit (I139b, decision 041): an akit member links out to fit's manager,
+/// and fit's member to akit's, each enrolled by the other's token with its prefix rewritten.
+#[test]
+fn links_with_fit() {
+    let Some(fit) = std::env::var_os("AKIT_FIT_BIN").map(PathBuf::from) else {
+        eprintln!("skipped: AKIT_FIT_BIN is not set");
+        return;
+    };
+    let d = Dir::new("link-fit");
+    let h = hash("pw");
+    // An akit member, fit's manager.
+    let fm = Run::spawn(
+        &fit,
+        &[
+            "-admin",
+            "-c",
+            s(&link_manager(&d, "fit-manager.json", &h)),
+            "-watch-certs=false",
+        ],
+    );
+    let mut fb = Browser::of("fit", fm.addr("console on http://"));
+    assert_eq!(fb.login("ada", "pw").0, 200);
+    let cm = enroll(&fb, "ak");
+    assert!(cm.contains("fite1."), "{cm}");
+    let ak = Run::start(&[
+        "-c",
+        s(&linking_member(&d, "ak", &cm.replace("fite1.", "akite1."))),
+        "-watch-certs=false",
+    ]);
+    wait_state(&fb, "ak", "up", "");
+    let (st, _, v) = fb.call("GET", "/api/m/cluster/nodes/ak/read/status", "");
+    assert_eq!(st, 200, "{v}");
+    // A fit member, akit's manager.
+    let am = Run::start(&[
+        "-admin",
+        "-c",
+        s(&link_manager(&d, "akit-manager.json", &h)),
+        "-watch-certs=false",
+    ]);
+    let mut b = Browser::new(am.addr("console on http://"));
+    assert_eq!(b.login("ada", "pw").0, 200);
+    let cm = enroll(&b, "fm");
+    let fmem = Run::spawn(
+        &fit,
+        &[
+            "-c",
+            s(&linking_member(&d, "fm", &cm.replace("akite1.", "fite1."))),
+            "-watch-certs=false",
+        ],
+    );
+    let st = wait_state(&b, "fm", "up", "");
+    assert!(
+        str_member(st.get("node").unwrap(), "akit_version").starts_with("fit "),
+        "{st:?}"
+    );
+    let (st, _, v) = b.call("GET", "/api/m/cluster/nodes/fm/read/versions", "");
+    assert_eq!(st, 200, "{v}");
+    let _ = (ak.stop(), fm.stop(), fmem.stop(), am.stop());
+}

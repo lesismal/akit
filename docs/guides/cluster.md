@@ -10,11 +10,10 @@ token). The members may be fits too: what they answer is fit's protocol
 ([decision 041](../decisions/041-cluster-management.md)). The manager is not in the data path: a
 manager down costs management and nothing else.
 
-This guide covers what akit runs now (I130–I139): members, their state, the Overview and Nodes
+This guide covers what akit runs now (I130–I139b): members, their state, the Overview and Nodes
 pages, a member's page, the node switcher, groups and operations on many, templates, rollouts
-with health gates, drift and alerts, users' roles and the audit log. Members behind NAT and the
-`akit cluster` command follow in I139b and I139c ([the plan](../dev-plan.md#cluster-management));
-their menu entries are drawn already and answer "no such endpoint" until then.
+with health gates, drift and alerts, users' roles and the audit log, and members behind NAT. The
+`akit cluster` command follows in I139c ([the plan](../dev-plan.md#cluster-management)).
 
 ## A manager
 
@@ -125,6 +124,20 @@ viewer reads, an operator runs operations, syncs, rollouts of templates and sile
 members, an admin changes them; the manager's own config, users and services are changed by a
 cluster-wide admin only. A refusal says the role it needs, and where. Every change is in the audit
 log, filtered by user, member and action, and exported as JSON lines.
+
+## Members behind NAT
+
+A member the manager cannot reach (behind NAT, or with no port open) links out to it instead. Set
+`admin.cluster.link_address` on the manager (as `":7444"`; `link_url` when members reach it at
+another URL); its link listener's certificate is made once and kept in the store. **Cluster →
+Nodes → Add by enrollment** names the member and gives the config line to paste into its
+`admin` (`"cluster_member": {"manager": "wss://...", "fingerprint": "...", "token": "akite1...."}`);
+the member links out with the token once, keeps the credential the manager gives it (in its store,
+or beside its config as `akit.cluster-member`), and links with that from then on, dialing again
+with backoff whenever the link ends. The manager reaches it over its link as it reaches the others
+over HTTP; the member's Admin API answers, so it must listen on TCP. A token is used once and
+expires (a day by default, 30 days at most); **Enroll again** makes a member a new one. A token
+made by a fit manager (`fite1.`) is written as `akite1.` for an akit member, and the reverse.
 
 ## Mixed clusters
 

@@ -294,7 +294,7 @@ fn compile_config(
 /// runs, applying it would be a config that says more than akit does.
 fn roles_not_running(config: &Config) -> Result<(), Failure> {
     let unknown = akit_roles::host::unknown(config, crate::ROLES);
-    let mut errs: Vec<Error> = unknown
+    let errs: Vec<Error> = unknown
         .into_iter()
         .map(|path| Error {
             file: None,
@@ -310,21 +310,7 @@ fn roles_not_running(config: &Config) -> Result<(), Failure> {
             ),
         })
         .collect();
-    // Cluster management (I130): read and checked by akit validate; the manager runs since
-    // I132, a member links out from I139b (decision row 74).
-    if config
-        .admin
-        .as_ref()
-        .is_some_and(|a| a.cluster_member.is_some())
-    {
-        errs.push(Error {
-            file: None,
-            path: "admin.cluster_member".to_owned(),
-            line: 0,
-            col: 0,
-            msg: "akit run does not run this yet (I139b); akit validate checks it".to_owned(),
-        });
-    }
+    // Cluster management (I130): the manager runs since I132, a member links out since I139b.
     if errs.is_empty() {
         Ok(())
     } else {
@@ -1755,6 +1741,66 @@ fn run(args: &[String]) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    // A member that links out to its manager (I139b), the manager's calls answered by this
+    // akit's Admin API.
+    let member_link = match (admin.as_ref(), api.as_ref()) {
+        (Some(a), Some(s)) => match &a.cluster_member {
+            None => None,
+            Some(cm) => {
+                let keeper: Arc<dyn akit_cluster::linkmember::Keeper> = match &boot {
+                    Some(b) => Arc::new(akit_cluster::linkmember::StoreKeeper(Arc::new(
+                        ClusterStore(Arc::clone(&b.store)),
+                    ))),
+                    None => {
+                        let prefix = paths
+                            .first()
+                            .and_then(|p| akit_roles::host::beside_prefix(p))
+                            .unwrap_or_else(|| "akit".to_owned());
+                        Arc::new(akit_cluster::linkmember::FileKeeper(
+                            format!("{prefix}{}", akit_cluster::linkmember::FILE_SUFFIX).into(),
+                        ))
+                    }
+                };
+                let token = a
+                    .token_file
+                    .as_ref()
+                    .and_then(|f| std::fs::read_to_string(f).ok())
+                    .map(|t| t.trim().to_owned())
+                    .filter(|t| !t.is_empty());
+                let o = akit_cluster::linkmember::Options {
+                    engine: Arc::clone(&engine),
+                    settings: cm.clone(),
+                    api: akit_cluster::linkmember::loopback_api(
+                        &engine,
+                        s.addr(),
+                        a.cert_file.is_some(),
+                        token,
+                    ),
+                    max_request_bytes: a.max_config_bytes.max(4 << 20),
+                    keeper,
+                    node_id: configs.node().id.clone(),
+                    hostname: akit_config::roles::host_name(),
+                    log: Arc::new(|msg: String| {
+                        akit_observe::logger::log(
+                            akit_observe::logger::Logger::Admin,
+                            akit_observe::logger::Level::Info,
+                            format_args!("{msg}"),
+                        );
+                    }),
+                };
+                match akit_cluster::linkmember::MemberLink::start(o) {
+                    Ok(l) => Some(l),
+                    Err(e) => {
+                        eprintln!("akit run: admin.cluster_member: {e}");
+                        s.shutdown();
+                        akit_listener::shutdown(&engine, grace);
+                        return ExitCode::FAILURE;
+                    }
+                }
+            }
+        },
+        _ => None,
+    };
     // The metrics /metrics serves, exported every telemetry.metrics.interval (I64).
     let exporter = match (&otlp, telemetry.as_ref().and_then(|t| t.metrics.as_ref())) {
         (Some(o), Some(m)) => {
@@ -1929,9 +1975,13 @@ fn run(args: &[String]) -> ExitCode {
     if let Some(api) = &api {
         api.shutdown();
     }
-    // The cluster manager's members logged out, before the engine its calls go out on (I132).
+    // The cluster manager's members logged out, before the engine its calls go out on (I132);
+    // a member's link to its manager ended (I139b).
     if let Some(m) = &cluster {
         m.close();
+    }
+    if let Some(l) = &member_link {
+        l.close();
     }
     updates.close();
     for p in &mut providers {
@@ -2128,25 +2178,15 @@ mod tests {
         assert!(super::roles_not_running(&c).is_ok());
     }
 
-    /// Cluster management is checked by akit validate; akit run runs the manager (I132) and
-    /// refuses a member linking out until I139b (decision row 74); the node ID is taken.
+    /// Cluster management: akit run runs the manager (I132) and a member that links out
+    /// (I139b): neither is refused.
     #[test]
-    fn cluster_member_is_refused_until_it_runs() {
+    fn cluster_member_runs() {
         let doc = r#"{"admin": {"node_id": "edge-1",
             "console": {"users": [{"username": "a", "password_hash": "$2a$10$x"}]},
             "cluster": {},
             "cluster_member": {"manager": "wss://m:7444/cluster/link", "fingerprint": "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a", "token_file": "/t"}}}"#;
         let c = akit_config::from_json(doc, None).unwrap();
-        let Err(super::Failure::Config(errs)) = super::roles_not_running(&c) else {
-            panic!("not refused");
-        };
-        let paths: Vec<&str> = errs.as_slice().iter().map(|e| e.path.as_str()).collect();
-        assert_eq!(paths, ["admin.cluster_member"]);
-        let c = akit_config::from_json(
-            r#"{"admin": {"node_id": "edge-1", "console": {"users": [{"username": "a", "password_hash": "$2a$10$x"}]}, "cluster": {}}}"#,
-            None,
-        )
-        .unwrap();
         assert!(super::roles_not_running(&c).is_ok());
     }
 

@@ -286,7 +286,7 @@ Tunnel and LLM track; I110–I114 are the WebRTC track, and I115–I119 are rese
 | I137 | Cluster VIII: rollouts with health gates | I136 | done |
 | I138 | Cluster IX: drift and alerts; `/config/check` | I137 | done |
 | I139 | Cluster X: users, roles and the audit log | I137 | done |
-| I139b | Cluster XI: members behind NAT, linking out | I132 | todo |
+| I139b | Cluster XI: members behind NAT, linking out | I132 | done |
 | I139c | Cluster XII: metrics, logs and certificates across members; `akit cluster` | I138 | todo |
 | **After 1.0: AI assistant** | | | |
 | I160 | The assistant I: `admin.assistant` in the config, its settings and keys in the store, the module `ai` | I93c, I91 | done |
@@ -2656,6 +2656,9 @@ default: no `admin.cluster`, no Cluster menu, no outgoing calls.
   reverse.
 - **Touches**: `akit-cluster`, `akit-roles` (`linktoken`), `akit`.
 - **fit**: `cluster/{linkserver,linkmember,linkproto,enroll}.go`, `admin/clusterlink.go`; I149.
+- **Status**: done (2026-11-28). fit's protocol byte for byte; a token is written with the
+  member's own prefix across akit and fit; the Admin API answers the link's calls through a
+  loopback hop until akio's A306 (decision 041, 12; decision row 93). See the progress log.
 
 ### I139c Cluster XII: metrics, logs and certificates across members; `akit cluster`
 

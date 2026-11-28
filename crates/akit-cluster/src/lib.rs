@@ -51,6 +51,8 @@ mod alerteval;
 pub mod alerts;
 mod api;
 pub mod groups;
+pub mod link;
+pub mod linkmember;
 pub mod ops;
 pub mod pass;
 pub mod roles;
@@ -206,6 +208,8 @@ pub(crate) struct Inner {
     pub(crate) ro_cv: Condvar,
     /// The alerts (I138), their writes one at a time, and their thread.
     pub(crate) al: Mutex<alerts::Al>,
+    /// The link listener and the links of members that link out (I139b).
+    pub(crate) link: Mutex<link::Hub>,
     pub(crate) al_write: Mutex<()>,
     pub(crate) al_wake: Mutex<Option<SyncSender<()>>>,
     pub(crate) al_thread: Mutex<Option<JoinHandle<()>>>,
@@ -295,6 +299,7 @@ impl Manager {
             ro: Mutex::new(rollouts::Ro::default()),
             ro_cv: Condvar::new(),
             al: Mutex::new(alerts::Al::default()),
+            link: Mutex::new(link::Hub::default()),
             al_write: Mutex::new(()),
             al_wake: Mutex::new(None),
             al_thread: Mutex::new(None),
@@ -309,6 +314,7 @@ impl Manager {
         let m = Manager(inner);
         m.load_rollouts();
         m.load_alerts();
+        m.start_links().map_err(std::io::Error::other)?;
         m.sync_senders();
         m.sync();
         let (tx, rx) = mpsc::sync_channel(1);
@@ -341,6 +347,8 @@ impl Manager {
         }
         // The alerts are evaluated no more, and saved; their webhooks' senders closed.
         self.stop_alerts();
+        // The links taken no more, and closed.
+        self.stop_links();
         // The rollouts waiting stop waiting; those calling members stop once answered.
         drop(lock(&self.0.ro));
         self.0.ro_cv.notify_all();
@@ -414,7 +422,16 @@ impl Manager {
     fn state_json(&self, m: &Member, n: Option<&Arc<Node>>) -> String {
         let groups = groups::groups_of(&lock(&self.0.doc).doc, &m.name, &m.labels);
         if let Some(n) = n {
-            return n.state().json(m, &groups);
+            let st = n.state().json(m, &groups);
+            if m.access != member::ACCESS_LINK {
+                return st;
+            }
+            // How its link is (I139b), fit's `State.Link`.
+            return format!(
+                "{},\"link\":{}}}",
+                st.strip_suffix('}').unwrap_or(&st),
+                self.link_state_json(m)
+            );
         }
         // A member kept in the store that does not check is never polled.
         let mut st = n_state_unchecked();
@@ -442,12 +459,24 @@ impl Manager {
                 &self.0.system,
             )?))
         };
-        Ok(Arc::new(Node::new(
-            m.clone(),
-            t,
-            self.0.interval,
-            Arc::clone(&self.0.o.log),
-        )))
+        let mut n = Node::new(m.clone(), t, self.0.interval, Arc::clone(&self.0.o.log));
+        if m.access == member::ACCESS_LINK {
+            // Its calls go over its link (I139b), whichever is open when they are made.
+            let weak = Arc::downgrade(&self.0);
+            let cred = link::credential_id(m);
+            n = n.with_via(Arc::new(
+                move |method, path, headers, body, done| match weak.upgrade() {
+                    Some(inner) => {
+                        Manager(inner).link_call(&cred, method, path, headers, body, done);
+                    }
+                    None => done(Err(transport::Problem::new(
+                        transport::KIND_UNREACHABLE,
+                        transport::CLOSED,
+                    ))),
+                },
+            ));
+        }
+        Ok(Arc::new(n))
     }
 
     /// Makes the nodes those of the document's members: a member whose link is unchanged keeps
@@ -456,6 +485,7 @@ impl Manager {
         if self.0.closed.load(Ordering::Acquire) {
             return;
         }
+        self.sync_links();
         let members = lock(&self.0.doc).doc.members.clone();
         let mut nodes = lock(&self.0.nodes);
         let mut keep = HashMap::new();

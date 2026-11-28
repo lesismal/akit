@@ -64,6 +64,12 @@ fit 的 I140–I150 让设置了 `admin.cluster` 的 fit 成为其他 fit（其�
     检查，拒绝时以 403 回答所需的角色。管理端自身的控制台经集群模块把关（`akit_roles::pages::Module::console_gate`，即 fit 的
     `ConsoleGate`）。fit 的角色对其助手的限制回答为空（`assistant`），因为 akit 的管理端没有助手；审计日志的条目不带所改内容的逐行差异。
 
+
+12. **链接（I139b）** 与 fit 逐字节相同：`/cluster/link` 上经 TLS 的 WebSocket，管理端保存为文档 `link_cert` 并由成员固定的自签名证书，
+    消息、标签 `fit cluster link v1` 和 fit 的证明（决定 038），以及以 fit 的前缀 `fitc1.` 在线上发送并保存的成员凭据。人使用的
+    注册令牌在 akit 上是 `akite1.`，在 fit 上是 `fite1.`：由另一方管理端生成的令牌改写为成员自己的前缀，其 ID 和秘密不变。管理端每 15 秒
+    对每条链接发送 ping，45 秒内没有收到消息就结束它（akio 的 WebSocket 处理器看不到 ping，只看到 pong），成员对管理端亦然；成员在
+    从 1 秒倍增到 1 分钟并带抖动的退避之后重新拨号。成员用其 Admin API 经由到自己监听的一跳回答管理端的调用（决定待定行 93，直到 akio 的 A306）。
 ## 备选方案
 
 - **线上也用 akit 的名字**（只用 `akit_version`、只用 `X-Akit-Csrf`）：一种管理端就无法管理另一种成员。管理端一侧拒绝；

@@ -23,6 +23,32 @@ done and where the work differs from the plan.
 
 ## Log
 
+### 2026-11-28: I139b, members behind NAT linking out
+
+- The manager's links (`akit_cluster::link`, fit's `cluster/linkserver.go`, `linkproto.go` and
+  `enroll.go`): `admin.cluster.link_address`, a WebSocket over TLS at `/cluster/link` with a
+  self-signed certificate made once and kept as the document's `link_cert`; the challenge, hello,
+  welcome, refusals and revocations, and the calls and their answers and cancels, fit's byte for
+  byte (label `fit cluster link v1`, fit's proofs, a credential `fitc1.` on the wire); a hello
+  checked on the I/O thread, an enrollment kept on the manager's pool; 16 calls a link, the
+  links bounded by `max_nodes` + 16 and 32 pending; the manager pings each link every 15 s and
+  ends one silent for 45 s; a member whose credential is gone has its link revoked. A member that
+  links out is polled, read, switched to and operated on over its link as the others over HTTP;
+  its state says how its link is (`link`).
+- Enrollment: `GET /api/link`, `POST /api/enroll` (a member added with a token, a day by
+  default, 1 min to 30 days), `POST /api/nodes/<name>/enroll` (a new token); `node.enroll_token`
+  and `node.enrolled` in the audit log; the token `akite1.`.
+- The member (`akit_cluster::linkmember`, fit's `linkmember.go`): `admin.cluster_member` no longer
+  refused by `akit run`; it dials with the manager's certificate pinned, enrolls once, keeps its
+  credential in the store's `cluster_member` section or beside its config (`akit.cluster-member`),
+  links with it from then on, dials again after a backoff of 1 s doubling to 1 min with jitter, and
+  forgets a token or credential the manager refuses for good. Its Admin API answers the manager's
+  calls through a hop to its own listener on loopback until akio's A306 (decision row 93).
+- Tests: `link::tests` (calls, prefixes, proofs, header fields); akit's `members_linking_out`
+  (enrolled, polled, read and switched to over its link, linked again with its credential after a
+  restart, a token used once refused, a member removed revoked) and `links_with_fit` (an akit
+  member under fit's manager and a fit member under akit's, each by the other's token).
+
 ### 2026-11-28: I161, the assistant II: the model client and the provider test
 
 - `akit_assistant::model`, fit's `assistant/model` on akio-http's asynchronous client

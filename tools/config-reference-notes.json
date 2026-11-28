@@ -123,12 +123,12 @@
       "zh": "按 fit 的方式读取和检查；`/mcp` 上的 MCP 服务器随 I166 提供，在此之前不应答任何请求。"
     },
     "admin.cluster": {
-      "en": "Read and checked as fit's (I130); `akit run` refuses it until I132 runs the manager. The manager keeps its members in the store's `cluster` section, fit's document (decision 041).",
-      "zh": "按 fit 的方式读取和检查（I130）；在 I132 运行管理端之前 `akit run` 拒绝它。管理端把成员保存在存储的 `cluster` 分区，即 fit 的文档（决定 041）。"
+      "en": "Read and checked as fit's (I130); the manager runs since I132, its link listener (`link_address`) since I139b. The manager keeps its members in the store's `cluster` section, fit's document (decision 041).",
+      "zh": "按 fit 的方式读取和检查（I130）；管理端自 I132 起运行，其链接监听（`link_address`）自 I139b 起运行。管理端把成员保存在存储的 `cluster` 分区，即 fit 的文档（决定 041）。"
     },
     "admin.cluster_member": {
-      "en": "Read and checked as fit's (I130); `akit run` refuses it until I139b links out.",
-      "zh": "按 fit 的方式读取和检查（I130）；在 I139b 外连之前 `akit run` 拒绝它。"
+      "en": "Read and checked as fit's (I130); since I139b `akit run` links out to the manager, keeping the credential it enrolls for in the store's `cluster_member` section, or beside the config as `akit.cluster-member` (fit's `.cluster-member`). The Admin API must listen on TCP: it answers the manager's calls (decision row 93).",
+      "zh": "按 fit 的方式读取和检查（I130）；自 I139b 起 `akit run` 向管理端外连，把注册得到的凭据保存在存储的 `cluster_member` 分区，或在配置旁的 `akit.cluster-member`（fit 的 `.cluster-member`）。Admin API 必须监听 TCP：它回答管理端的调用（决定待定行 93）。"
     },
     "admin.cluster_member.token": {
       "en": "akit's prefix is `akite1.`, fit's `fite1.` renamed (decision 037): a token fit's manager made is written `akite1.<id>.<secret>`.",

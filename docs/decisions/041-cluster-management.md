@@ -98,6 +98,17 @@ keeps, and which names on it are akit's.
     of its assistant is answered empty (`assistant`), akit's manager having none; the audit
     log's entries carry no line diffs of what changed.
 
+
+12. **Links (I139b)** are fit's byte for byte: the WebSocket over TLS at `/cluster/link`, the
+    manager's self-signed certificate kept as the document's `link_cert` and pinned by members, the
+    messages, the label `fit cluster link v1` and fit's proofs (decision 038), and a member's
+    credential written on the wire, and kept, with fit's prefix `fitc1.`. A person's enrollment
+    token is `akite1.` on akit and `fite1.` on fit: one made by the other's manager is written
+    with the member's own prefix, its ID and secret unchanged. The manager pings each link every
+    15 s and ends one not heard from in 45 s (akio's WebSocket handler sees no pings, only pongs),
+    as the member does the manager; a member dials again after a backoff of 1 s doubling to 1 min
+    with jitter. A member answers its manager's calls with its Admin API through a hop to its own
+    listener (decision row 93, until akio's A306).
 ## Alternatives
 
 - **akit's names on the wire too** (`akit_version` only, `X-Akit-Csrf` only): a manager of one

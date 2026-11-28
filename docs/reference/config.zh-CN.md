@@ -1020,8 +1020,8 @@ route { match { host example.com }; handler respond { body hello } }
 | `assistant` | [对象](#cfg-admin-assistant) |  | **akit：**按 fit 的方式读取和检查（I160）。控制台以模块 `ai` 提供助手；“设置”页把设置连同各提供方的密钥整体保存到存储的 `assistant` 分区（fit 的文档），此后从那里读取（决定 044）。密钥从不应答、记录日志或导出。没有 `admin.store` 时设置取自本成员，无法从页面保存；密钥则来自 `api_key_env`。 |
 | `cert_file` | 字符串 |  | **akit：**在控制线程上，带 `-watch-certs`（默认开启）时每个 `-watch-interval` 查看一次这些文件，而不是像 fit 那样在握手时查看；文件保持 500ms 不变后加载；SIGHUP 也会重新读取（I94）。新连接得到新证书；加载失败的文件记录到 `admin` 日志器，正在使用的证书保留。 |
 | `client_ca_file` | 字符串 |  | **akit：**与 `cert_file` 一起重新读取（I94）：新连接按新的 CA 检查。 |
-| `cluster` | [对象](#cfg-admin-cluster) |  | **akit：**按 fit 的方式读取和检查（I130）；在 I132 运行管理端之前 `akit run` 拒绝它。管理端把成员保存在存储的 `cluster` 分区，即 fit 的文档（决定 041）。 |
-| `cluster_member` | [对象](#cfg-admin-cluster-member) |  | **akit：**按 fit 的方式读取和检查（I130）；在 I139b 外连之前 `akit run` 拒绝它。 |
+| `cluster` | [对象](#cfg-admin-cluster) |  | **akit：**按 fit 的方式读取和检查（I130）；管理端自 I132 起运行，其链接监听（`link_address`）自 I139b 起运行。管理端把成员保存在存储的 `cluster` 分区，即 fit 的文档（决定 041）。 |
+| `cluster_member` | [对象](#cfg-admin-cluster-member) |  | **akit：**按 fit 的方式读取和检查（I130）；自 I139b 起 `akit run` 向管理端外连，把注册得到的凭据保存在存储的 `cluster_member` 分区，或在配置旁的 `akit.cluster-member`（fit 的 `.cluster-member`）。Admin API 必须监听 TCP：它回答管理端的调用（决定待定行 93）。 |
 | `console` | [对象](#cfg-admin-console) |  |  |
 | `disable_dashboard` | 布尔值 |  |  |
 | `history` | 整数，≥ 0 | `10` |  |

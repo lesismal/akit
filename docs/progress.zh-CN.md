@@ -22,6 +22,22 @@
 
 ## 日志
 
+### 2026-11-28：I139b，NAT 之后向外链接的成员
+
+- 管理端的链接（`akit_cluster::link`，fit 的 `cluster/linkserver.go`、`linkproto.go` 和 `enroll.go`）：`admin.cluster.link_address`，
+  `/cluster/link` 上经 TLS 的 WebSocket，使用只生成一次并保存为文档 `link_cert` 的自签名证书；质询、问候、欢迎、拒绝和吊销，以及调用、
+  回答和取消，与 fit 逐字节相同（标签 `fit cluster link v1`、fit 的证明、线上的凭据 `fitc1.`）；问候在 I/O 线程上检查，注册在管理端的
+  线程池上保存；每条链接 16 个调用，链接总数不超过 `max_nodes` + 16，待握手的不超过 32；管理端每 15 秒 ping 每条链接，45 秒无消息即
+  结束；凭据已删除的成员其链接被吊销。外连的成员经由其链接被轮询、读取、切换和操作，就像其他成员经由 HTTP；其状态说明链接情况（`link`）。
+- 注册：`GET /api/link`、`POST /api/enroll`（以令牌添加成员，默认一天，1 分钟到 30 天）、`POST /api/nodes/<name>/enroll`（新令牌）；
+  审计日志中的 `node.enroll_token` 和 `node.enrolled`；令牌为 `akite1.`。
+- 成员（`akit_cluster::linkmember`，fit 的 `linkmember.go`）：`akit run` 不再拒绝 `admin.cluster_member`；它固定管理端的证书拨号，注册
+  一次，把凭据保存在存储的 `cluster_member` 分区或配置旁（`akit.cluster-member`），此后用凭据连接，在从 1 秒倍增到 1 分钟并带抖动的
+  退避之后重新拨号，并忘掉管理端永久拒绝的令牌或凭据。在 akio 的 A306 之前，其 Admin API 经由到自己回环监听的一跳回答管理端的调用
+  （决定待定行 93）。
+- 测试：`link::tests`（调用、前缀、证明、头字段）；akit 的 `members_linking_out`（注册、经由链接被轮询、读取和切换，重启后用凭据重新
+  连接，已用过的令牌被拒绝，删除的成员被吊销）和 `links_with_fit`（fit 管理端下的 akit 成员和 akit 管理端下的 fit 成员，各用对方的令牌）。
+
 ### 2026-11-28：I161，助手 II：模型客户端和提供方测试
 
 - `akit_assistant::model`：在 akio-http 的异步客户端（`Client::request_with`）上、在监听器的 engine 上（`akit run` 在有

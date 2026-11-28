@@ -274,7 +274,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I137 | 集群 VIII：带健康门槛的发布 | I136 | done |
 | I138 | 集群 IX：漂移和告警；`/config/check` | I137 | done |
 | I139 | 集群 X：用户、角色和审计日志 | I137 | done |
-| I139b | 集群 XI：NAT 之后主动外连的成员 | I132 | todo |
+| I139b | 集群 XI：NAT 之后主动外连的成员 | I132 | done |
 | I139c | 集群 XII：跨成员的指标、日志和证书；`akit cluster` | I138 | todo |
 | **1.0 之后：AI 助手** | | | |
 | I160 | 助手 I：配置中的 `admin.assistant`、存储中的设置和密钥、模块 `ai` | I93c, I91 | done |
@@ -2210,6 +2210,8 @@ fit 工作台页面。成员尽量少改动：管理端使用成员已有的 API
 - **完成标准**：fit 的 `link` 测试移植后通过；akit 成员能链接到 fit 管理端，反之亦然。
 - **涉及**：`akit-cluster`、`akit-roles`（`linktoken`）、`akit`。
 - **fit**：`cluster/{linkserver,linkmember,linkproto,enroll}.go`、`admin/clusterlink.go`；I149。
+- **状态**：done（2026-11-28）。与 fit 的协议逐字节相同；令牌在 akit 与 fit 之间改写为成员自己的前缀；在 akio 的 A306 之前，Admin API
+  经由回环一跳回答链接上的调用（决定 041 第 12 点；决定待定行 93）。见进度日志。
 
 ### I139c 集群 XII：跨成员的指标、日志和证书；`akit cluster`
 

@@ -56,6 +56,7 @@ impl akit_roles::pages::Module for Module {
             || crate::rollouts::serve(m, ctx, user, path)
             || crate::alerts::serve(m, ctx, user, path)
             || crate::roles::serve(m, ctx, user, path)
+            || crate::link::serve(m, ctx, user, path)
         {
             return;
         }
@@ -140,6 +141,7 @@ fn checked(method: &Method, path: &str) -> bool {
                     | "/api/rollouts"
                     | "/api/alerts/silences"
                     | "/api/drift/fix"
+                    | "/api/enroll"
             ))
 }
 
@@ -381,10 +383,8 @@ fn node_route(m: &Manager, ctx: &mut Context, user: &str, path: &str) {
     match (sub, &method) {
         ("test", Method::Post) => test_saved(m, ctx, user, &name),
         ("test", _) => ctx.respond(not_allowed("POST")),
-        ("enroll", _) => ctx.respond(fail(
-            501,
-            "members that link out to the manager are enrolled from I139b",
-        )),
+        ("enroll", Method::Post) => crate::link::enroll_route(m, ctx, user, &name),
+        ("enroll", _) => ctx.respond(not_allowed("POST")),
         (s, _) if s.starts_with("read/") => {
             if let Err(e) = m.allow(user, &Need::on(VIEWER, vec![name.clone()])) {
                 return ctx.respond(e.response());

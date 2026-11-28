@@ -232,11 +232,17 @@ struct Mu {
     probed: bool,
 }
 
+/// How a member that links out is called: over its link (I139b).
+pub type Via = Arc<
+    dyn Fn(&str, &str, &[(String, String)], Option<Vec<u8>>, crate::transport::Done) + Send + Sync,
+>;
+
 /// A member as the poller reaches it.
 pub struct Node {
     /// The member as the node was made for it, never changed.
     pub spec: Member,
     t: Option<Arc<Transport>>,
+    via: Option<Via>,
     paths: Paths,
     interval: Duration,
     log: Log,
@@ -274,6 +280,7 @@ impl Node {
         Node {
             spec,
             t,
+            via: None,
             paths,
             interval,
             log,
@@ -290,6 +297,13 @@ impl Node {
                 probed: false,
             }),
         }
+    }
+
+    /// The node, its calls made by `via`: a member that links out.
+    #[must_use]
+    pub fn with_via(mut self, via: Via) -> Node {
+        self.via = Some(via);
+        self
     }
 
     /// The paths the member is read at.
@@ -388,10 +402,26 @@ impl Node {
         done: CallDone,
     ) {
         let Some(t) = self.t.clone() else {
-            return done(Err(Problem::new(
-                KIND_NOT_LINKED,
-                "the member links out to the manager, which akit reaches from I139b",
-            )));
+            let Some(via) = self.via.clone() else {
+                return done(Err(Problem::new(
+                    KIND_NOT_LINKED,
+                    "the member links out to the manager, which takes no links",
+                )));
+            };
+            if self.closed.load(Ordering::Acquire) {
+                return done(Err(Problem::new(KIND_UNREACHABLE, CLOSED)));
+            }
+            let h: Vec<(String, String)> = headers
+                .into_iter()
+                .filter(|(n, _)| !DROP_HEADERS.iter().any(|d| d.eq_ignore_ascii_case(n)))
+                .collect();
+            return via(
+                method,
+                path,
+                &h,
+                body,
+                Box::new(move |r| done(r.map(|rep| (rep, None)))),
+            );
         };
         if self.closed.load(Ordering::Acquire) {
             return done(Err(Problem::new(KIND_UNREACHABLE, CLOSED)));
