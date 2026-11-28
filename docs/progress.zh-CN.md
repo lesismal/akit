@@ -21,6 +21,33 @@
 
 ## 日志
 
+### 2026-11-28：akio 锁定在 `5893a0ed`：A302 与 A301 的优雅关闭后续
+
+- akio：akio main 上的 `5893a0ed`（自 `db34bfd7` 起）。akit 的 `rev` 与 `akit_runtime::AKIO_REV` 随之移动；akit 无需改动即可构建。
+  这一段对 akit 带来的变化：
+  - A302（akio 的 `c9d70c2b`，ADR-188）：在 io_uring 上，对处理器从未拿到其输入的 TCP 连接，`Conn::close` 以 `SO_LINGER` 0 关闭，
+    对端在 FIN 之后被重置，与 epoll 相同（此前关闭时仍在进行的接收会取走输入，面对零窗口的对端要等满 `tcp_fin_timeout`）。
+    akio-sys 新增 `reset_on_close`。FastCGI 处理器在响应中途放弃的连接现在在 io_uring 上也会重置应用：
+    `akit-handler/tests/fastcgi.rs` 的 `cut_connections` 在 gpu51 上单独运行，io_uring（`AKIO_TEST_BACKEND` 与 `AKIO_DEFAULT_BACKEND`
+    均为 `uring`）上 30 次通过 30 次，epoll 上 10 次通过 10 次。akit 带着未读输入关闭的其他连接（被切断的代理上传、结束的四层转发）同样如此。
+  - A301 的优雅关闭后续：akio-arpc、akio-quic 与 akio-h3 客户端（`H3Client` 以 `H3Error::Closed` 让请求失败并以 `H3_NO_ERROR` 关闭）、
+    akio-socks、akio-turn 的 `TcpAllocation`（`Refresh(0)`）、akio-media（RTMP 的 `FCUnpublish` 与 `deleteStream`、RTSP 的 `TEARDOWN`、
+    SRT 的 `SHUTDOWN`）、akio-bittorrent（对等连接在已排队的内容写出后关闭，uTP 发送 `RESET`）以及 akio-webrtc（`Endpoint` 或
+    `RtcServer` 像 `Endpoint::close` 一样关闭：SCTP `ABORT`、DTLS `close_notify`、TURN 释放、mDNS 告别）的 acceptor 在引擎关闭时结束其连接，
+    不再让 `Engine::wait` 等到超时。`Engine::shutdown_listener` 运行同样的 `on_shutdown`，因此也作用于 akit 的重载和角色重启。akit 看到的：
+    - `akit run` 的关闭：角色仍在引擎之前关闭自己运行的东西（I100），因此这些主要覆盖角色遗留未关的；网关监听器上的 SOCKS 会话及其隧道
+      （`socks`，I55）现在在关闭时、已转发的内容写出后结束，此前会拖到 `-shutdown-timeout`，与 akit 自己的四层转发已有的做法一致。
+    - 移除或改变一个服务 `socks` 的监听器的重载：其隧道在排空开始时结束，而非排空超时时，与其 HTTP 连接被要求关闭一样。
+    - 重载关闭的流媒体角色监听器（不排空的 `shutdown_listener`）和 WebRTC 角色的端口：其会话在连接于线程下一轮关闭之前被拆除
+      （RTMP 与 RTSP 的发布者取消发布、播放者停止；SRT 对端收到 `SHUTDOWN`，WebRTC 远端收到 SCTP `ABORT`），因此 SRT 或 WebRTC 对端
+      立即得知，而不是等到其空闲或同意超时；TCP 会话为对端排队的内容在零排空允许的范围内发出。akit 创建的每个 `RtcServer` 只服务一个监听器，因此被其监听器关闭的服务器不会是新监听器仍在服务的那个。
+    - 隧道的 QUIC 拨号方（`akit_tunnel::quic`）没有 `on_shutdown`：akio 的默认实现什么也不做，与之前相同。akit 不使用 arpc。
+  - 这一段中还有：akio 的测试修复（`4f836e7d`、`528bfedb`）和 API 快照；没有 API 变化。
+- 测试：akit 没有因锁定而改动。gpu51：clippy `-D warnings` 无警告；epoll 上全部 207 个测试二进制通过；io_uring 上一个测试在整体运行的负载下失败：
+  akit-llm `pages` 的 `a_nodes_pages`（"the console outlived its role"：角色控制台的引擎 `shutdown` 并 `wait` 之后立即发起的连接成功建立），
+  单独运行时两个后端各 20 次通过 20 次，io_uring 上每次 16 个并发共 64 次通过 64 次；这次锁定不涉及监听器。macOS：`cargo test --workspace
+  --no-fail-fast` 通过；`make check` 中 akit-admin console 的 `connections_answered_past_their_time` 在本机负载下失败一次（已知），单独运行 5 次通过 5 次。
+
 ### 2026-11-28：akio 的 A303 之前 akit 的监听器使用事件循环
 
 - 在新锁定版本下 gpu51 的 epoll 测试中，akit-proxy 的 `stream_download` 失败（向限速客户端传输 64 MiB 时“resident memory rose”

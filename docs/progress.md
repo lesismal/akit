@@ -22,6 +22,52 @@ done and where the work differs from the plan.
 
 ## Log
 
+### 2026-11-28: akio pinned at `5893a0ed`: A302 and the shutdown follow-ups of A301
+
+- akio: `5893a0ed` on akio's main (from `db34bfd7`). akit's `rev` and `akit_runtime::AKIO_REV` move
+  with it; akit builds unchanged. What the range brings to akit:
+  - A302 (akio's `c9d70c2b`, ADR-188): on io_uring, `Conn::close` on a TCP connection whose input
+    the handler was never given closes it with `SO_LINGER` 0, so the peer is reset after the FIN,
+    as on epoll (a receive still in flight at the close used to take the input, and the peer,
+    facing a zero window, waited out `tcp_fin_timeout`). akio-sys adds `reset_on_close`. The
+    FastCGI handler's connections given up mid-response now reset the application on io_uring
+    too: `akit-handler/tests/fastcgi.rs` `cut_connections` passes alone on gpu51 30 of 30 on
+    io_uring (`AKIO_TEST_BACKEND` and `AKIO_DEFAULT_BACKEND` both `uring`) and 10 of 10 on epoll.
+    The same holds for every connection akit closes with input unread (a proxied upload cut off,
+    a layer 4 relay ended).
+  - The graceful-shutdown follow-ups of A301: the acceptors of akio-arpc, akio-quic and akio-h3
+    clients (`H3Client` fails its requests with `H3Error::Closed` and closes with `H3_NO_ERROR`),
+    akio-socks, akio-turn's `TcpAllocation` (`Refresh(0)`), akio-media (RTMP `FCUnpublish` and
+    `deleteStream`, RTSP `TEARDOWN`, SRT `SHUTDOWN`), akio-bittorrent (peer connections closed
+    after what is queued, uTP `RESET`) and akio-webrtc (an `Endpoint` or `RtcServer` closed as by
+    `Endpoint::close`: SCTP `ABORT`, DTLS `close_notify`, TURN deallocations, mDNS goodbyes) end
+    their connections at the engine's shutdown instead of holding `Engine::wait` to its timeout.
+    `Engine::shutdown_listener` runs the same `on_shutdown`, so it reaches akit's reloads and
+    role restarts too. What akit sees:
+    - `akit run`'s shutdown: the roles still close what they run before the engine (I100), so
+      these mostly cover what a role left open; SOCKS sessions and their tunnels on the gateway's
+      listeners (`socks`, I55) now end at the shutdown once what was relayed is written, where
+      they held it to `-shutdown-timeout`, as akit's own layer 4 relays already did.
+    - A reload that removes or changes a listener serving `socks`: its tunnels end at the start
+      of the drain rather than at its timeout, as its HTTP connections are asked to.
+    - The streaming role's listeners a reload closes (`shutdown_listener` with no drain) and the
+      WebRTC roles' ports: their sessions are torn down before the connections close at the
+      threads' next round (RTMP and RTSP publishers unpublished, players stopped; SRT peers sent
+      `SHUTDOWN`, WebRTC remotes the SCTP `ABORT`), so an SRT or WebRTC peer learns at once
+      rather than at its idle or consent timeout; what a TCP session queued for its peer goes out
+      as far as the drain of zero lets it. Each `RtcServer` akit makes serves one listener, so a
+      server its listener's shutdown closes is never one a new listener still serves.
+    - The tunnel's QUIC dialer (`akit_tunnel::quic`) has no `on_shutdown`: akio's default does
+      nothing, as before. akit uses no arpc.
+  - Also in the range: akio test fixes (`4f836e7d`, `528bfedb`) and API snapshots; no API change.
+- Tests: nothing in akit changed with the pin. gpu51: clippy `-D warnings` clean; on epoll all 207
+  test binaries pass; on io_uring one test failed under the run's load, akit-llm `pages`
+  `a_nodes_pages` ("the console outlived its role": a connect to a role's console succeeded right
+  after its engine's `shutdown` and `wait`), which passed alone 20 of 20 on each backend and 64 of
+  64 run 16 at a time on io_uring; the pin does not touch listeners. macOS: `cargo test --workspace
+  --no-fail-fast` passes; in `make check` akit-admin console `connections_answered_past_their_time`
+  failed once under the machine's load (known) and passed alone 5 of 5.
+
 ### 2026-11-28: akit's listeners on event loops until akio's A303
 
 - On gpu51's epoll run at the new pin, akit-proxy's `stream_download` failed ("resident memory

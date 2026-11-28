@@ -135,7 +135,7 @@
 | A297 | akio-media 的基于 TLS 的 RTMP 客户端（`rtmps://`） | 已提出；`rtmps://` 推送目标作为尚不支持而拒绝 | — | I146 |
 | A298 | akio-media 的 RTMP 和 SRT 客户端在会话上线和结束时告诉其所有者，并给出其发送量 | 已提出；权宜做法：RTMP 推流由其客户端的 `Reconnect` 重试，并由对其流的监视重启；SRT 推流用 akit 自己的会话处理器拨号 | 1 | I146 |
 | A301 | `H2Client` 在引擎优雅关闭时结束其连接（`GOAWAY`；没有打开的流时立即关闭，否则在最后一个流结束后关闭），如同 HTTP/1 客户端关闭其空闲连接 | 已进入 akio 的 main 并锁定（自 `db34bfd7` 起）：`H2Acceptor::on_shutdown`；akit 的权宜做法（`EngineSlot::shutdown`）已去掉 | 4, 10 | I18, I18b |
-| A302 | io_uring 上的 `Conn::close` 像 epoll 上一样重置一个收到了未交付数据的 TCP 连接（或提供以重置方式关闭的 `Conn::abort`）：目前进行中的接收在 shutdown 之后取走数据，面对零窗口的对端永远收不到重置 | 已提出；没有权宜做法（其间 fastcgi.rs 的 `cut_connections` 在 io_uring 上会失败） | — | I75 |
+| A302 | io_uring 上的 `Conn::close` 像 epoll 上一样重置一个收到了未交付数据的 TCP 连接（或提供以重置方式关闭的 `Conn::abort`）：目前进行中的接收在 shutdown 之后取走数据，面对零窗口的对端永远收不到重置 | 已进入 akio 的 main 并锁定（自 `5893a0ed` 起）：建议 (a)，akio 的 ADR-188（未交付输入时以 `SO_LINGER` 0 关闭；`akio_sys::reset_on_close`）；fastcgi.rs 的 `cut_connections` 在 io_uring 上通过 | — | I75 |
 | A303 | 在工作窃取（ADR-104）下依然成立的联动背压：暂停的上游读取（akio-http 的 `ResponseBody::hold_reads`，akit 的 `Download::hold_reads` 在其上）与写满的下游（`BodyStream::queued_bytes`、`on_drain`）像在事件循环上一样限制流式转发占用的内存 | 已提出；权宜做法：akit 的 TCP 监听器选择 `Scheduling::EventLoops`（`akit_runtime::scheduled`，决定 91），除非设置了 `AKIO_DEFAULT_SCHEDULING` | 8, 11 | I16, I17, I18b |
 
 ## A1 运行中引擎上的 TCP 监听器
@@ -2529,6 +2529,12 @@ reconnect }`（或接受处理器的 `srt::push`），以及客户端发送的�
 打开的连接（`H2Client::is_open`），并在其最后一个流结束后关闭它。
 
 ## A302 io_uring 上在接收窗口关闭时关闭的连接：对端永远收不到重置
+
+**完成。** 已进入 akio 的 main 并锁定（自 `5893a0ed` 起，akio 的 `c9d70c2b`，ADR-188）：建议 (a)。io_uring 上的
+`Conn::close` 对处理器从未拿到其输入的 TCP 连接（读暂停期间保留的、关闭之后读到的、或被仍在进行的接收取走的输入，后者使套接字
+在其结束前保持打开）以 `SO_LINGER` 0 关闭，因此对端在 FIN 之后被重置，与 epoll 上相同；交付了全部输入的连接仍只以 FIN 结束。
+akio-sys 新增 `reset_on_close(&TcpStream)`。akit 无需改动：`akit-handler/tests/fastcgi.rs` 的 `cut_connections` 在 gpu51 上单独运行，
+io_uring 上 30 次通过 30 次，epoll 上 10 次通过 10 次。
 
 **状态。** 已提出（2026-11-28）。akit 中没有权宜做法：它无法自己重置连接。在此问题存在期间，
 `akit-handler/tests/fastcgi.rs` 的 `cut_connections` 在 io_uring 上会失败。

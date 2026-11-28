@@ -136,7 +136,7 @@ first; its status here records the branch, then the akio commit akit pins.
 | A297 | akio-media's RTMP client over TLS (`rtmps://`) | requested; `rtmps://` push targets refused as not supported yet | — | I146 |
 | A298 | akio-media's RTMP and SRT clients tell their owner when a session goes live and ends, with what it sent | requested; stopgap: an RTMP push retried by its client's `Reconnect` and restarted by a watch of its stream; an SRT push dialed with a session handler of akit's own | 1 | I146 |
 | A301 | `H2Client` ends its connection at the engine's graceful shutdown (`GOAWAY`; closed now with no stream open, else after its last), as the HTTP/1 client closes its idle ones | on akio's main and pinned (since `db34bfd7`): `H2Acceptor::on_shutdown`; akit's stopgap (`EngineSlot::shutdown`) removed | 4, 10 | I18, I18b |
-| A302 | `Conn::close` on io_uring resets a TCP connection whose received data it did not deliver, as on epoll (or a `Conn::abort` that closes with a reset): today a receive in flight takes the data after the shutdown, so the peer, facing a zero window, is never reset | requested; no stopgap (fastcgi.rs `cut_connections` fails on io_uring meanwhile) | — | I75 |
+| A302 | `Conn::close` on io_uring resets a TCP connection whose received data it did not deliver, as on epoll (or a `Conn::abort` that closes with a reset): today a receive in flight takes the data after the shutdown, so the peer, facing a zero window, is never reset | on akio's main and pinned (since `5893a0ed`): suggestion (a), akio's ADR-188 (`SO_LINGER` 0 when input was not delivered; `akio_sys::reset_on_close`); fastcgi.rs `cut_connections` passes on io_uring | — | I75 |
 | A303 | Linked backpressure that holds under work stealing (ADR-104): a held upstream read (akio-http's `ResponseBody::hold_reads`, under akit's `Download::hold_reads`) and a full downstream write (`BodyStream::queued_bytes`, `on_drain`) bound what a streamed relay holds, as on event loops | requested; stopgap: akit's TCP listeners choose `Scheduling::EventLoops` (`akit_runtime::scheduled`, decision 91) unless `AKIO_DEFAULT_SCHEDULING` is set | 8, 11 | I16, I17, I18b |
 
 ## A1 TCP listeners on a running engine
@@ -3179,6 +3179,14 @@ call in `akit run` go; the pools already stop using a connection that is no long
 open (`H2Client::is_open`) and close it once its last stream is over.
 
 ## A302 A connection closed on io_uring with its receive window shut: the peer is never reset
+
+**Done.** On akio's main and pinned (since `5893a0ed`, akio's `c9d70c2b`, ADR-188): suggestion
+(a). `Conn::close` on io_uring closes a TCP connection whose input the handler was never given
+(held while reads were paused, read after the close, or taken by a receive still in flight, which
+keeps the socket open until it ends) with `SO_LINGER` 0, so the peer is reset after the FIN, as on
+epoll; a connection that delivered everything still ends with a FIN alone. akio-sys adds
+`reset_on_close(&TcpStream)`. Nothing changes in akit: `akit-handler/tests/fastcgi.rs`
+`cut_connections` passes alone on gpu51 30 times of 30 on io_uring and 10 of 10 on epoll.
 
 **Status.** Requested (2026-11-28). No stopgap in akit: it has no way to reset a connection
 itself. `akit-handler/tests/fastcgi.rs` `cut_connections` fails on io_uring while this stands.

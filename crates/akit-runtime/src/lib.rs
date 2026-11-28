@@ -57,4 +57,4 @@ pub const TLS: &str = "akit.tls";
 pub const TRACEPARENT: &str = "akit.traceparent";
 
 /// The akio commit akit is built against (rule 22: akio is pinned by commit hash).
-pub const AKIO_REV: &str = "db34bfd7f8261aae5500d5f0b4496443926040e2";
+pub const AKIO_REV: &str = "5893a0edcd5e792793c44a6e9c10d6935f6a9deb";
