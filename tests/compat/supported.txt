@@ -1510,18 +1510,19 @@ routes[].handler<stream_whip>.params.stream
 # I126: whip's and whep's auth, a media_auth policy (akit-media's guard).
 routes[].handler<whep>.params.auth
 routes[].handler<whip>.params.auth
-# I125: the media_pages handler (akit-media's pages); libraries, vod and channels wait for the
-# media library's track.
+# I125: the media_pages handler (akit-media's pages); libraries, vod and channels from I148.
 routes[].handler<media_pages>
 routes[].handler<media_pages>.params
 routes[].handler<media_pages>.params.auth
 routes[].handler<media_pages>.params.cam_default
+routes[].handler<media_pages>.params.channels
 routes[].handler<media_pages>.params.chat
 routes[].handler<media_pages>.params.hls
 routes[].handler<media_pages>.params.ice_servers
 routes[].handler<media_pages>.params.ice_servers[].credential
 routes[].handler<media_pages>.params.ice_servers[].urls
 routes[].handler<media_pages>.params.ice_servers[].username
+routes[].handler<media_pages>.params.libraries
 routes[].handler<media_pages>.params.links
 routes[].handler<media_pages>.params.links[].name
 routes[].handler<media_pages>.params.links[].url
@@ -1536,6 +1537,7 @@ routes[].handler<media_pages>.params.pages
 routes[].handler<media_pages>.params.prefix
 routes[].handler<media_pages>.params.stall_timeout
 routes[].handler<media_pages>.params.title
+routes[].handler<media_pages>.params.vod
 routes[].handler<media_pages>.params.whep
 routes[].handler<media_pages>.params.whip
 # I126: webrtc_proxy's auth, a media_auth policy (akit-media's guard).

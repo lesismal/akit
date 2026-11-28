@@ -21,6 +21,8 @@ by a test that runs `akit validate` on it.
   credentials (`admin.cluster`).
 - [Caching](caching.md): the `cache` middleware, its disk tier and purges.
 - [WebAssembly plugins](wasm.md): fit's and Proxy-Wasm plugins, their bounds and cost.
+- [Media library and a video site](media-library.md): films served on demand and as channels,
+  playback URLs that expire, encrypted segments, the library and player pages.
 
 Coming from another server:
 

@@ -972,3 +972,6 @@ config	added	supported	streaming.push[].url
 config	added	supported	routes[].handler<vod>.params.encrypt
 config	added	supported	streaming.channels[].encrypt
 config	added	supported	streaming.channels[].key_rotation
+config	added	supported	routes[].handler<media_pages>.params.channels
+config	added	supported	routes[].handler<media_pages>.params.libraries
+config	added	supported	routes[].handler<media_pages>.params.vod

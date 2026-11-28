@@ -1504,9 +1504,10 @@ fn media_handlers(out: &mut Vec<(String, String, Read)>) {
 /// The `media_pages` handler's params (I125).
 fn media_pages(out: &mut Vec<(String, String, Read)>) {
     const P: &str = r#"{"name": "p", "public": ["play"]}"#;
+    const L: &str = r#"[{"name": "l", "roots": ["/srv/a"]}, {"name": "m", "roots": ["/srv/b"]}]"#;
     let w = |m: &str| {
         format!(
-            r#"{{"listeners": [{{"name": "web", "address": ":8080"}}], "media_auth": [{P}], "routes": [{{"handler": {{"module": "media_pages", "params": {m}}}}}]}}"#
+            r#"{{"listeners": [{{"name": "web", "address": ":8080"}}], "media_auth": [{P}], "media_library": {L}, "routes": [{{"handler": {{"module": "media_pages", "params": {m}}}}}]}}"#
         )
     };
     let wm = |m: &str| {
@@ -1549,6 +1550,15 @@ fn media_pages(out: &mut Vec<(String, String, Read)>) {
             f("max_file_bytes", "2048", "4096"),
             f("member_ttl", q("3s"), q("4s")),
             f("stall_timeout", q("1s"), q("2s")),
+            // I148: the library pages.
+            f("libraries", r#"["l"]"#, r#"["m"]"#),
+            fx(
+                "vod",
+                q("/a/{library}/{id}/i.m3u8"),
+                q("/b/{library}/{id}/i.m3u8"),
+                &[("libraries", r#"["l"]"#)],
+            ),
+            f("channels", "false", "true"),
         ],
     );
     let lw = |m: &str| w(&format!(r#"{{"links": [{m}]}}"#));

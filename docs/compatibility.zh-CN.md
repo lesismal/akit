@@ -328,7 +328,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 1304 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 1307 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
@@ -346,7 +346,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`http.handlers/forward_proxy`](#fields-http-handlers-forward-proxy) | 8 | 8 | 0 |
 | [`http.handlers/hls`](#fields-http-handlers-hls) | 12 | 12 | 0 |
 | [`http.handlers/httpflv`](#fields-http-handlers-httpflv) | 6 | 6 | 0 |
-| [`http.handlers/media_pages`](#fields-http-handlers-media-pages) | 29 | 26 | 3 |
+| [`http.handlers/media_pages`](#fields-http-handlers-media-pages) | 29 | 29 | 0 |
 | [`http.handlers/media_tokens`](#fields-http-handlers-media-tokens) | 11 | 11 | 0 |
 | [`http.handlers/proxy`](#fields-http-handlers-proxy) | 20 | 19 | 1 |
 | [`http.handlers/respond`](#fields-http-handlers-respond) | 5 | 5 | 0 |
@@ -453,7 +453,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`tunnel`](#fields-tunnel) | 164 | 161 | 3 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 76 | 0 |
-| **合计** | 3821 | 1304 | 2517 |
+| **合计** | 3821 | 1307 | 2514 |
 
 <a id="fields-access"></a>
 
@@ -969,14 +969,14 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | `routes[].handler<media_pages>.params` | `object` | 已支持 |
 | `routes[].handler<media_pages>.params.auth` | `string` | 已支持 |
 | `routes[].handler<media_pages>.params.cam_default` | `boolean` | 已支持 |
-| `routes[].handler<media_pages>.params.channels` | `boolean` | 尚不支持（not supported yet） |
+| `routes[].handler<media_pages>.params.channels` | `boolean` | 已支持 |
 | `routes[].handler<media_pages>.params.chat` | `boolean` | 已支持 |
 | `routes[].handler<media_pages>.params.hls` | `string` | 已支持 |
 | `routes[].handler<media_pages>.params.ice_servers` | `array<object>` | 已支持 |
 | `routes[].handler<media_pages>.params.ice_servers[].credential` | `string` | 已支持 |
 | `routes[].handler<media_pages>.params.ice_servers[].urls` | `array<string>, required` | 已支持 |
 | `routes[].handler<media_pages>.params.ice_servers[].username` | `string` | 已支持 |
-| `routes[].handler<media_pages>.params.libraries` | `array<string>` | 尚不支持（not supported yet） |
+| `routes[].handler<media_pages>.params.libraries` | `array<string>` | 已支持 |
 | `routes[].handler<media_pages>.params.links` | `array<object>` | 已支持 |
 | `routes[].handler<media_pages>.params.links[].name` | `string, required` | 已支持 |
 | `routes[].handler<media_pages>.params.links[].url` | `string, required` | 已支持 |
@@ -991,7 +991,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | `routes[].handler<media_pages>.params.prefix` | `string` | 已支持 |
 | `routes[].handler<media_pages>.params.stall_timeout` | `duration` | 已支持 |
 | `routes[].handler<media_pages>.params.title` | `string` | 已支持 |
-| `routes[].handler<media_pages>.params.vod` | `string` | 尚不支持（not supported yet） |
+| `routes[].handler<media_pages>.params.vod` | `string` | 已支持 |
 | `routes[].handler<media_pages>.params.whep` | `string` | 已支持 |
 | `routes[].handler<media_pages>.params.whip` | `string` | 已支持 |
 

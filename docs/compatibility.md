@@ -398,7 +398,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 1304 supported.
+3821 fields in 121 sections, at fit `7daee573`; 1307 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -416,7 +416,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`http.handlers/forward_proxy`](#fields-http-handlers-forward-proxy) | 8 | 8 | 0 |
 | [`http.handlers/hls`](#fields-http-handlers-hls) | 12 | 12 | 0 |
 | [`http.handlers/httpflv`](#fields-http-handlers-httpflv) | 6 | 6 | 0 |
-| [`http.handlers/media_pages`](#fields-http-handlers-media-pages) | 29 | 26 | 3 |
+| [`http.handlers/media_pages`](#fields-http-handlers-media-pages) | 29 | 29 | 0 |
 | [`http.handlers/media_tokens`](#fields-http-handlers-media-tokens) | 11 | 11 | 0 |
 | [`http.handlers/proxy`](#fields-http-handlers-proxy) | 20 | 19 | 1 |
 | [`http.handlers/respond`](#fields-http-handlers-respond) | 5 | 5 | 0 |
@@ -523,7 +523,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 161 | 3 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 76 | 0 |
-| **Total** | 3821 | 1304 | 2517 |
+| **Total** | 3821 | 1307 | 2514 |
 
 <a id="fields-access"></a>
 
@@ -1039,14 +1039,14 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `routes[].handler<media_pages>.params` | `object` | supported |
 | `routes[].handler<media_pages>.params.auth` | `string` | supported |
 | `routes[].handler<media_pages>.params.cam_default` | `boolean` | supported |
-| `routes[].handler<media_pages>.params.channels` | `boolean` | not supported yet |
+| `routes[].handler<media_pages>.params.channels` | `boolean` | supported |
 | `routes[].handler<media_pages>.params.chat` | `boolean` | supported |
 | `routes[].handler<media_pages>.params.hls` | `string` | supported |
 | `routes[].handler<media_pages>.params.ice_servers` | `array<object>` | supported |
 | `routes[].handler<media_pages>.params.ice_servers[].credential` | `string` | supported |
 | `routes[].handler<media_pages>.params.ice_servers[].urls` | `array<string>, required` | supported |
 | `routes[].handler<media_pages>.params.ice_servers[].username` | `string` | supported |
-| `routes[].handler<media_pages>.params.libraries` | `array<string>` | not supported yet |
+| `routes[].handler<media_pages>.params.libraries` | `array<string>` | supported |
 | `routes[].handler<media_pages>.params.links` | `array<object>` | supported |
 | `routes[].handler<media_pages>.params.links[].name` | `string, required` | supported |
 | `routes[].handler<media_pages>.params.links[].url` | `string, required` | supported |
@@ -1061,7 +1061,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `routes[].handler<media_pages>.params.prefix` | `string` | supported |
 | `routes[].handler<media_pages>.params.stall_timeout` | `duration` | supported |
 | `routes[].handler<media_pages>.params.title` | `string` | supported |
-| `routes[].handler<media_pages>.params.vod` | `string` | not supported yet |
+| `routes[].handler<media_pages>.params.vod` | `string` | supported |
 | `routes[].handler<media_pages>.params.whep` | `string` | supported |
 | `routes[].handler<media_pages>.params.whip` | `string` | supported |
 

@@ -250,7 +250,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I145 | 频道：作为直播流播放的媒体库条目，`streaming.channels` | I141, I123 | done |
 | I146 | 推送目标：`streaming.push` 和频道的 `push` | I145 | done |
 | I147 | 加密分片：`vod` 和频道 HLS 上的 `encrypt` | I144, I145 | done |
-| I148 | 视频网站：`media_pages` 的 `libraries`、`vod` 和 `channels`，示例，指南 | I144, I145 | todo |
+| I148 | 视频网站：`media_pages` 的 `libraries`、`vod` 和 `channels`，示例，指南 | I144, I145 | done |
 | I149 | 控制台的媒体库页面及其文件管理（fit 的 I138、I139） | I148 | todo |
 | I150 | BitTorrent I：配置中的 `bittorrent.client` 和 `bittorrent.tracker`，fit 的字段、检查和冲突；后续迭代才运行的内容以"尚不支持"拒绝 | I98 | done |
 | I151 | BitTorrent II：基于 akio-bittorrent 的 `TrackerServer` 的 tracker 角色和 `bt_tracker`：HTTP 和 UDP、允许列表、访问控制、上限、统计、其控制台 | I150, I100 | done |
@@ -1917,7 +1917,7 @@ SAMPLE-AES（fib 的 A69）；它缺少的部分作为 akio A295–A300 请求�
 - **完成标准**：移植后的 fit 的 `handler/mediapages` 媒体库和播放器测试通过；fit-examples 的 `video-site` 通过关卡。
 - **涉及**：`akit-media`（`pages`）、`akit-config`、`tests/compat`、`docs`。
 - **fit**：`handler/mediapages`；I137。
-- **状态**：todo。
+- **状态**：已完成（2026-11-28）；指南是 `docs/guides/media-library.zh-CN.md`，与 akit 的其他指南放在一起。见进度日志。
 
 ### I149 控制台的媒体库页面，及其文件管理
 

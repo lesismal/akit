@@ -14,7 +14,7 @@ akit 配置的每个字段：配置的每一部分是做什么的、一个示例
 akit 与 fit 不同之处，在表格中以 **akit：** 标出。
 
 <!-- BEGIN GENERATED: summary -->
-fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **1304** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 195 个对象，下文各有一张表。
+fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **1307** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 195 个对象，下文各有一张表。
 <!-- END GENERATED -->
 
 字段说明来自 fit 代码中的 `doc` 标签，是英文的，所以每个字段的完整说明在[英文版](config.md)的同一张表中；本页的表格给出每个字段的
@@ -4064,7 +4064,8 @@ route whep { match { path /whep/* }; handler stream_whep { auth live } }
 位于 `prefix` 之下的 akit 媒体页面（I125）：带登录的首页、房间通话，以及基于 WHIP 和 WHEP 的推流和播放页面（`whip` 和
 `whep`，WebRTC 线的或流媒体角色的），内置于二进制中，为改名后的 fit 页面（决定 037）。其后是基于 `auth` 策略用户的登录，答复
 策略签名的 token，并同时设为 HttpOnly cookie `akit_media_token`；以及房间 API，通话成员通过它告知麦克风和摄像头的开关、以
-Server-Sent Events 跟随房间并在其聊天中交流。fit 的 `libraries`、`vod` 和 `channels` 等待媒体库那条线。
+Server-Sent Events 跟随房间并在其聊天中交流。设置 `libraries` 和 `channels`（I148）时，片库页面列出观众可播放的媒体库条目和流媒体
+角色的频道，播放器页面用 hls.js 播放它们，播放地址按策略的 `url_signing` 为观众签名（[媒体库指南](../guides/media-library.zh-CN.md)）。
 
 ```fit
 listener web :8080
@@ -4082,11 +4083,11 @@ route media { match { path /media /media/* }; handler media_pages { auth live; l
 | --- | --- | --- | --- |
 | `auth` | 字符串 |  |  |
 | `cam_default` | 布尔值 |  |  |
-| `channels` | 布尔值 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `channels` | 布尔值 |  |  |
 | `chat` | 布尔值 | `true` |  |
 | `hls` | 字符串 |  |  |
 | `ice_servers` | [对象](#cfg-routes-handler-media-pages-params-ice-servers)的列表 |  |  |
-| `libraries` | 字符串的列表 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `libraries` | 字符串的列表 |  |  |
 | `links` | [对象](#cfg-routes-handler-media-pages-params-links)的列表 |  |  |
 | `login` | 布尔值 |  | **akit：**cookie 为 `akit_media_token`（决定 037）；页面在 `X-Akit-Member` 和 `X-Akit-Room-Key` 中发送其聊天成员。 |
 | `max_file_bytes` | 整数，1024 到 33554432 | `5242880` | **akit：**文件的请求体由监听器在其 `max_body_bytes` 之内整体读入后才检查成员，而 fit 在读取请求体之前就检查成员并预留字节：超过监听器 `max_body_bytes` 的文件由监听器答复 413。 |
@@ -4099,7 +4100,7 @@ route media { match { path /media /media/* }; handler media_pages { auth live; l
 | `prefix` | 字符串 | `"/media"` |  |
 | `stall_timeout` | 时长 | `"30s"` | **akit：**重载保留房间及其事件流，它们在新配置下继续：akit 不像 fit 那样排空它们。 |
 | `title` | 字符串 |  | **akit：**未设置时为 `akit media`（决定 037）。 |
-| `vod` | 字符串 | `"/vod/{library}/{id}/index.m3u8"` | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `vod` | 字符串 | `"/vod/{library}/{id}/index.m3u8"` |  |
 | `whep` | 字符串 | `"/whep/{stream}"` |  |
 | `whip` | 字符串 | `"/whip/{stream}"` |  |
 <!-- END GENERATED -->

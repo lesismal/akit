@@ -194,3 +194,16 @@ not supported yet for this track.
 - **Without `auth` a handler serves no key of an encrypted channel** (403), since anyone could take
   it; a channel whose library or keys are not loaded answers 503 with `Retry-After: 1`, never
   clear.
+
+## I148: the video site
+
+- **The API answers fit's bodies**: the library and player pages are fit's, copied at the pin, so
+  `api/library`, `api/library/<name>` and `api/play` answer what fit's do, member for member; an
+  interop run compares them with fit's binary under the same config.
+- **The checks of `libraries` are the config's**: whether each names a `media_library`, and once,
+  needs the config's libraries, which akit-config has once every file is read, as it checks
+  `vod`'s `library`; the rest (`vod`'s template, `channels` without `hls`) are the handler's, as
+  fit's are its provision's. Either way the config is refused with fit's messages.
+- **The guide is `docs/guides/media-library.md`**, beside akit's other guides, rather than
+  `docs/media-library.md`, where fit keeps it; its configs are checked by `akit validate` with every
+  other guide's.

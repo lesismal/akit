@@ -137,3 +137,13 @@ akio-crypto 有带 PKCS #7 填充的 AES-128-CBC。流媒体路线（决定 040�
   列表请求时结束其复用器。
 - **没有 `auth` 的处理器不提供加密频道的密钥**（403），因为任何人都能拿到它；媒体库或密钥未加载的频道以 503 和 `Retry-After: 1`
   应答，绝不以明文提供。
+
+## I148：视频网站
+
+- **API 的应答体与 fit 相同**：片库和播放器页面是在钉住的版本复制的 fit 页面，因此 `api/library`、`api/library/<name>` 和
+  `api/play` 逐个成员地给出 fit 的应答；互通测试在相同配置下与 fit 二进制比较它们。
+- **`libraries` 的检查属于配置**：每个名字是否指向某个 `media_library`、是否只列出一次，需要配置中的媒体库，akit-config 在读完所有
+  文件后才有它们，正如它检查 `vod` 的 `library`；其余检查（`vod` 的模板、没有 `hls` 的 `channels`）属于处理器，正如 fit 的属于其
+  provision。无论哪种，配置都以 fit 的消息被拒绝。
+- **指南是 `docs/guides/media-library.md`**，与 akit 的其他指南放在一起，而不是 fit 放置它的 `docs/media-library.md`；其中的配置与
+  其他指南的一样由 `akit validate` 检查。

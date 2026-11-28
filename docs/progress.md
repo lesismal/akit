@@ -18,7 +18,7 @@ done and where the work differs from the plan.
 | Next | the external security review ([scope](security/review-scope.md)), whose findings finish I80b; fit's answer to the fields decision 035 proposes (CRL files, a WASM digest); the tracks after 1.0 ([the plan](dev-plan.md#after-10)): Console and encrypted store done (I89–I94, I93b, I93c); fit's Admin API rules for connections without the token, on the console's slots (akio's A232) (Logging done: I81–I83; Access lists done: I85–I87); the Gateway API's conformance run (tests/conformance, the maintainer's) |
 | akio requests | A1–A24, A29, A30, A32, A33, A35–A38, A45, A48, A49, A51–A54, A57, A58, A63–A66, A75, A78, A79, A90–A94, A105, A108, A109, A111–A113, A117, A132–A135, A148, A165–A172, A180, A200, A214, A215, A220, A230–A238, A245 and A247–A249 on akio's main and pinned; A225 (an external review, L15) requested ([akio API requests](akio-api-requests.md)) |
 | Streaming and media auth | [I120–I126](dev-plan.md#streaming-and-media-auth), fit's I115–I117 (decision 040): I120 (`media_auth` and `streaming` in the config), I121 (the policies, the checks, `akit media-token`), I122 (the role's hub, RTMP, RTSP and SRT), I123 (`httpflv`, `hls`), I124 (the WebRTC port, `stream_whip`, `stream_whep`), I125 (`media_pages`) and I126 (`auth` on `whip`, `whep` and `webrtc_proxy`) done; the media library's `libraries`, `vod` and `channels` wait for its track; akio requests A263–A268 |
-| Media library and channels | [I140–I149](dev-plan.md#media-library-and-channels), fit's I131–I139 and I119 (decision 043): I140 (`media_library` in the config) I141 (the catalog, the role `media_library`, `/media/library`) I142 (`vod`), I143 (`keys`, `media_tokens`), I144 (`url_signing`), I145 (channels), I146 (push targets) and I147 (encrypted segments) done; akio requests A295–A298 |
+| Media library and channels | [I140–I149](dev-plan.md#media-library-and-channels), fit's I131–I139 and I119 (decision 043): I140 (`media_library` in the config) I141 (the catalog, the role `media_library`, `/media/library`) I142 (`vod`), I143 (`keys`, `media_tokens`), I144 (`url_signing`), I145 (channels), I146 (push targets), I147 (encrypted segments) and I148 (the video site) done; akio requests A295–A298 |
 
 ## Log
 
@@ -165,6 +165,31 @@ done and where the work differs from the plan.
   - On io_uring, `Engine::remove_listener` returns once the listener's accepts are cancelled, so a
     listener a reload removes takes no connection after it; `H3Upload::finish` is no longer
     refused by its own response; the pool pressure watcher samples every 500 ms (was 100 ms).
+### 2026-11-28: I148, the video site
+
+- **Built**: fit's I137. akit-config reads `media_pages`' `libraries`, `vod` and `channels`, with
+  fit's checks (at most 16 libraries, each a `media_library` listed once; `vod` a path or an http
+  or https URL ending in `{id}/` and a playlist's name, and only with libraries; `channels` only
+  with `hls`). `media_pages` serves the library and player pages' API
+  (`akit_media::pages::library`): `api/library`, the libraries and the streaming role's channels
+  the viewer may play; `api/library/<name>`, a page of a library's items the viewer may play,
+  searched and paged; `api/play`, the URL of an item or a channel, signed for the viewer, its
+  address and a session of its own with the policy's `url_signing`, else the plain URL; a viewer's
+  bcrypt password checked on the crate's pool. `vod` on another server joins the pages' Content
+  Security Policy, and `api/config` has `library`. The pages are fit's, already copied at the
+  pin. fit-examples' `video-site` passes the gate. `docs/guides/media-library.md` and its Chinese
+  twin: the library, video on demand, playback URLs, encrypted segments, channels and the video
+  site.
+- **Checked**: fit's `TestLibraryPages`, `TestLibrarySigned`, `TestLibraryNotScanned`,
+  `TestLibraryChannels` (with the streaming role's own channels), `TestLibraryPublicAndNoPolicy`,
+  `TestLibraryOff` and `TestLibraryParams` in `tests/library_pages.rs`. Interop against fit's
+  binary with the same config, without and with `url_signing`: `api/library`, a library's pages,
+  searches and refusals, and `api/play` for items and channels answer the same bodies and statuses,
+  but for the times and the signatures; ffmpeg plays what akit's `api/play` answers, an item and a
+  channel; in a browser, the library page lists the item and the channel after the login, and the
+  player page plays the item through its signed URL.
+- **Next**: I149, the console's media library pages.
+
 ### 2026-11-28: I147, encrypted segments
 
 - **Built**: fit's I136. `akit_media::library::keys`: a library's keys derived from its `secret` or

@@ -1,7 +1,7 @@
 # The compatibility gate's report (docs/compatibility.md), written by make compat-bless;
 # do not edit. The gate fails when a run's outcomes differ from these lines.
 # fit 7daee573, fit-examples 9659d7e4.
-# 80 fixtures: 61 valid, 18 refused only as not supported yet (fields refused: 5), 0 in a format not supported yet, 1 skipped, 0 failed.
+# 80 fixtures: 62 valid, 17 refused only as not supported yet (fields refused: 3), 0 in a format not supported yet, 1 skipped, 0 failed.
 examples/acme-on-demand: valid
 examples/acme-shared-storage: valid
 examples/admin: valid
@@ -71,8 +71,7 @@ examples/telemetry: valid
 examples/tunnel-hub: valid
 examples/tunnel-node: valid
 examples/tunnel-proxy: valid
-examples/video-site: not supported yet: routes[].handler<media_pages>.params.channels
-examples/video-site: not supported yet: routes[].handler<media_pages>.params.libraries
+examples/video-site: valid
 examples/virtual-hosts: valid
 examples/wasm: valid
 examples/webrtc-proxy: valid

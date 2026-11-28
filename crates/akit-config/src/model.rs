@@ -3194,6 +3194,35 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
             }
         }
     }
+    // The libraries media_pages lists (I148), once every file is read.
+    for r in &routes {
+        if let Handler::MediaPages(h) = &r.v.handler {
+            // fit's provisionLibrary: the count, then each name, its library and that it is
+            // listed once.
+            let mut problems = Vec::new();
+            let max = crate::media::MAX_PAGES_LIBRARIES;
+            if h.libraries.len() > max {
+                problems.push((
+                    format!("{}.handler.params.libraries", r.path),
+                    format!("{} libraries: at most {max}", h.libraries.len()),
+                ));
+            } else {
+                for (i, name) in h.libraries.iter().enumerate() {
+                    let at = format!("{}.handler.params.libraries[{i}]", r.path);
+                    if !media_library.iter().any(|l| &l.name == name) {
+                        problems.push((at, format!("there is no media_library named {name:?}")));
+                    } else if h.libraries.get(..i).is_some_and(|b| b.contains(name)) {
+                        problems.push((at, format!("{name:?} is listed twice")));
+                    }
+                }
+            }
+            if let Some(d) = ds.get_mut(r.file) {
+                for (p, msg) in problems {
+                    d.error(r.off, &p, msg);
+                }
+            }
+        }
+    }
     // The policy the tracker names (I159), once every file is read (fit's checkBitTorrent).
     let bittorrent = bittorrent.map(|((b, refs), file)| {
         if let Some(d) = ds.get_mut(file) {

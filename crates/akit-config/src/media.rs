@@ -1753,6 +1753,10 @@ pub const DEFAULT_PAGES_PREFIX: &str = "/media";
 pub const DEFAULT_PAGES_WHIP: &str = "/whip/{stream}";
 /// See [`DEFAULT_PAGES_PREFIX`].
 pub const DEFAULT_PAGES_WHEP: &str = "/whep/{stream}";
+/// `media_pages`' default `vod`: an item's playlist as the `vod` handler serves it (I148).
+pub const DEFAULT_PAGES_VOD: &str = "/vod/{library}/{id}/index.m3u8";
+/// The most libraries `media_pages` lists (fit's `MaxLibraries`).
+pub const MAX_PAGES_LIBRARIES: usize = 16;
 /// See [`DEFAULT_PAGES_PREFIX`].
 pub const DEFAULT_PAGES_MAX_ROOMS: usize = 64;
 /// See [`DEFAULT_PAGES_PREFIX`].
@@ -1817,11 +1821,27 @@ pub struct MediaPages {
     pub member_ttl: Duration,
     /// `stall_timeout`: [`DEFAULT_PAGES_STALL_TIMEOUT`] when 0.
     pub stall_timeout: Duration,
+    /// `libraries` (I148): the media libraries the library page lists, in order.
+    pub libraries: Vec<String>,
+    /// `vod`: an item's playlist, `{library}` and `{id}` in it; [`DEFAULT_PAGES_VOD`] when empty.
+    pub vod: String,
+    /// `channels`: list the streaming role's channels too, played from `hls`.
+    pub channels: bool,
     /// The policy `auth` names, from the config ([`HttpFlv::policy`]).
     pub policy: Option<MediaAuth>,
 }
 
 impl MediaPages {
+    /// `vod`, or its default.
+    #[must_use]
+    pub fn vod_or(&self) -> &str {
+        if self.vod.is_empty() {
+            DEFAULT_PAGES_VOD
+        } else {
+            &self.vod
+        }
+    }
+
     /// `prefix`, or its default.
     #[must_use]
     pub fn prefix_or(&self) -> &str {
@@ -1893,8 +1913,11 @@ const MEDIA_PAGES_FIELDS: &[&str] = &[
     "max_file_bytes",
     "member_ttl",
     "stall_timeout",
+    "libraries",
+    "vod",
+    "channels",
 ];
-const MEDIA_PAGES_FIT_ONLY: &[&str] = &["libraries", "vod", "channels"];
+const MEDIA_PAGES_FIT_ONLY: &[&str] = &[];
 const PAGE_LINK_FIELDS: &[&str] = &["name", "url"];
 
 /// Whether `p` is a path of plain segments, as `/media` (fit's `pathPrefix`).
@@ -2043,6 +2066,14 @@ pub(crate) fn media_pages(
         }
     }
     p.stall_timeout = duration(d, &mut o, "stall_timeout");
+    // I148: the library pages; their checks are the handler's, as fit's (`provisionLibrary`),
+    // and the libraries' names are checked once every file is read.
+    if let Some(v) = o.take("libraries") {
+        let at = o.at("libraries");
+        p.libraries = d.strings(v, &at).into_iter().map(|(_, s)| s).collect();
+    }
+    p.vod = text(d, &mut o, "vod");
+    p.channels = boolean(d, &mut o, "channels");
     o.finish(d, MEDIA_PAGES_FIELDS, MEDIA_PAGES_FIT_ONLY);
     Some(p)
 }

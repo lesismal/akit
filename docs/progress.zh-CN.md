@@ -17,7 +17,7 @@
 | 下一步 | 外部安全审查（[范围](security/review-scope.zh-CN.md)），其发现完成 I80b；fit 对决定 035 所提议字段（CRL 文件、WASM 摘要）的答复；1.0 之后的各条线（[开发计划](dev-plan.zh-CN.md#10-之后)）：控制台与加密的 store 已完成（I89–I94、I93b、I93c）；fit 的 Admin API 对没有令牌的连接的规则，基于控制台的 slots（akio 的 A232）（日志已完成：I81–I83；访问控制列表已完成：I85–I87）；Gateway API 一致性测试的运行（tests/conformance，由维护者运行） |
 | akio 需求 | A1–A24、A29、A30、A32、A33、A35–A38、A45、A48、A49、A51–A54、A57、A58、A63–A66、A75、A78、A79、A90–A94、A105、A108、A109、A111–A113、A117、A132–A135、A148、A165–A172、A180、A200、A214、A215、A220、A230–A238、A245 和 A247–A249 已进入 akio 的 main 并锁定；A225（外部审查，L15）已提出（[akio API 请求](akio-api-requests.zh-CN.md)） |
 | 流媒体与媒体认证 | [I120–I126](dev-plan.zh-CN.md#流媒体与媒体认证)，fit 的 I115–I117（决定 040）：I120（配置中的 `media_auth` 和 `streaming`）、I121（策略、检查、`akit media-token`）I122（角色的媒体中心、RTMP、RTSP 和 SRT）、I123（`httpflv`、`hls`）、I124（WebRTC 端口、`stream_whip`、`stream_whep`）、I125（`media_pages`）和 I126（`whip`、`whep` 和 `webrtc_proxy` 上的 `auth`）已完成；媒体库的 `libraries`、`vod` 和 `channels` 等待其那条线；akio 请求 A263–A268 |
-| 媒体库与频道 | [I140–I149](dev-plan.zh-CN.md#媒体库与频道)，fit 的 I131–I139 和 I119（决定 043）：I140（配置中的 `media_library`）、I141（目录、角色 `media_library`、`/media/library`）、I142（`vod`）、I143（`keys`、`media_tokens`）、I144（`url_signing`）、I145（频道）、I146（推送目标）和 I147（加密分片）已完成；akio 需求 A295–A298 |
+| 媒体库与频道 | [I140–I149](dev-plan.zh-CN.md#媒体库与频道)，fit 的 I131–I139 和 I119（决定 043）：I140（配置中的 `media_library`）、I141（目录、角色 `media_library`、`/media/library`）、I142（`vod`）、I143（`keys`、`media_tokens`）、I144（`url_signing`）、I145（频道）、I146（推送目标）、I147（加密分片）和 I148（视频网站）已完成；akio 需求 A295–A298 |
 
 ## 日志
 
@@ -116,6 +116,23 @@
     它对吞吐的影响留给基准任务测量（规则 30）。
   - 在 io_uring 上，`Engine::remove_listener` 在监听器的 accept 取消完成后才返回，重载移除的监听器此后不再接受连接；`H3Upload::finish`
     不再被其自身的响应拒绝；池压力监视器每 500 ms 采样一次（原为 100 ms）。
+### 2026-11-28：I148，视频网站
+
+- **构建**：fit 的 I137。akit-config 读取 `media_pages` 的 `libraries`、`vod` 和 `channels`，检查与 fit 相同（最多 16 个媒体库，
+  每个都是只列出一次的 `media_library`；`vod` 是以 `{id}/` 和播放列表名结尾的路径或 http/https URL，且只能与 libraries 一起设置；
+  `channels` 只能与 `hls` 一起设置）。`media_pages` 提供片库和播放器页面的 API（`akit_media::pages::library`）：`api/library`
+  列出观众可播放的媒体库和流媒体角色的频道；`api/library/<name>` 给出观众可播放的媒体库条目的一页，可搜索和分页；`api/play`
+  给出条目或频道的地址，设置了策略的 `url_signing` 时为观众、其地址和它自己的会话签名，否则为普通地址；观众的 bcrypt 密码在 crate
+  的池上检查。位于其他服务器上的 `vod` 加入页面的 Content Security Policy，`api/config` 带有 `library`。页面是 fit 的，已在钉住的
+  版本复制。fit-examples 的 `video-site` 通过关卡。`docs/guides/media-library.md` 及其中文版：媒体库、点播、播放地址、加密分片、
+  频道和视频网站。
+- **验证**：`tests/library_pages.rs` 中的 fit 的 `TestLibraryPages`、`TestLibrarySigned`、`TestLibraryNotScanned`、
+  `TestLibraryChannels`（使用流媒体角色自己的频道）、`TestLibraryPublicAndNoPolicy`、`TestLibraryOff` 和 `TestLibraryParams`。
+  与 fit 二进制在相同配置下互通，无 `url_signing` 和有 `url_signing` 两种情况：`api/library`、媒体库的分页、搜索和拒绝，以及条目和
+  频道的 `api/play`，除时间和签名外，应答体和状态码都相同；ffmpeg 播放 akit 的 `api/play` 给出的条目和频道地址；在浏览器中，登录后
+  片库页面列出条目和频道，播放器页面通过签名地址播放条目。
+- **下一步**：I149，控制台的媒体库页面。
+
 ### 2026-11-28：I147，加密分片
 
 - **构建**：fit 的 I136。`akit_media::library::keys`：按 fit 的方式、逐字节一致地从媒体库的 `secret` 或 `secret_file`（每次应用配置时

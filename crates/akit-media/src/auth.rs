@@ -966,6 +966,50 @@ impl Policy {
         }
     }
 
+    /// Who `c` is to the policy, and what it may do (fit's `Whois`), without waiting: a token is
+    /// checked before a user and password, as [`Policy::allow`] checks them, and a password a
+    /// bcrypt hash must check, not found right before, is [`Refusal::Pending`].
+    ///
+    /// # Errors
+    ///
+    /// The refusal: no credentials, bad ones, a policy not loaded.
+    pub fn whois_now(&self, c: &Credentials) -> Result<(String, Grant), Refusal> {
+        self.st.with(|st| {
+            let Some(st) = st else {
+                return Err(Refusal::Unavailable);
+            };
+            if !c.token.is_empty() {
+                token(st, &c.token)
+            } else if !c.user.is_empty() {
+                self.password_check(st, &c.user, &c.password)
+                    .map(|u| (u.name.clone(), u.grant.clone()))
+            } else {
+                Err(Refusal::NoCredentials)
+            }
+        })
+    }
+
+    /// [`Policy::whois_now`], with a bcrypt check run on the crate's pool: `done` is called once,
+    /// before `whois` returns when no bcrypt check is needed, or later on the pool's thread.
+    pub fn whois(
+        self: &Arc<Self>,
+        c: &Credentials,
+        done: impl FnOnce(Result<(String, Grant), Refusal>) + Send + 'static,
+    ) {
+        match self.whois_now(c) {
+            Err(Refusal::Pending) => {}
+            r => return done(r),
+        }
+        let p = Arc::clone(self);
+        let (user, password) = (c.user.clone(), c.password.clone());
+        crate::pool::submit(Box::new(move |late| {
+            if late {
+                return done(Err(Refusal::Busy));
+            }
+            done(p.slow_user(&user, &password));
+        }));
+    }
+
     /// Checks a user's password for the media pages' login (fit's `Login`): `done` is called once
     /// with the user's name and grant, before `login` returns when no bcrypt check is needed, or
     /// later on the crate's pool. A check the pool has no room or time for is [`Refusal::Busy`].

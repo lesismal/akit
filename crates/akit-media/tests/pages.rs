@@ -498,7 +498,7 @@ fn params() {
         (r#"{"member_ttl": "1s"}"#, "member_ttl"),
         (r#"{"max_file_bytes": 1023}"#, "at least 1024"),
         (r#"{"max_file_bytes": 33554433}"#, "at most 33554432"),
-        (r#"{"libraries": ["x"]}"#, "not supported yet"),
+        (r#"{"libraries": ["x"]}"#, "there is no media_library named"),
         (r#"{"max_members": 257}"#, "max_members"),
     ] {
         let err = match akit_config::from_json(&conf(params), None) {

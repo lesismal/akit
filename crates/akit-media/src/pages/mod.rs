@@ -6,9 +6,10 @@
 //! members of a call announce whether they publish and their microphone and camera, learn the
 //! others' with Server-Sent Events, and talk in the room's chat ([`chat`]).
 //!
-//! fit's library and channels (`libraries`, `vod`, `channels`) come with the media library's
-//! track; akit-config refuses them as not supported yet, and the API's `library` and `play`
-//! answer 404 as fit's do without them.
+//! With `libraries` and `channels` (I148), its library and player pages list the media
+//! libraries' items and the streaming role's channels the viewer may play, and play them through
+//! URLs signed for the viewer with the policy's `url_signing` ([`library`]); without them the
+//! API's `library` and `play` answer 404, as fit's do.
 //!
 //! Nothing blocks an I/O thread: the room API's state is in memory under short locks, its events
 //! are written without waiting (a browser that does not take them is sent only the latest state
@@ -20,6 +21,7 @@
 
 mod chat;
 mod files;
+pub mod library;
 mod rooms;
 
 use std::collections::HashMap;
@@ -72,6 +74,8 @@ struct Pages {
     csp: String,
     /// `GET api/config`'s answer.
     conf: Vec<u8>,
+    /// The library and player pages' API, with `libraries` or `channels`.
+    lib: Option<Arc<library::Library>>,
 }
 
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -251,14 +255,19 @@ pub(crate) fn new_pages(
             }
         }
     }
+    let key = Arc::new(OnceLock::new());
+    let lib = library::provision(h, Arc::clone(&key), &mut origins)?;
     origins.sort();
     let auth = HandlerAuth::new(p.env().engine(), &h.auth, h.policy.as_ref());
     let public = |a: Action| h.policy.as_ref().is_some_and(|p| p.is_public(a));
-    let conf = config_json(h, public(Action::Publish), public(Action::Play)).into_bytes();
+    let lib_conf = lib.as_ref().map_or("null", |(_, c)| c.as_str());
+    let conf = config_json(h, public(Action::Publish), public(Action::Play), lib_conf).into_bytes();
     let hub = Arc::new(OnceLock::new());
     let (hk, key_prefix, hset) = (Arc::clone(&hub), prefix.clone(), Arc::clone(&set));
     p.env().engine().when_set(move |engine| {
-        let _ = hk.set(rooms::acquire(registry::key(engine), &key_prefix, hset));
+        let k = registry::key(engine);
+        let _ = key.set(k);
+        let _ = hk.set(rooms::acquire(k, &key_prefix, hset));
     });
     let mut pages = Pages {
         prefix,
@@ -270,6 +279,7 @@ pub(crate) fn new_pages(
         assets: HashMap::new(),
         csp: String::new(),
         conf,
+        lib: lib.map(|(l, _)| Arc::new(l)),
     };
     if pages.pages {
         pages.build_assets(&h.title, &origins);
@@ -284,7 +294,7 @@ pub(crate) fn new_pages(
 }
 
 /// `GET api/config`'s answer, as fit's: a JSON object of its keys in order.
-fn config_json(h: &MediaPages, public_publish: bool, public_play: bool) -> String {
+fn config_json(h: &MediaPages, public_publish: bool, public_play: bool, library: &str) -> String {
     let or = |s: &str, d: &str| {
         if s.is_empty() {
             d.to_owned()
@@ -322,7 +332,7 @@ fn config_json(h: &MediaPages, public_publish: bool, public_play: bool) -> Strin
         concat!(
             "{{\"auth\":{auth},\"call\":{{\"cam\":{cam},\"mic\":{mic}}},",
             "\"chat\":{{\"enabled\":{chat},\"maxFileBytes\":{file}}},\"hls\":{hls},",
-            "\"iceServers\":[{ice}],\"library\":null,\"links\":{links},\"login\":{login},",
+            "\"iceServers\":[{ice}],\"library\":{library},\"links\":{links},\"login\":{login},",
             "\"public\":{{\"play\":{play},\"publish\":{publish}}},",
             "\"room\":{{\"heartbeatMs\":{hb},\"maxMembers\":{members},\"maxMessage\":{msg}}},",
             "\"title\":{title},\"whep\":{whep},\"whip\":{whip}}}"
@@ -334,6 +344,7 @@ fn config_json(h: &MediaPages, public_publish: bool, public_play: bool) -> Strin
         file = h.file_bytes(),
         hls = quote(&h.hls),
         ice = ice.join(","),
+        library = library,
         links = links,
         login = h.login,
         play = public_play,
@@ -474,9 +485,11 @@ impl Pages {
                 let c = cookie(ctx, "", -1);
                 json(ctx, 200, b"{}".to_vec(), &[("Set-Cookie", &c)]);
             }
-            r if r == "library" || r.starts_with("library/") || r == "play" => {
-                plain(ctx, 404, "the pages have no library", &[]);
+            r if r == "library" || r.starts_with("library/") => {
+                let rest = r.strip_prefix("library").unwrap_or("");
+                library::library_api(self.lib.as_ref(), &self.auth, ctx, rest);
             }
+            "play" => library::play(self.lib.as_ref(), &self.auth, self.set.max_message, ctx),
             r if r.starts_with("rooms/") => {
                 let Some(hub) = self.hub.get() else {
                     return plain(ctx, 503, "the media pages are not ready", &[]);

@@ -14,6 +14,7 @@
 - [管理多个 akit](cluster.zh-CN.md)：管理 akit 和 fit 成员的管理端、成员的状态和凭据（`admin.cluster`）。
 - [缓存](caching.zh-CN.md)：`cache` 中间件、磁盘层和清除。
 - [WebAssembly 插件](wasm.zh-CN.md)：fit 的插件和 Proxy-Wasm 插件、它们的上限和开销。
+- [媒体库与视频网站](media-library.zh-CN.md)：以点播和频道提供影片、会过期的播放地址、加密分片、片库和播放器页面。
 
 从其他服务器迁移：
 
