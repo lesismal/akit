@@ -21,6 +21,20 @@
 
 ## 日志
 
+### 2026-11-28：akio 锁定在 `db34bfd7`：A301
+
+- akio：akio main 上的 `db34bfd7`（自 `d8d51f61` 起）。akit 的 `rev` 与 `akit_runtime::AKIO_REV` 随之移动；akit 无需改动即可构建。
+  这一段对 akit 带来的变化：
+  - A301：`H2Client` 连接在引擎优雅关闭时结束（`GOAWAY`，空闲时立即关闭，否则在最后一个流结束后关闭；等待流的请求和新请求以
+    `ClientError::Refused` 失败；`is_open` 为 false）。akit 的权宜做法在下一条中去掉。
+  - epoll/kqueue 上未选择调度方式的 TCP 监听器改用工作窃取（akio 的 ADR-104；`AKIO_DEFAULT_SCHEDULING=event-loops` 恢复事件循环）。
+    akit 没有选择，因此它在 epoll/kqueue 上的 HTTP、四层和管理监听器现在把每个连接的每一轮交给空闲的 worker 执行；io_uring 仍是事件循环。
+    `engine.event_loops`（`.threads(n)`）决定 worker 数，akio 的按循环指标对每个 worker 和 poller 各有一行。akit 不调用这类监听器拒绝的
+    `Engine::set_threads` 和 `set_listener_threads`。数据面的按线程状态（图缓存、指标分片）按线程而非按连接，仍然成立。
+    它对吞吐的影响留给基准任务测量（规则 30）。
+  - 在 io_uring 上，`Engine::remove_listener` 在监听器的 accept 取消完成后才返回，重载移除的监听器此后不再接受连接；`H3Upload::finish`
+    不再被其自身的响应拒绝；池压力监视器每 500 ms 采样一次（原为 100 ms）。
+
 ### 2026-11-28：I142，`vod`
 
 - **完成内容**：`akit_media::vod`，即 fit 的 `handler/vod`，及其在 akit-config 中的参数（`medialib::Vod`：`library`、`prefix`、

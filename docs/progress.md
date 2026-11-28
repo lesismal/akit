@@ -22,6 +22,25 @@ done and where the work differs from the plan.
 
 ## Log
 
+### 2026-11-28: akio pinned at `db34bfd7`: A301
+
+- akio: `db34bfd7` on akio's main (from `d8d51f61`). akit's `rev` and `akit_runtime::AKIO_REV` move
+  with it; akit builds unchanged. What the range brings to akit:
+  - A301: an `H2Client` connection ends at the engine's graceful shutdown (`GOAWAY`, closed at
+    once when idle, else after its last stream; requests waiting for a stream and new ones fail
+    with `ClientError::Refused`; `is_open` false). akit's stopgap goes in the next entry.
+  - TCP listeners on epoll/kqueue that choose no scheduling run on work stealing (akio's
+    ADR-104; `AKIO_DEFAULT_SCHEDULING=event-loops` restores event loops). akit chooses none, so
+    its HTTP, layer 4 and admin listeners on epoll/kqueue now run each connection's rounds on
+    whichever worker is free; io_uring keeps event loops. `engine.event_loops` (`.threads(n)`)
+    sizes the workers, and akio's per-loop metrics have a row per worker and poller. akit calls
+    neither `Engine::set_threads` nor `set_listener_threads`, which such listeners refuse. The
+    data plane's per-thread state (the graph cache, metric shards) is per thread, not per
+    connection, and holds. Its effect on throughput is for a benchmark task to measure (rule 30).
+  - On io_uring, `Engine::remove_listener` returns once the listener's accepts are cancelled, so a
+    listener a reload removes takes no connection after it; `H3Upload::finish` is no longer
+    refused by its own response; the pool pressure watcher samples every 500 ms (was 100 ms).
+
 ### 2026-11-28: I142, `vod`
 
 - **Built**: `akit_media::vod`, fit's `handler/vod`, and its params in akit-config (`medialib::Vod`:
