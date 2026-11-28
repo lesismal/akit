@@ -132,6 +132,7 @@ first; its status here records the branch, then the akio commit akit pins.
 | A288 | A torrent's trackers with their announces, its peer sources and web seeds' state, and a recheck in place (fib's A87, A88) | requested | — | I157 |
 | A277 | A client response's peer certificate chain, and a client TLS verifier that keeps a certificate it refused for the caller to see | requested by I132; a recorded stopgap (a probe of the member's certificate) | 1, 15 | I132–I139c |
 | A301 | `H2Client` ends its connection at the engine's graceful shutdown (`GOAWAY`; closed now with no stream open, else after its last), as the HTTP/1 client closes its idle ones | requested; stopgap: `EngineSlot::shutdown`, which `akit run` calls before the engine's shutdown, closes the pools' idle h2 connections | 4, 10 | I18, I18b |
+| A302 | `Conn::close` on io_uring resets a TCP connection whose received data it did not deliver, as on epoll (or a `Conn::abort` that closes with a reset): today a receive in flight takes the data after the shutdown, so the peer, facing a zero window, is never reset | requested; no stopgap (fastcgi.rs `cut_connections` fails on io_uring meanwhile) | — | I75 |
 
 ## A1 TCP listeners on a running engine
 
@@ -3119,3 +3120,48 @@ for a stream fail with `ClientError::Closed`, as after the server's `GOAWAY`). T
 **How akit would use it.** `EngineSlot::shutdown`, the list of h2 pools it walks and its
 call in `akit run` go; the pools already stop using a connection that is no longer
 open (`H2Client::is_open`) and close it once its last stream is over.
+
+## A302 A connection closed on io_uring with its receive window shut: the peer is never reset
+
+**Status.** Requested (2026-11-28). No stopgap in akit: it has no way to reset a connection
+itself. `akit-handler/tests/fastcgi.rs` `cut_connections` fails on io_uring while this stands.
+
+**Problem.** When akit gives up a FastCGI connection in the middle of a response (its client
+went), it calls `Conn::close`. On epoll the application then learns it at once: its next write
+is reset. On io_uring, now and then, it never does: the application, still writing the response,
+blocks until the kernel drops akio's orphaned socket (`tcp_fin_timeout`, 60 s by default). A
+PHP-FPM worker would be held that long by every client that leaves a large download. fit (Go)
+does not have this: `net.Conn.Close` closes the descriptor, and a socket closed with data unread
+is reset.
+
+**Evidence.** akio `d8d51f61`, gpu51 (Linux, 16 cores). `cut_connections` alone with
+`AKIO_TEST_BACKEND=uring AKIO_DEFAULT_BACKEND=uring` failed in 3 of 23 and 1 of 16 runs; on epoll
+0 of over 60. A trace of akit's FastCGI handler shows the h2 client's going heard
+(`on_gone`), the exchange failed and the application's connection closed (`Handler::on_close`)
+within 2 ms of the response starting. Four seconds later, `ss -tanie` on the test process:
+
+- the application's socket: `CLOSE-WAIT`, Send-Q 3,909,600 (`notsent`), `rwnd_limited` 100% of
+  the last 4.2 s, a persist timer probing a zero window;
+- akio's side of it: `FIN-WAIT-2`, Recv-Q 0, `ino:0` (orphaned, no descriptor), the FIN-WAIT-2
+  timer at 55 s.
+
+So akio sent a FIN, not a reset, with its receive window shut, and the window never opened again.
+The likely mechanism, from `akio-uring/src/reactor.rs`'s close (`shutdown(Shutdown::Both)`, the
+connection to the graveyard, its descriptor closed once the ring has submitted, the kernel's own
+references keeping the socket): a receive still in flight at the shutdown completes after it and
+takes what the socket had queued, so the final close finds nothing unread and sends no reset;
+and after `SHUT_RD` Linux sends no window update for that read (`tcp_cleanup_rbuf` skips it once
+`RCV_SHUTDOWN` is set). The application, facing a zero window, only sends window probes, which
+carry no new data, so the orphan never resets it either. On epoll no read is in flight: the
+close finds the data unread and resets.
+
+**Suggested API.** Either (a) `Conn::close` resets a TCP connection that has received data it
+did not deliver, on io_uring as on epoll: the in-flight receive cancelled before the shutdown, or
+its late data counted as unread (for instance `SO_LINGER` 0 set before the descriptor is closed
+when data was dropped); or (b) an explicit `Conn::abort` that closes with a reset (`SO_LINGER`
+`{on, 0}`), for users that give a connection up mid-stream. (a) keeps `close` meaning what it
+does on epoll; (b) lets a proxy say it on purpose.
+
+**How akit would use it.** With (a), nothing changes in akit and `cut_connections` passes on
+io_uring. With (b), the FastCGI handler (and the proxy's upstream connections) abort, rather than
+close, a connection given up before its response ended (`Exchange::fail` releasing it unreused).

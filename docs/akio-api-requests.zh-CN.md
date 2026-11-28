@@ -131,6 +131,7 @@
 | A288 | 种子的 tracker 及其 announce、peer 来源和 web seed 的状态，以及原地重新校验（fib 的 A87、A88） | 已提出 | — | I157 |
 | A277 | 客户端响应所在连接的对端证书链，以及能把被拒绝的证书留给调用方查看的客户端 TLS 校验 | I132 提出；有记录在案的权宜做法（探测成员的证书） | 1, 15 | I132–I139c |
 | A301 | `H2Client` 在引擎优雅关闭时结束其连接（`GOAWAY`；没有打开的流时立即关闭，否则在最后一个流结束后关闭），如同 HTTP/1 客户端关闭其空闲连接 | 已提出；权宜做法：`akit run` 在关闭引擎前调用的 `EngineSlot::shutdown` 关闭池的空闲 h2 连接 | 4, 10 | I18, I18b |
+| A302 | io_uring 上的 `Conn::close` 像 epoll 上一样重置一个收到了未交付数据的 TCP 连接（或提供以重置方式关闭的 `Conn::abort`）：目前进行中的接收在 shutdown 之后取走数据，面对零窗口的对端永远收不到重置 | 已提出；没有权宜做法（其间 fastcgi.rs 的 `cut_connections` 在 io_uring 上会失败） | — | I75 |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -2480,3 +2481,36 @@ akio 的 HTTP 客户端给出的响应不带其连接握手时看到的证书链
 
 **akit 如何使用。** `EngineSlot::shutdown` 及其在 `akit run` 中的调用连同它遍历的 h2 池列表一起去掉；池已经不再使用不再
 打开的连接（`H2Client::is_open`），并在其最后一个流结束后关闭它。
+
+## A302 io_uring 上在接收窗口关闭时关闭的连接：对端永远收不到重置
+
+**状态。** 已提出（2026-11-28）。akit 中没有权宜做法：它无法自己重置连接。在此问题存在期间，
+`akit-handler/tests/fastcgi.rs` 的 `cut_connections` 在 io_uring 上会失败。
+
+**问题。** akit 在响应中途放弃一个 FastCGI 连接时（其客户端离开了）调用 `Conn::close`。在 epoll 上应用立即知道：
+它的下一次写被重置。在 io_uring 上，偶尔永远不会：仍在写响应的应用会阻塞，直到内核丢弃 akio 的孤儿套接字
+（`tcp_fin_timeout`，默认 60 s）。每个在大文件下载中途离开的客户端都会让一个 PHP-FPM worker 被占用这么久。
+fit（Go）没有这个问题：`net.Conn.Close` 关闭描述符，带有未读数据关闭的套接字会被重置。
+
+**证据。** akio `d8d51f61`，gpu51（Linux，16 核）。`cut_connections` 单独运行，设置
+`AKIO_TEST_BACKEND=uring AKIO_DEFAULT_BACKEND=uring`，23 次中失败 3 次、16 次中失败 1 次；epoll 上 60 多次中 0 次。
+akit FastCGI 处理器的跟踪显示：在响应开始后 2 ms 内，h2 客户端的离开已被得知（`on_gone`），交换失败，
+应用的连接已关闭（`Handler::on_close`）。四秒后，测试进程上的 `ss -tanie`：
+
+- 应用的套接字：`CLOSE-WAIT`，Send-Q 3,909,600（`notsent`），最近 4.2 s 内 `rwnd_limited` 100%，持续定时器在探测零窗口；
+- akio 这一侧：`FIN-WAIT-2`，Recv-Q 0，`ino:0`（孤儿，没有描述符），FIN-WAIT-2 定时器在 55 s。
+
+也就是说，akio 在接收窗口关闭时发出了 FIN 而不是重置，而窗口再也没有打开。可能的机制，来自
+`akio-uring/src/reactor.rs` 的关闭（`shutdown(Shutdown::Both)`，连接进入 graveyard，环提交后关闭其描述符，
+内核自己的引用保持套接字）：关闭时仍在进行的接收在 shutdown 之后完成并取走了套接字排队的数据，因此最终关闭时
+没有未读数据，不发送重置；而在 `SHUT_RD` 之后 Linux 不会为那次读取发送窗口更新（一旦设置 `RCV_SHUTDOWN`，
+`tcp_cleanup_rbuf` 就跳过）。面对零窗口，应用只发送不携带新数据的窗口探测，所以孤儿套接字也不会重置它。
+在 epoll 上没有进行中的读取：关闭时发现数据未读，于是重置。
+
+**建议的 API。** 要么 (a) `Conn::close` 在 io_uring 上像在 epoll 上一样，重置一个收到了未交付数据的 TCP 连接：
+在 shutdown 之前取消进行中的接收，或者把它迟到的数据算作未读（例如在丢弃了数据时，关闭描述符前设置 `SO_LINGER` 0）；
+要么 (b) 提供显式的 `Conn::abort`，以重置方式关闭（`SO_LINGER` `{on, 0}`），供在流中途放弃连接的用户使用。
+(a) 让 `close` 保持它在 epoll 上的含义；(b) 让代理有意地表达这一点。
+
+**akit 如何使用。** 采用 (a)，akit 无需改动，`cut_connections` 在 io_uring 上通过。采用 (b)，FastCGI 处理器
+（以及代理的上游连接）对响应结束前放弃的连接执行中止而不是关闭（`Exchange::fail` 以不复用方式释放它时）。
