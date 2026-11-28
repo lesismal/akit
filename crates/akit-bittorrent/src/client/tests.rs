@@ -940,17 +940,26 @@ fn publishing() {
             src.to_str().unwrap()
         )
     };
-    let port = free_port();
-    let mut env = Env::start(&dir, port, &entry(""));
-    let http: std::net::SocketAddr = format!("127.0.0.1:{}", free_port()).parse().unwrap();
-    env.engine
-        .add_listener(akio::Listener::tcp(http).serve(akio_http::serve(
-            super::publish_handler::service(
-                akit_runtime::upstream::EngineSlot::with(Arc::clone(&env.engine)),
-                Vec::new(),
+    let mut env = Env::start(&dir, ANY, &entry(""));
+    // The publish handler on port 0: its address as it bound it.
+    let id = env
+        .engine
+        .add_listener(
+            akio::Listener::tcp(std::net::SocketAddr::from(([127, 0, 0, 1], 0))).serve(
+                akio_http::serve(super::publish_handler::service(
+                    akit_runtime::upstream::EngineSlot::with(Arc::clone(&env.engine)),
+                    Vec::new(),
+                )),
             ),
-        )))
+        )
         .unwrap();
+    let http = env
+        .engine
+        .listeners()
+        .into_iter()
+        .find(|l| l.id == id)
+        .unwrap()
+        .local_addr;
     let index = || {
         let (code, body) = http_get(http, "GET", "/rel/");
         assert_eq!(code, 200);
@@ -990,7 +999,7 @@ fn publishing() {
     assert_eq!(http_get(http, "GET", "/rel/nope.torrent").0, 404);
     assert_eq!(http_get(http, "POST", "/rel/").0, 405);
     // Another role downloads a.bin from the publisher alone.
-    let leech = Env::start(&tmp("pub-leech"), free_port(), "");
+    let leech = Env::start(&tmp("pub-leech"), ANY, "");
     let lapi = leech.api();
     let req = AddRequest {
         peers: vec![env.api().listen_addr().unwrap()],
@@ -1024,7 +1033,7 @@ fn publishing() {
     env.roles.stop(Duration::ZERO);
     assert_eq!(http_get(http, "GET", "/rel/").0, 503);
     env.roles = Manager::new(&[CLIENT], Arc::clone(&env.engine), None);
-    env.apply(port, &entry("")).unwrap();
+    env.apply(ANY, &entry("")).unwrap();
     wait_for("restored", 20, || {
         let i = index();
         i.contains(&ida) && i.matches("\"state\":\"seeding\"").count() == 2
@@ -1032,7 +1041,7 @@ fn publishing() {
     assert_eq!(built(&index()), before, "a restart built a.bin again");
     // whole_dir: a directory with files left out is reported, not published.
     env.apply(
-        port,
+        ANY,
         &entry(r#", "mode": "whole_dir", "web_seed": "http://127.0.0.1:1/x/src""#),
     )
     .unwrap();
@@ -1047,7 +1056,7 @@ fn publishing() {
             && i.contains("\"state\":\"seeding\"")
     });
     // The entry removed: its state gone, its files kept.
-    env.apply(port, "").unwrap();
+    env.apply(ANY, "").unwrap();
     assert!(!dir.join("data/publish/rel").exists());
     assert!(src.join("a.bin").exists());
 }
@@ -1193,7 +1202,7 @@ fn the_admin_api() {
         r#", "categories": [{{"name": "tv"}}], "alt_speed": {{"upload_rate": 1000}}, "publish": [{{"name": "share", "dir": {:?}, "check_interval": "100ms"}}]"#,
         pubdir.to_str().unwrap()
     );
-    let env = Env::start(&dir, free_port(), &extra);
+    let env = Env::start(&dir, ANY, &extra);
     let payload = data(300_000, 71);
     std::fs::create_dir_all(env.downloads().join("tv")).unwrap();
     std::fs::write(env.downloads().join("tv").join("t.bin"), &payload).unwrap();

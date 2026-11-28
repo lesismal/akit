@@ -642,12 +642,20 @@ fn a_private_tracker() {
         .unwrap();
     engine.start().unwrap();
     let engine = Arc::new(engine);
-    let http: SocketAddr = format!("127.0.0.1:{}", free_port()).parse().unwrap();
+    // The handler's listener on port 0: its address as it bound it.
     let slot = EngineSlot::with(Arc::clone(&engine));
     let svc = tests_handler(slot.clone());
-    engine
-        .add_listener(akio::Listener::tcp(http).serve(akio_http::serve(svc)))
+    let id = engine
+        .add_listener(
+            akio::Listener::tcp(SocketAddr::from(([127, 0, 0, 1], 0))).serve(akio_http::serve(svc)),
+        )
         .unwrap();
+    let http = engine
+        .listeners()
+        .into_iter()
+        .find(|l| l.id == id)
+        .unwrap()
+        .local_addr;
     let env = Env {
         roles: Manager::new(
             &[akit_media::role::MEDIA_AUTH, TRACKER],
@@ -665,9 +673,8 @@ fn a_private_tracker() {
               "users": [{{"name": "alice", "password": "alice-password", "play": ["bittorrent/*"]}},
                         {{"name": "bob", "password": "bob-password", "play": ["bittorrent/{}"]}}],
               "tokens": [{{"name": "t", "token": "token-0123456789ab", "play": ["bittorrent/*"]}}]}}],
-            "bittorrent": {{"tracker": {{"listen": "127.0.0.1:{}", "auth": "bt"}}}}}}"#,
-        hex(&[8u8; 20]),
-        free_port()
+            "bittorrent": {{"tracker": {{"listen": "{ANY}", "auth": "bt"}}}}}}"#,
+        hex(&[8u8; 20])
     );
     let config = akit_config::from_json(&doc, None).unwrap();
     assert!(env.roles.apply(&config).is_empty());

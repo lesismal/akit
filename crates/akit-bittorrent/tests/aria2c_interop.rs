@@ -52,17 +52,22 @@ fn aria2c_downloads_from_akit_through_akits_tracker() {
         .unwrap();
     engine.start().unwrap();
     let engine = Arc::new(engine);
-    let http = std::net::TcpListener::bind("127.0.0.1:0")
+    // The tracker's HTTP listener on port 0: its address as it bound it.
+    let id = engine
+        .add_listener(
+            akio::Listener::tcp(std::net::SocketAddr::from(([127, 0, 0, 1], 0))).serve(
+                akio_http::serve(akit_bittorrent::tracker::service(
+                    akit_runtime::upstream::EngineSlot::with(Arc::clone(&engine)),
+                )),
+            ),
+        )
+        .unwrap();
+    let http = engine
+        .listeners()
+        .into_iter()
+        .find(|l| l.id == id)
         .unwrap()
-        .local_addr()
-        .unwrap();
-    engine
-        .add_listener(akio::Listener::tcp(http).serve(akio_http::serve(
-            akit_bittorrent::tracker::service(akit_runtime::upstream::EngineSlot::with(
-                Arc::clone(&engine),
-            )),
-        )))
-        .unwrap();
+        .local_addr;
     let mut roles = Manager::new(
         &[akit_bittorrent::TRACKER, akit_bittorrent::CLIENT],
         Arc::clone(&engine),
