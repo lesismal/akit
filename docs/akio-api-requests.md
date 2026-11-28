@@ -138,7 +138,6 @@ first; its status here records the branch, then the akio commit akit pins.
 | A301 | `H2Client` ends its connection at the engine's graceful shutdown (`GOAWAY`; closed now with no stream open, else after its last), as the HTTP/1 client closes its idle ones | on akio's main and pinned (since `db34bfd7`): `H2Acceptor::on_shutdown`; akit's stopgap (`EngineSlot::shutdown`) removed | 4, 10 | I18, I18b |
 | A302 | `Conn::close` on io_uring resets a TCP connection whose received data it did not deliver, as on epoll (or a `Conn::abort` that closes with a reset): today a receive in flight takes the data after the shutdown, so the peer, facing a zero window, is never reset | on akio's main and pinned (since `5893a0ed`): suggestion (a), akio's ADR-188 (`SO_LINGER` 0 when input was not delivered; `akio_sys::reset_on_close`); fastcgi.rs `cut_connections` passes on io_uring | — | I75 |
 | A303 | Linked backpressure that holds under work stealing (ADR-104): a held upstream read (akio-http's `ResponseBody::hold_reads`, under akit's `Download::hold_reads`) and a full downstream write (`BodyStream::queued_bytes`, `on_drain`) bound what a streamed relay holds, as on event loops | requested; stopgap: akit's TCP listeners choose `Scheduling::EventLoops` (`akit_runtime::scheduled`, decision 91) unless `AKIO_DEFAULT_SCHEDULING` is set | 8, 11 | I16, I17, I18b |
-| A304 | An `RtcServer`'s host candidates set once its UDP listener is bound: a media server on port 0 names the port it got | requested; stopgap: the port found by binding port 0 and letting go, then bound | 1, 11 | I113 |
 
 | A305 | A plain WebSocket's late queue (what other threads send while its handler's batch is open) counted in `WsSender::queued_bytes` and waited for by `on_drain`, bounded by the connection's `max_queued_bytes` rather than a fixed 4 MiB, and never dropped silently when the batch ends | requested; akit ends a sealed WebSocket on a refused send instead of skipping a message's number (console.rs `large_transfers_both_ways` still fails now and then meanwhile) | 8, 9 | I103b |
 
@@ -3263,6 +3262,8 @@ relay between two connections on different workers, its memory bounded, would ke
 
 **How akit would use it.** `akit_runtime::scheduled` goes, with decision 91: akit's listeners
 take akio's default scheduling again, and `stream_download` passes under it.
+
+
 
 ## A304 An `RtcServer`'s host candidates set once its listener is bound
 

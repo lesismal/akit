@@ -40,7 +40,7 @@ done and where the work differs from the plan.
   Pebble's processes and the ports Pebble dials back, a relay port range, `auto_https`'s ports, a
   console whose identity's `http_url` a test reads, a forward added through the pages, and
   listeners replaced or restarted at the same address. The WebRTC media server on port 0 still
-  finds its port by a probe; akio's A304 asks for its candidates set after it binds.
+  finds its port by a probe; akio's A268 asks for its candidates set after it binds.
 - Four failures seen only under load: `h1_a_bad_chunk_size` was answered 502 now and then (a
   race, fixed: a relay whose client went answers no failure); `tcp_one_way_is_not_idle`,
   `connections_answered_past_their_time` and `http_probe_status_host_and_body` depend on timing

@@ -137,7 +137,6 @@
 | A301 | `H2Client` 在引擎优雅关闭时结束其连接（`GOAWAY`；没有打开的流时立即关闭，否则在最后一个流结束后关闭），如同 HTTP/1 客户端关闭其空闲连接 | 已进入 akio 的 main 并锁定（自 `db34bfd7` 起）：`H2Acceptor::on_shutdown`；akit 的权宜做法（`EngineSlot::shutdown`）已去掉 | 4, 10 | I18, I18b |
 | A302 | io_uring 上的 `Conn::close` 像 epoll 上一样重置一个收到了未交付数据的 TCP 连接（或提供以重置方式关闭的 `Conn::abort`）：目前进行中的接收在 shutdown 之后取走数据，面对零窗口的对端永远收不到重置 | 已进入 akio 的 main 并锁定（自 `5893a0ed` 起）：建议 (a)，akio 的 ADR-188（未交付输入时以 `SO_LINGER` 0 关闭；`akio_sys::reset_on_close`）；fastcgi.rs 的 `cut_connections` 在 io_uring 上通过 | — | I75 |
 | A303 | 在工作窃取（ADR-104）下依然成立的联动背压：暂停的上游读取（akio-http 的 `ResponseBody::hold_reads`，akit 的 `Download::hold_reads` 在其上）与写满的下游（`BodyStream::queued_bytes`、`on_drain`）像在事件循环上一样限制流式转发占用的内存 | 已提出；权宜做法：akit 的 TCP 监听器选择 `Scheduling::EventLoops`（`akit_runtime::scheduled`，决定 91），除非设置了 `AKIO_DEFAULT_SCHEDULING` | 8, 11 | I16, I17, I18b |
-| A304 | `RtcServer` 的 host candidate 在其 UDP 监听器绑定之后设置：端口 0 上的媒体服务器给出它得到的端口 | 已提出；临时方案：先绑定端口 0 再释放以找到端口，然后再绑定 | 1, 11 | I113 |
 
 | A305 | 普通（plain）WebSocket 的迟到队列（其处理器的批次打开期间其他线程发送的内容）计入 `WsSender::queued_bytes` 并由 `on_drain` 等待，以连接的 `max_queued_bytes` 而不是固定的 4 MiB 为上限，并且在批次结束时绝不静默丢弃 | 已提出；akit 在发送被拒时结束加密的 WebSocket，而不是跳过一条消息的编号（其间 console.rs 的 `large_transfers_both_ways` 仍会偶尔失败） | 8, 9 | I103b |
 
@@ -2591,6 +2590,8 @@ HTTP/1.1 客户端发送 64 MiB，采样进程的常驻内存，上限 `MAX_RISE
 之间转发、内存有界的测试可以保持这一点。
 
 **akit 如何使用。** `akit_runtime::scheduled` 连同决定 91 一起去掉：akit 的监听器重新采用 akio 的默认调度，`stream_download` 在其下通过。
+
+
 
 ## A304 `RtcServer` 的 host candidate 在其监听器绑定之后设置
 
