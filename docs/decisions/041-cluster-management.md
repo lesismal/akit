@@ -109,6 +109,14 @@ keeps, and which names on it are akit's.
     as the member does the manager; a member dials again after a backoff of 1 s doubling to 1 min
     with jitter. A member answers its manager's calls with its Admin API through a hop to its own
     listener (decision row 93, until akio's A306).
+13. **Metrics, logs and the command line (I139c)** are fit's: each member's ring of its last
+    1,000 messages at `GET /logs/recent` (capability `logs.recent`, fit's records and numbers),
+    the series of 360 polls a member and their rates, the certificates' inventory, the tail's
+    cursor (each member's last number, JSON in unpadded base64 for URLs), and the manager's
+    endpoints at `/cluster/...` on its Admin API, acting as the cluster-wide admin `Admin API`
+    and not served by the console. `akit cluster` speaks that API to an akit or a fit manager; it
+    follows a rollout by reading it every second and logs every two, as fit's does: the protocol
+    has no stream of them.
 ## Alternatives
 
 - **akit's names on the wire too** (`akit_version` only, `X-Akit-Csrf` only): a manager of one

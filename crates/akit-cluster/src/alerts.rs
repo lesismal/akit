@@ -1257,7 +1257,7 @@ impl Manager {
 
     /// `GET /api/drift`: each member's drift, its templates' and its check's: fit's
     /// `DriftStates`.
-    fn drift_json(&self) -> String {
+    pub(crate) fn drift_json(&self) -> String {
         let d = self.doc();
         let tgroups: BTreeSet<String> = d
             .templates

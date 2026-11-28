@@ -299,6 +299,97 @@ pub(crate) fn operate(shared: &Arc<Shared>, ctx: &mut Context, rotate: bool) {
     });
 }
 
+/// The most `GET /logs/recent` answers at once: the ring's size, fit's `MaxRecentLogs`.
+pub(crate) const MAX_RECENT_LOGS: usize = akit_observe::logger::RING_SIZE;
+
+/// A query's parameters, `+` and percent escapes decoded, as Go's `url.Query` reads them: the
+/// first value of each name.
+pub(crate) fn query_params(query: &str) -> Vec<(String, String)> {
+    let mut out: Vec<(String, String)> = Vec::new();
+    for kv in query.split('&').filter(|s| !s.is_empty()) {
+        let (k, v) = kv.split_once('=').unwrap_or((kv, ""));
+        let dec = |s: &str| akio_http::message::percent_decode(&s.replace('+', " "));
+        if let (Some(k), Some(v)) = (dec(k), dec(v)) {
+            if !out.iter().any(|(n, _)| *n == k) {
+                out.push((k, v));
+            }
+        }
+    }
+    out
+}
+
+/// `GET /logs/recent?logger=&level=&contains=&limit=&after=` (I139c), fit's `recentLogs`: the
+/// latest messages of akit's own log the filter lets through, oldest first, at most `limit` (100
+/// when not given, [`MAX_RECENT_LOGS`] at most), those numbered after `after` when it is given;
+/// with the number of the latest the ring holds, which the next request asks after, and the
+/// ring's size. akit's log keeps them in memory, a fixed ring: nothing is read from a file.
+pub(crate) fn recent(query: &str) -> Response {
+    let q = query_params(query);
+    let get = |name: &str| {
+        q.iter()
+            .find(|(k, _)| k == name)
+            .map_or("", |(_, v)| v.as_str())
+    };
+    let mut f = akit_observe::logger::Filter {
+        logger: get("logger").to_owned(),
+        contains: get("contains").to_owned(),
+        ..akit_observe::logger::Filter::default()
+    };
+    match get("level") {
+        "" => {}
+        l => match akit_observe::logger::Level::parse(l) {
+            Some(level) => f.level = Some(level),
+            None => {
+                let mut quoted = String::new();
+                write_string(&mut quoted, l);
+                return error(
+                    400,
+                    &format!("level is debug, info, warn or error, not {quoted}"),
+                );
+            }
+        },
+    }
+    if f.contains.len() > 256 || f.logger.len() > 64 {
+        return error(400, "contains is 256 bytes at most, and logger 64");
+    }
+    for (name, max) in [
+        ("limit", MAX_RECENT_LOGS as u64),
+        ("after", (1u64 << 63) - 1),
+    ] {
+        let v = get(name);
+        if v.is_empty() {
+            continue;
+        }
+        match v.parse::<u64>() {
+            Ok(n) if n <= max && v.bytes().all(|c| c.is_ascii_digit()) => {
+                if name == "limit" {
+                    f.limit = usize::try_from(n).unwrap_or(MAX_RECENT_LOGS);
+                } else {
+                    f.after = n;
+                }
+            }
+            _ => return error(400, &format!("{name} is a whole number, at most {max}")),
+        }
+    }
+    let mut b = String::from("{\"records\":[");
+    let mut last = 0;
+    if let Some(root) = akit_observe::logger::installed() {
+        last = root.last();
+        for (i, r) in root.recent(&f).iter().enumerate() {
+            if i > 0 {
+                b.push(',');
+            }
+            b.push_str(&r.json());
+        }
+    }
+    let _ = writeln!(
+        b,
+        "],\"last\":{last},\"ring_size\":{}}}",
+        akit_observe::logger::RING_SIZE
+    );
+    json(200, b)
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used)]

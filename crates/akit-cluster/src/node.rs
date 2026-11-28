@@ -253,6 +253,8 @@ pub struct Node {
     /// A member removed or changed.
     pub closed: AtomicBool,
     mu: Mutex<Mu>,
+    /// What the polls read for the series and the certificates' inventory (I139c).
+    pub(crate) ins: Mutex<crate::insight::Insight>,
 }
 
 impl std::fmt::Debug for Node {
@@ -296,6 +298,7 @@ impl Node {
                 logins: None,
                 probed: false,
             }),
+            ins: Mutex::new(crate::insight::Insight::default()),
         }
     }
 
@@ -316,6 +319,13 @@ impl Node {
     #[must_use]
     pub fn state(&self) -> State {
         lock(&self.mu).state.clone()
+    }
+
+    /// The member's status now: [`STATUS_UP`], [`STATUS_DOWN`], [`STATUS_ERROR`] or
+    /// [`STATUS_UNKNOWN`].
+    #[must_use]
+    pub fn status(&self) -> &'static str {
+        lock(&self.mu).state.status
     }
 
     /// The capabilities the last poll that read the member found, `None` before one.
@@ -669,6 +679,10 @@ impl Node {
             }
             (changed, st.status, why)
         };
+        // The series and the inventory keep what a poll that read /status found (I139c).
+        if let (None, Some((n, _)), Some(s)) = (&why, &node, &status) {
+            crate::insight::observe(&self.ins, now, n, s);
+        }
         if changed {
             let name = &self.spec.name;
             (self.log)(match why {

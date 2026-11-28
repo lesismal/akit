@@ -41,16 +41,19 @@
 //! rollouts ([`rollouts`]), alerts, webhooks and drift ([`alerts`], [`webhooks`]) say their own
 //! endpoints.
 
+pub use adminapi::ADMIN_API_PREFIX;
 pub mod json;
 pub mod jv;
 pub mod member;
 pub mod node;
 pub mod transport;
 
+mod adminapi;
 mod alerteval;
 pub mod alerts;
 mod api;
 pub mod groups;
+mod insight;
 pub mod link;
 pub mod linkmember;
 pub mod ops;

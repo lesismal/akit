@@ -14,6 +14,11 @@ admin	added	endpoint	GET	/logs
 admin	added	endpoint	HEAD	/logs
 admin	added	endpoint	POST	/logs/cleanup
 admin	added	endpoint	POST	/logs/rotate
+# I139c: the latest messages of akit's own log, which a cluster manager tails (fit's
+# admin/logsrecent.go). A manager's /cluster/... is its own (akit-cluster's adminapi), answered
+# 404 by an akit that manages no members.
+admin	added	endpoint	GET	/logs/recent
+admin	added	endpoint	HEAD	/logs/recent
 # I91: the config as text, for the console's raw editors and transfer page (fit's admin/check.go,
 # admin/transfer.go).
 admin	added	endpoint	POST	/config/export

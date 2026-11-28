@@ -30,6 +30,9 @@ use crate::zone::Zone;
 
 pub use akit_config::LogLevel as Level;
 
+pub mod ring;
+pub use ring::{Filter, RING_MESSAGE_BYTES, RING_SIZE, Record};
+
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(PoisonError::into_inner)
 }
@@ -119,6 +122,8 @@ pub struct Root {
     files: Files,
     /// The file sinks the log writes through, by cleaned path; emptied when it closes.
     sinks: Mutex<Vec<(String, Arc<LogFile>)>>,
+    /// The latest messages written (I139c), for `GET /logs/recent`.
+    ring: Mutex<ring::Ring>,
 }
 
 impl fmt::Debug for Root {
@@ -177,6 +182,7 @@ impl Root {
             zone: RwLock::new((Arc::new(zone), zone_name)),
             files: files.clone(),
             sinks: Mutex::new(sinks),
+            ring: Mutex::new(ring::Ring::default()),
         })
     }
 
@@ -280,6 +286,18 @@ impl Root {
         drop(sinks);
     }
 
+    /// The number of the latest message the log's ring was given, 0 when none.
+    #[must_use]
+    pub fn last(&self) -> u64 {
+        lock(&self.ring).last()
+    }
+
+    /// The latest messages of the log's ring `f` lets through, oldest first.
+    #[must_use]
+    pub fn recent(&self, f: &Filter) -> Vec<Record> {
+        lock(&self.ring).recent(f)
+    }
+
     /// Writes `args`, a message of `logger`'s at `level`, if its level lets it.
     pub fn write(&self, logger: Logger, level: Level, args: fmt::Arguments<'_>) {
         self.write_kv(logger, level, args, &[]);
@@ -300,6 +318,15 @@ impl Root {
             return;
         };
         let now = SystemTime::now();
+        // The ring keeps the message and its attributes, ` key=value` each, as fit's.
+        let mut kept = args.to_string();
+        for (k, v) in kvs {
+            if kept.len() >= RING_MESSAGE_BYTES {
+                break;
+            }
+            let _ = write!(kept, " {k}={v:?}");
+        }
+        lock(&self.ring).add(now, level, logger.name(), kept);
         let zone = Arc::clone(&self.zone.read().unwrap_or_else(PoisonError::into_inner).0);
         let mut b = Vec::with_capacity(256);
         format(

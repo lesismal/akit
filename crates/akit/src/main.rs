@@ -44,6 +44,7 @@ mod adapt;
 mod boot;
 mod bt;
 mod build_cli;
+mod cluster_cli;
 pub(crate) mod flags;
 mod hash_password;
 mod media_token;
@@ -91,6 +92,9 @@ Commands:
              tunnel hub and LLM roles, through its Admin API
   bt         see and steer a running akit's BitTorrent client, through its
              Admin API
+  cluster    see a running manager's members, their states, certificates,
+             metrics and logs, and plan, start and steer its rollouts, through
+             its Admin API
   store      print the config the encrypted store holds, or seal a config as
              the store (fit's fitstore files)
   version    print akit's version and the akio commit it is built on
@@ -1634,6 +1638,12 @@ fn run(args: &[String]) -> ExitCode {
                 match akit_cluster::Manager::new(o) {
                     Ok(m) => {
                         api_opts.cluster = Some(m.module());
+                        // Its endpoints for akit cluster, on the Admin API alone (I139c).
+                        let me = m.clone();
+                        api_opts.cluster_api =
+                            Some(Arc::new(move |ctx: &mut akio_http::Context| {
+                                me.serve_admin_api(ctx)
+                            }));
                         api_opts.cluster_max_body =
                             usize::try_from(c.response_bytes()).unwrap_or(usize::MAX);
                         cluster = Some(m);
@@ -2074,6 +2084,7 @@ pub fn main(akit_version: &str, modules: &[&'static [Info<HandlerParams>]]) -> E
         "media-token" => media_token::media_token(rest),
         "token" => token::token(rest),
         "bt" => bt::bt(rest),
+        "cluster" => cluster_cli::cluster(rest),
         "store" => store_cli::store(rest),
         "version" | "-V" | "--version" => {
             if let Err(u) = flags::parse("version", rest, &[]) {

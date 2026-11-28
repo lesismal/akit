@@ -10,10 +10,10 @@ token). The members may be fits too: what they answer is fit's protocol
 ([decision 041](../decisions/041-cluster-management.md)). The manager is not in the data path: a
 manager down costs management and nothing else.
 
-This guide covers what akit runs now (I130–I139b): members, their state, the Overview and Nodes
+This guide covers what akit runs (I130–I139c): members, their state, the Overview and Nodes
 pages, a member's page, the node switcher, groups and operations on many, templates, rollouts
-with health gates, drift and alerts, users' roles and the audit log, and members behind NAT. The
-`akit cluster` command follows in I139c ([the plan](../dev-plan.md#cluster-management)).
+with health gates, drift and alerts, users' roles and the audit log, members behind NAT, the
+members' metrics, logs and certificates, and the `akit cluster` command.
 
 ## A manager
 
@@ -139,6 +139,45 @@ over HTTP; the member's Admin API answers, so it must listen on TCP. A token is 
 expires (a day by default, 30 days at most); **Enroll again** makes a member a new one. A token
 made by a fit manager (`fite1.`) is written as `akite1.` for an akit member, and the reverse.
 
+## Metrics, logs and certificates
+
+What each poll reads of a member is kept as a series, an hour of it at the default
+`poll_interval` of 10s (360 polls): requests, 4xx and 5xx a second, the configs applied and
+failed, connections open and bytes queued for clients, per member and summed per group
+(`GET /api/m/cluster/metrics?node=&group=&points=`). A rate needs two polls of the same run of the
+member at most three intervals apart; a member that restarted or was down has none for that
+point. Every member's certificates, as its latest poll read them, are listed soonest to expire
+first (`GET /api/m/cluster/certificates`). Both are read as the states are: any role reads them.
+
+Each member keeps the last 1,000 messages of its own log in memory, which its Admin API answers at
+`GET /logs/recent?level=&logger=&contains=&limit=&after=` (capability `logs.recent`). The manager
+tails up to 16 members at once (`GET /api/m/cluster/logs?node=a,b`, a role on each needed), their
+messages merged by time, with a cursor to send back for what came since; a member that restarted
+is read from its start, and one that cannot be read, or is older than this, is said on its own.
+
+## akit cluster
+
+The manager's endpoints are on its Admin API too, at `/cluster/...` behind its token (not on the
+console: its users go through the module, under their roles). The API acts as a cluster-wide
+admin, and the audit log names its actions `Admin API`. `akit cluster` calls them, reaching the
+API as `akit token` does, from the manager's bootstrap config:
+
+```sh
+akit cluster state -c manager.json            # exits 1 when a member is not up
+akit cluster certs -c manager.json -within 30d # exits 1 when a certificate expires within 30 days
+akit cluster metrics -c manager.json -group edge
+akit cluster logs -c manager.json -node a,b -level warn -f
+akit cluster diff -c manager.json -template base
+akit cluster rollout start -c manager.json -template base -mode rolling -batch-size 2 -yes -wait
+akit cluster rollout go -c manager.json r12
+```
+
+`rollout start` plans the rollout (or takes the one `-id` names), prints each member's plan, asks
+before starting it unless `-yes`, and with `-wait` follows it to its end, a line each time it moves
+on; its exit code is 1 when the rollout failed, was aborted, rolled back or expired. A rollout
+followed is read every second, logs followed with `-f` every two: the manager's protocol, fit's,
+has no stream of them. `akit cluster` reaches a fit manager's Admin API as well.
+
 ## Mixed clusters
 
 - An akit manager manages akit and fit members alike, by console or by token; a fit member's
@@ -146,6 +185,8 @@ made by a fit manager (`fite1.`) is written as `akite1.` for an akit member, and
 - A fit manager manages an akit member by its Admin API's token. akit's console takes its CSRF
   token in `X-Akit-Csrf` only (decision 037), so a fit manager logged in to an akit console can
   read it but not write.
+- Logs are tailed across akit and fit members alike: each answers `GET /logs/recent` in fit's
+  format.
 - akit's and fit's managers share a store: each reads the members, groups, templates, rollouts,
   roles and alerts the other wrote, and keeps what it does not use as it was.
 
@@ -154,4 +195,5 @@ made by a fit manager (`fite1.`) is written as `akite1.` for an akit member, and
 `max_nodes` members (256); `max_concurrency` members polled at once (8), each call within
 `timeout` and its answer within `max_response_bytes` (4 MiB); 4 tests and 8 reads of members at
 once; the audit log keeps the last 1,000 changes (about 2 MiB); 4 rollouts planned or under way
-and 50 kept, 8 MiB of configs and diffs a rollout, a plan started within an hour.
+and 50 kept, 8 MiB of configs and diffs a rollout, a plan started within an hour; 360 points of
+series and 256 certificates a member; a tail of 16 members and 1,000 messages of each.

@@ -69,6 +69,8 @@ pub const CAP_CACHE: &str = "cache";
 pub const CAP_CACHE_PREFIX: &str = "cache.prefix";
 /// `GET /logs`, `POST /logs/rotate` and `/logs/cleanup`.
 pub const CAP_LOGS: &str = "logs";
+/// `GET /logs/recent`: the latest messages of akit's own log, after a number (I139c).
+pub const CAP_LOGS_RECENT: &str = "logs.recent";
 /// The link tokens, `/tokens`.
 pub const CAP_TOKENS: &str = "tokens";
 /// `GET /schema`.
@@ -324,6 +326,7 @@ fn capabilities(configs: &Configs, live: &NodeLive, metrics: bool) -> Vec<&'stat
         CAP_CACHE,
         CAP_CACHE_PREFIX,
         CAP_LOGS,
+        CAP_LOGS_RECENT,
         CAP_TOKENS,
         CAP_SCHEMA,
         crate::managed::CAP_MANAGED,

@@ -7,9 +7,8 @@
 控制台（用户名和密码）或它的 Admin API（token）。成员也可以是 fit：它们回答的是 fit 的协议
 （[决定 041](../decisions/041-cluster-management.zh-CN.md)）。管理端不在数据路径上：管理端宕机只影响管理。
 
-本指南介绍 akit 现在已经运行的部分（I130–I139b）：成员及其状态、概览和节点页面、成员页面、节点切换器、分组和对多个成员的操作、模板、
-带健康门槛的发布、漂移和告警、用户角色和审计日志，以及 NAT 之后的成员。`akit cluster` 命令随 I139c 到来
-（[计划](../dev-plan.zh-CN.md#集群管理)）。
+本指南介绍 akit 已经运行的部分（I130–I139c）：成员及其状态、概览和节点页面、成员页面、节点切换器、分组和对多个成员的操作、模板、
+带健康门槛的发布、漂移和告警、用户角色和审计日志、NAT 之后的成员、成员的指标、日志和证书，以及 `akit cluster` 命令。
 
 ## 管理端
 
@@ -102,15 +101,48 @@ URL 为 `https`，或者只对回环地址使用 `http`，使凭据不以明文�
 经由其链接到达它，就像经由 HTTP 到达其他成员；回答的是成员的 Admin API，因此它必须监听 TCP。令牌只能使用一次并会过期（默认一天，
 最多 30 天）；**重新注册**为成员生成新令牌。fit 管理端生成的令牌（`fite1.`）对 akit 成员写作 `akite1.`，反之亦然。
 
+## 指标、日志和证书
+
+每次轮询读到的成员数据都保存为序列，默认 `poll_interval` 10s 时保留一小时（360 次轮询）：每秒请求数、4xx 和 5xx，应用成功和失败的
+配置，打开的连接和排队给客户端的字节，按成员保存，并按分组求和（`GET /api/m/cluster/metrics?node=&group=&points=`）。速率需要
+成员同一次运行中、相隔不超过三个间隔的两次轮询；重启过或宕机过的成员在该点没有速率。每个成员的证书按其最近一次轮询读到的样子列出，
+最先过期的排在前面（`GET /api/m/cluster/certificates`）。两者与状态一样读取：任何角色都能读。
+
+每个成员在内存中保留自己日志的最近 1,000 条消息，由其 Admin API 在 `GET /logs/recent?level=&logger=&contains=&limit=&after=`
+回答（能力 `logs.recent`）。管理端同时跟踪最多 16 个成员（`GET /api/m/cluster/logs?node=a,b`，需要对每个成员都有角色），
+消息按时间合并，并带一个游标，回传游标即可取得此后的新消息；重启过的成员从头读起，读不到的成员或比这更旧的成员单独说明。
+
+## akit cluster
+
+管理端的端点也在它的 Admin API 上，即令牌之后的 `/cluster/...`（不在控制台上：控制台用户通过模块、按其角色访问）。该 API
+以集群范围管理员的身份行事，审计日志把它的操作记为 `Admin API`。`akit cluster` 调用这些端点，像 `akit token` 一样从管理端的
+引导配置找到 API：
+
+```sh
+akit cluster state -c manager.json            # 有成员不是 up 时退出码为 1
+akit cluster certs -c manager.json -within 30d # 有证书在 30 天内过期时退出码为 1
+akit cluster metrics -c manager.json -group edge
+akit cluster logs -c manager.json -node a,b -level warn -f
+akit cluster diff -c manager.json -template base
+akit cluster rollout start -c manager.json -template base -mode rolling -batch-size 2 -yes -wait
+akit cluster rollout go -c manager.json r12
+```
+
+`rollout start` 规划发布（或采用 `-id` 指定的已规划发布），打印每个成员的计划，除非给出 `-yes`，否则开始前先询问；带
+`-wait` 时跟踪到结束，每推进一步打印一行；发布失败、被中止、已回滚或已过期时退出码为 1。跟踪中的发布每秒读取一次，`-f`
+跟踪的日志每两秒读取一次：管理端的协议（即 fit 的协议）没有它们的流。`akit cluster` 同样可以访问 fit 管理端的 Admin API。
+
 ## 混合集群
 
 - akit 管理端同样管理 akit 和 fit 成员，通过控制台或 token；fit 成员的版本显示为 `fit <版本>`。
 - fit 管理端通过 Admin API 的 token 管理 akit 成员。akit 的控制台只从 `X-Akit-Csrf` 读取 CSRF 令牌（决定 037），因此登录到
   akit 控制台的 fit 管理端能读不能写。
+- 日志同样跨 akit 和 fit 成员跟踪：两者都以 fit 的格式回答 `GET /logs/recent`。
 - akit 与 fit 的管理端共用存储：各自读取对方写下的成员、分组、模板、发布、角色和告警，并按原样保留自己不用的部分。
 
 ## 上限
 
 `max_nodes` 个成员（256）；同时轮询 `max_concurrency` 个成员（8），每次调用在 `timeout` 之内、回答在 `max_response_bytes`
 （4 MiB）之内；同时 4 个成员测试和 8 个成员读取；审计日志保留最近 1,000 次修改（约 2 MiB）；同时 4 个计划中或进行中的发布，
-保留 50 个，每个发布最多 8 MiB 的配置和差异，计划须在一小时内开始。
+保留 50 个，每个发布最多 8 MiB 的配置和差异，计划须在一小时内开始；每个成员 360 个序列点和 256 张证书；一次跟踪 16 个成员、
+每个成员 1,000 条消息。

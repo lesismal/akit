@@ -275,6 +275,8 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I138 | 集群 IX：漂移和告警；`/config/check` | I137 | done |
 | I139 | 集群 X：用户、角色和审计日志 | I137 | done |
 | I139b | 集群 XI：NAT 之后主动外连的成员 | I132 | done |
+| I139c | 集群 XII：跨成员的指标、日志和证书；`akit cluster` | I138 | done |
+
 | I139c | 集群 XII：跨成员的指标、日志和证书；`akit cluster` | I138 | todo |
 | **1.0 之后：AI 助手** | | | |
 | I160 | 助手 I：配置中的 `admin.assistant`、存储中的设置和密钥、模块 `ai` | I93c, I91 | done |
@@ -2220,6 +2222,9 @@ fit 工作台页面。成员尽量少改动：管理端使用成员已有的 API
 - **完成标准**：fit 的 `insight`、`logtail` 和 `adminapi` 测试移植后通过；CLI 能从头到尾驱动一次发布。
 - **涉及**：`akit-cluster`、`akit-admin`（`/logs/recent`）、`akit`（`cluster`）。
 - **fit**：`cluster/{insight,logtail,adminapi}.go`、`cli/cluster.go`、`admin/logsrecent.go`；I150。
+- **状态**：done（2026-11-28）。采用 fit 的格式：`GET /logs/recent` 及其环形缓冲、时间序列、证书清单、游标，以及 Admin API 的
+  `/cluster/...`（只在 Admin API 上，以 `Admin API` 身份行事）；`akit cluster` 也能读取 fit 管理端（决定 041 第 13 点）。见进度日志。
+
 
 ### AI 助手
 

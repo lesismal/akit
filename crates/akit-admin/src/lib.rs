@@ -106,8 +106,8 @@ pub use configs::{
 };
 pub use dashboard::DASHBOARD_CSP;
 pub use server::{
-    DRY_RUN_HEADER, Endpoint, Job, Live, METRICS_CONTENT_TYPE, MediaOrigins, Metrics, Options,
-    Server, Submit, VERSION_HEADER,
+    CLUSTER_PREFIX, DRY_RUN_HEADER, Endpoint, Job, Live, METRICS_CONTENT_TYPE, MediaOrigins,
+    Metrics, Options, Server, Submit, VERSION_HEADER,
 };
 pub use text::STORE_PASSWORD_HEADER;
 pub use watch::{

@@ -696,7 +696,7 @@ fn speed_text(v: f64) -> String {
 }
 
 /// Rows in columns, as Go's `tabwriter` with a padding of 2 writes them.
-fn table(rows: &[Vec<String>]) -> String {
+pub(crate) fn table(rows: &[Vec<String>]) -> String {
     let cols = rows.iter().map(Vec::len).max().unwrap_or(0);
     let mut widths = vec![0usize; cols];
     for r in rows {

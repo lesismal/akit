@@ -49,6 +49,10 @@ pub type Metrics = Arc<dyn Fn(&mut Vec<u8>) + Send + Sync>;
 /// is not its own. They answer on the API's thread and must not block.
 pub type Endpoint = Arc<dyn Fn(&mut Context) -> bool + Send + Sync>;
 
+/// Where the Admin API serves a cluster manager's endpoints (I139c), fit's
+/// `cluster.AdminAPIPrefix`: [`Options::cluster_api`]'s, not the API's own surface.
+pub const CLUSTER_PREFIX: &str = "/cluster";
+
 /// What writes what akit is doing now, as the members of `GET /status`'s object after the running
 /// config's version, applied time and source (I63's `Scrape::write_status`): comma-separated, with
 /// no comma before the first or after the last. Called on the API's I/O thread: it must not block.
@@ -119,6 +123,10 @@ pub struct Options {
     /// The largest body the console takes for the cluster module's node switcher (I134): the
     /// manager's `max_response_bytes`; 0 without a manager.
     pub cluster_max_body: usize,
+    /// The cluster manager's endpoints for `akit cluster` (I139c), which the Admin API serves at
+    /// `/cluster` and under it, behind its token, and the console does not: none on an akit that
+    /// manages no members.
+    pub cluster_api: Option<Endpoint>,
     /// The origins the console's pages may load media from (I149): the listeners of the
     /// running `vod` and `hls` routes, for the console's `Host` as the browser sent it; added to
     /// its Content-Security-Policy, as fit's console `Sources`. None without it.
@@ -193,6 +201,7 @@ impl Default for Options {
             node: None,
             cluster: None,
             cluster_max_body: 0,
+            cluster_api: None,
             media_origins: None,
             assistant_store: None,
             assistant_engine: None,
@@ -616,6 +625,7 @@ impl Server {
             node: opts.node.clone(),
             endpoints: opts.endpoints.clone(),
             streamed: opts.streamed.clone(),
+            cluster_api: opts.cluster_api.clone(),
             dashboard: !settings.disable_dashboard,
             token,
             deriving: Arc::new(std::sync::atomic::AtomicBool::new(false)),
@@ -654,6 +664,7 @@ impl Server {
                 c,
                 Shared {
                     source: crate::console::SOURCE_CONSOLE,
+                    cluster_api: None,
                     token: None,
                     dashboard: false,
                     unix: false,
@@ -889,6 +900,8 @@ pub(crate) struct Shared {
     endpoints: Vec<(&'static str, Endpoint)>,
     /// The prefixes of the endpoints whose bodies stream in (I157).
     streamed: Vec<&'static str>,
+    /// The cluster manager's endpoints, `/cluster/...` (I139c): the Admin API's alone.
+    cluster_api: Option<Endpoint>,
     /// Whether the dashboard is served (I63): unless `disable_dashboard`.
     dashboard: bool,
     /// The token every request must carry, from `token_file`; none asked for without it.
@@ -992,6 +1005,18 @@ impl akio_http::Service for Api {
             ctx.respond(resp);
             return;
         }
+        // The manager's endpoints (I139c), on the Admin API only: the console's users reach the
+        // manager through its module, under their roles, never as the Admin API.
+        if under(ctx.path(), CLUSTER_PREFIX) {
+            let served = self.0.cluster_api.as_ref().is_some_and(|serve| serve(ctx));
+            if !served {
+                ctx.respond(error(
+                    404,
+                    "this akit manages no members: admin.cluster is not set",
+                ));
+            }
+            return;
+        }
         dispatch(&self.0, ctx);
     }
 
@@ -1055,6 +1080,9 @@ impl Api {
             "/cache/purge" => not_allowed("POST"),
             // I83: the log files, on the pool.
             "/logs" if read => return crate::logs::list(&self.0, ctx),
+            // I139c: the latest messages of akit's own log, which a manager tails.
+            "/logs/recent" if read => crate::logs::recent(ctx.req().query().unwrap_or("")),
+            "/logs/recent" => not_allowed("GET, HEAD"),
             "/logs" => not_allowed("GET, HEAD"),
             "/logs/rotate" if post => return crate::logs::operate(&self.0, ctx, true),
             "/logs/cleanup" if post => return crate::logs::operate(&self.0, ctx, false),

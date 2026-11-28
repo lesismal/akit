@@ -23,6 +23,36 @@ done and where the work differs from the plan.
 
 ## Log
 
+### 2026-11-28: I139c, metrics, logs and certificates across members, and `akit cluster`
+
+- akit's own log keeps its last 1,000 messages in memory (`akit_observe::logger::ring`, fit's
+  `logs/ring.go`): each numbered from 1 since akit started, cut to 2 KiB with its attributes, in a
+  fixed ring under a lock. The Admin API answers them at `GET /logs/recent?logger=&level=&contains=
+  &limit=&after=`, fit's `recentLogs` (capability `logs.recent`).
+- The manager keeps what each poll reads (`akit_cluster::insight`, fit's `insight.go`): a ring of
+  360 samples a member on its node, as rates between polls (none across a restart, a gap of three
+  intervals or counters gone back) and gauges, summed per group in buckets of the interval
+  (`GET /api/m/cluster/metrics`); every member's certificates, soonest to expire first, with days
+  left as Go counts them (`/api/m/cluster/certificates`). The members' logs tailed (fit's
+  `logtail.go`): 16 members at once, each asked after the cursor's number through the manager's
+  calls, merged by time, a member restarted read from its start, one that cannot be read or lacks
+  `logs.recent` said on its own; one of the 8 reads of members while it runs
+  (`/api/m/cluster/logs`, a role on each member needed).
+- The manager's endpoints on its Admin API (`akit_cluster::adminapi`, fit's `adminapi.go`):
+  `/cluster/{nodes,state,groups,drift,sync,metrics,certificates,logs,rollouts}`, acting as the
+  cluster-wide admin `Admin API`, served by the API and not by the console; 404 on an akit that
+  manages no members. `POST /cluster/sync` now checks the user's roles before it takes a sync's
+  slot (it took one and left it on a refusal).
+- `akit cluster` (fit's `cli/cluster.go`): `nodes`, `state`, `groups`, `diff`, `certs [-within]`,
+  `metrics`, `logs [-f]` and `rollout list|start|status|pause|resume|go|abort|rollback`, with fit's
+  exit codes; `rollout start` plans, prints the plan, asks unless `-yes`, starts and with `-wait`
+  follows. It reaches a fit manager's Admin API too.
+- Tests: `logger::ring` and `insight` unit tests (fit's `TestRing`, `TestPoints`, the cursor and the
+  queries); akit's `metrics_logs_and_cli` (series, inventory, logs merged and followed, the Admin
+  API's endpoints and refusals, and the command line reading them and driving two rollouts, one
+  answered no and started later by its ID) and `mixed_clusters_with_fit` (fit's logs tailed by
+  akit's manager, akit's by fit's, and `akit cluster` against fit's manager).
+
 ### 2026-11-28: I139b, members behind NAT linking out
 
 - The manager's links (`akit_cluster::link`, fit's `cluster/linkserver.go`, `linkproto.go` and

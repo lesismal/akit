@@ -624,6 +624,14 @@ fn mixed_clusters_with_fit() {
     }
     let (st, _, body) = b.call("GET", "/api/m/cluster/nodes/fa/read/check", "");
     assert_eq!(st, 200, "{body}");
+    // fit's logs tailed by akit's manager (I139c): its GET /logs/recent, through its console and
+    // its Admin API, merged with akit's.
+    let (st, _, tail) = b.call("GET", "/api/m/cluster/logs?node=fa,fb,ak", "");
+    assert_eq!(st, 200, "{tail}");
+    assert!(
+        tail.contains(r#""name":"fa""#) && !tail.contains(r#""error":"#),
+        "{tail}"
+    );
     // fit members through the node switcher: read-only (another schema), fit's header fields
     // answered under akit's names, a dry run passed on, a write refused.
     let (st, _, wb) = b.call("GET", "/api/n/fb/workbench", "");
@@ -708,6 +716,25 @@ fn mixed_clusters_with_fit() {
         assert!(list.contains(&format!(r#""id":"{id}""#)), "{id}: {list}");
     }
     assert!(!list.contains(r#""state":"running""#), "{list}");
+    // fit's manager tails akit's logs (I139c), and akit cluster reads fit's manager.
+    let fm_api = fm.addr("admin API on ");
+    let (st, _, tail) = http(fm_api, "GET", "/cluster/logs?node=ak,fb", &[], "");
+    assert!(
+        st == 200 && tail.contains(r#""name":"ak""#) && !tail.contains(r#""error":"#),
+        "{st} {tail}"
+    );
+    let cli = cli_config(&d, "fit-cli.json", fm_api, None);
+    let (code, out, err) = akit_cluster(&cli, &["state"], "");
+    assert!(
+        code == 0 && out.contains("ak ") && out.contains(" up "),
+        "{code} {out}{err}"
+    );
+    let (code, out, err) = akit_cluster(&cli, &["logs", "-node", "ak,fb"], "");
+    assert_eq!(code, 0, "{out}{err}");
+    let (code, out, err) = akit_cluster(&cli, &["rollout", "list"], "");
+    assert!(code == 0 && out.contains(&tid), "{code} {out}{err}");
+    let (code, out, err) = akit_cluster(&cli, &["certs"], "");
+    assert_eq!(code, 0, "{out}{err}");
     let _ = fm.stop();
     let _ = (fa.stop(), fb.stop(), ak.stop());
 }
@@ -2451,4 +2478,395 @@ fn links_with_fit() {
     let (st, _, v) = b.call("GET", "/api/m/cluster/nodes/fm/read/versions", "");
     assert_eq!(st, 200, "{v}");
     let _ = (ak.stop(), fm.stop(), fmem.stop(), am.stop());
+}
+
+/// `akit cluster <args> -c <cfg>`, `stdin` written to it: its exit code, output and errors.
+fn akit_cluster(cfg: &Path, args: &[&str], stdin: &str) -> (i32, String, String) {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_akit"))
+        .arg("cluster")
+        .args(args)
+        .arg("-c")
+        .arg(cfg)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(stdin.as_bytes())
+        .unwrap();
+    let out = child.wait_with_output().unwrap();
+    (
+        out.status.code().unwrap_or(-1),
+        String::from_utf8_lossy(&out.stdout).into_owned(),
+        String::from_utf8_lossy(&out.stderr).into_owned(),
+    )
+}
+
+/// What `akit cluster` reaches a manager's Admin API with: its address and token.
+fn cli_config(d: &Dir, name: &str, api: SocketAddr, token: Option<&Path>) -> PathBuf {
+    let tf = token.map_or(String::new(), |t| format!(r#", "token_file": {}"#, js(t)));
+    d.file(name, &format!(r#"{{"admin": {{"address": "{api}"{tf}}}}}"#))
+}
+
+/// Metrics, logs and certificates across members, and `akit cluster` (I139c, fit's `insight`,
+/// `logtail`, `adminapi` and `cli/cluster` tests): the series made of the members' counters, per
+/// member and summed per group; the certificates' inventory; the members' logs tailed through
+/// their `GET /logs/recent`, merged, and followed by a cursor; the manager's endpoints on its
+/// Admin API alone, acting as "Admin API"; and the command line reading them and driving a
+/// rollout end to end, asked and not, planned and taken by its ID.
+#[test]
+fn metrics_logs_and_cli() {
+    let d = Dir::new("insight");
+    let h = hash("pw");
+    let ca = certs::Ca::new("akit cluster insight CA");
+    let (cert, key) = ca.leaf(&d.0, "a-web", &["a.test"]);
+    // a counts its requests, serves a certificate, and logs to a file (with a warning that it
+    // has no rotation, which the ring keeps).
+    let ta = "a-token-of-member-a-0123456789";
+    let taf = d.file("a.token", ta);
+    let acfg = d.file(
+        "a.json",
+        &format!(
+            r#"{{"admin": {{"address": "127.0.0.1:0", "token_file": {}}}, "metrics": {{}},
+                "log": {{"output": {}}},
+                "listeners": [{{"name": "web", "address": "127.0.0.1:0"}},
+                    {{"name": "secure", "address": "127.0.0.1:0", "tls": {{"certificates": [{{"cert_file": {}, "key_file": {}}}]}}}}],
+                "routes": [{{"handler": {{"module": "respond", "params": {{"body": "one"}}}}}}]}}"#,
+            js(&taf),
+            js(&d.0.join("a.log")),
+            js(&cert),
+            js(&key)
+        ),
+    );
+    let a = Run::start(&["-c", s(&acfg), "-watch-certs=false"]);
+    let a_api = a.addr("admin API on ");
+    let a_web = a.addr("listener \"web\" on ");
+    let bcfg = d.file(
+        "b.json",
+        &format!(
+            r#"{{"admin": {{"address": "127.0.0.1:0", "console": {{"address": "127.0.0.1:0",
+                "users": [{{"username": "ada", "password_hash": "{h}"}}]}}}},
+                "log": {{"output": {}}}, {WEB}}}"#,
+            js(&d.0.join("b.log"))
+        ),
+    );
+    let bm = Run::start(&["-c", s(&bcfg), "-watch-certs=false"]);
+    let b_console = bm.addr("console on http://");
+    let b_web = bm.addr("listener \"web\" on ");
+    let tm = d.file("manager.token", "a-token-of-the-manager-0123456789");
+    let mcfg = d.file(
+        "manager.json",
+        &format!(
+            r#"{{"admin": {{"address": "127.0.0.1:0", "token_file": {}, "console": {{"address": "127.0.0.1:0",
+                "users": [{{"username": "ada", "password_hash": "{h}"}}]}},
+                "cluster": {{"poll_interval": "1s", "timeout": "3s"}}}}, {WEB}}}"#,
+            js(&tm)
+        ),
+    );
+    let m = Run::start(&["-admin", "-c", s(&mcfg), "-watch-certs=false"]);
+    let m_api = m.addr("admin API on ");
+    let mut b = Browser::new(m.addr("console on http://"));
+    assert_eq!(b.login("ada", "pw").0, 200);
+    add(
+        &b,
+        &format!(
+            r#"{{"name": "a", "url": "http://{a_api}", "access": "admin_api", "token": "{ta}", "labels": {{"region": "eu"}}}}"#
+        ),
+    );
+    add(
+        &b,
+        &format!(
+            r#"{{"name": "b", "url": "http://{b_console}", "username": "ada", "password": "pw", "labels": {{"region": "eu"}}}}"#
+        ),
+    );
+    for n in ["a", "b"] {
+        wait_state(&b, n, "up", "");
+    }
+    let (st, _, g) = b.call(
+        "POST",
+        "/api/m/cluster/groups",
+        r#"{"name": "eu", "selector": "region=eu"}"#,
+    );
+    assert_eq!(st, 201, "{g}");
+
+    // A member's own ring: GET /logs/recent, listed in its capabilities.
+    let (st, node) = admin_get(a_api, ta, "/node");
+    assert!(st == 200 && node.contains("\"logs.recent\""), "{node}");
+    let (st, recent) = admin_get(a_api, ta, "/logs/recent?level=warn");
+    assert_eq!(st, 200, "{recent}");
+    assert!(
+        recent.contains("has no rotate") && recent.contains(r#""ring_size":1000"#),
+        "{recent}"
+    );
+    let (st, none) = admin_get(a_api, ta, "/logs/recent?contains=nothing+like+this");
+    assert!(st == 200 && none.contains(r#""records":[]"#), "{none}");
+    for q in ["level=loud", "limit=1001", "after=x", "limit=-1"] {
+        let (st, body) = admin_get(a_api, ta, &format!("/logs/recent?{q}"));
+        assert_eq!(st, 400, "{q}: {body}");
+    }
+    // An akit that manages no members has no /cluster.
+    let (st, body) = admin_get(a_api, ta, "/cluster/nodes");
+    assert!(
+        st == 404 && body.contains("admin.cluster is not set"),
+        "{body}"
+    );
+
+    // The series: a's requests counted between polls, summed in its group.
+    for _ in 0..5 {
+        assert_eq!(get(a_web, "/"), "one");
+    }
+    let body = wait_get(
+        &b,
+        "/api/m/cluster/metrics?node=a&points=5",
+        "a's series",
+        |body| {
+            let v = parse(body);
+            let Some(akit_config::value::Value::Array(nodes)) = v.get("nodes") else {
+                return false;
+            };
+            nodes.first().is_some_and(|n| {
+                let total = match n
+                    .get("counters")
+                    .and_then(|c| c.get("requests"))
+                    .and_then(|r| r.get("total"))
+                {
+                    Some(akit_config::value::Value::Number(t)) => t.clone(),
+                    _ => String::new(),
+                };
+                let points = match n.get("series").and_then(|s| s.get("t")) {
+                    Some(akit_config::value::Value::Array(t)) => t.len(),
+                    _ => 0,
+                };
+                points >= 2 && total.parse::<u64>().unwrap_or(0) >= 5
+            })
+        },
+    );
+    assert!(body.contains(r#""interval_ms":1000"#), "{body}");
+    let (st, _, gs) = b.call("GET", "/api/m/cluster/metrics?group=eu", "");
+    assert_eq!(st, 200, "{gs}");
+    assert!(
+        gs.contains(r#""nodes":[]"#) && gs.contains(r#""name":"eu","nodes":["a","b"]"#),
+        "{gs}"
+    );
+    for (q, want) in [("node=zz", 404), ("group=zz", 404), ("points=0", 400)] {
+        let (st, _, body) = b.call("GET", &format!("/api/m/cluster/metrics?{q}"), "");
+        assert_eq!(st, want, "{q}: {body}");
+    }
+
+    // The certificates' inventory: a's, b's none, both read.
+    let inv = wait_get(
+        &b,
+        "/api/m/cluster/certificates",
+        "the certificates",
+        |body| body.contains("a.test") && body.matches(r#""read":"#).count() >= 3,
+    );
+    assert!(
+        inv.contains(r#""issuer":"#) && inv.contains(r#""listener":"secure""#),
+        "{inv}"
+    );
+
+    // The members' logs, merged; followed by the cursor, nothing new.
+    let (st, _, tail) = b.call("GET", "/api/m/cluster/logs?node=a,b&level=warn", "");
+    assert_eq!(st, 200, "{tail}");
+    let v = parse(&tail);
+    let Some(akit_config::value::Value::Array(recs)) = v.get("records") else {
+        panic!("{tail}")
+    };
+    for n in ["a", "b"] {
+        assert!(
+            recs.iter().any(|r| str_member(r, "node") == n
+                && str_member(r, "message").contains("has no rotate")),
+            "{n}: {tail}"
+        );
+    }
+    let cursor = str_member(&v, "cursor").to_owned();
+    let (st, _, next) = b.call(
+        "GET",
+        &format!("/api/m/cluster/logs?node=a,b&level=warn&cursor={cursor}"),
+        "",
+    );
+    assert!(st == 200 && next.contains(r#""records":[]"#), "{next}");
+    for (q, want) in [
+        ("", 400),
+        ("node=zz", 404),
+        ("node=a&level=loud", 400),
+        ("node=a&limit=0", 400),
+        ("node=a&cursor=!!", 400),
+    ] {
+        let (st, _, body) = b.call("GET", &format!("/api/m/cluster/logs?{q}"), "");
+        assert_eq!(st, want, "{q}: {body}");
+    }
+
+    // The manager's Admin API: behind its token, not the console's.
+    let mt = "a-token-of-the-manager-0123456789";
+    for (path, want) in [
+        ("/cluster", "\"rollouts\""),
+        ("/cluster/nodes", r#""name":"a""#),
+        ("/cluster/state", r#""interval_ms""#),
+        ("/cluster/groups", r#""name":"eu""#),
+        ("/cluster/drift", r#""nodes""#),
+        ("/cluster/metrics?node=a", r#""series""#),
+        ("/cluster/certificates", "a.test"),
+        ("/cluster/logs?node=a&level=warn", "has no rotate"),
+        ("/cluster/rollouts", r#""max_active""#),
+    ] {
+        let (st, body) = admin_get(m_api, mt, path);
+        assert!(st == 200 && body.contains(want), "{path}: {st} {body}");
+    }
+    for (path, want) in [
+        ("/cluster/zz", 404),
+        ("/cluster/logs", 400),
+        ("/cluster/metrics?points=999", 400),
+        ("/cluster/rollouts/r999", 404),
+    ] {
+        let (st, body) = admin_get(m_api, mt, path);
+        assert_eq!(st, want, "{path}: {body}");
+    }
+    let auth = format!("Bearer {mt}");
+    let hs = [
+        ("Authorization", auth.as_str()),
+        ("Content-Type", "application/json"),
+    ];
+    for (method, path, body, want) in [
+        ("POST", "/cluster/sync", r#"{"nodes": ["zz"]}"#, 404),
+        ("POST", "/cluster/rollouts", r#"{"kind": "nope"}"#, 400),
+        ("PUT", "/cluster/rollouts/r9", "", 405),
+        ("POST", "/cluster/rollouts/r9/explode", "", 404),
+        ("POST", "/cluster/state", "", 405),
+    ] {
+        let (st, _, resp) = http(m_api, method, path, &hs, body);
+        assert_eq!(st, want, "{method} {path}: {resp}");
+    }
+    let (st, _, _) = http(m_api, "GET", "/cluster/nodes", &[], "");
+    assert_eq!(st, 401);
+    let (st, _, _) = b.call("GET", "/api/m/admin/cluster/nodes", "");
+    assert_eq!(st, 404);
+
+    // akit cluster: the reads.
+    let cli = cli_config(&d, "cli.json", m_api, Some(&tm));
+    let (code, out, err) = akit_cluster(&cli, &["nodes"], "");
+    assert!(
+        code == 0 && out.contains("ACCESS") && out.contains("region=eu"),
+        "{out}{err}"
+    );
+    let (code, out, err) = akit_cluster(&cli, &["state"], "");
+    assert!(
+        code == 0 && out.contains("NEAREST CERT") && out.contains(" up "),
+        "{out}{err}"
+    );
+    let (code, out, err) = akit_cluster(&cli, &["state", "-json"], "");
+    assert!(
+        code == 0 && out.contains(r#""interval_ms":1000"#),
+        "{out}{err}"
+    );
+    let (code, out, err) = akit_cluster(&cli, &["groups"], "");
+    assert!(code == 0 && out.contains("region=eu"), "{out}{err}");
+    let (code, out, err) = akit_cluster(&cli, &["certs"], "");
+    assert!(code == 0 && out.contains("a.test"), "{out}{err}");
+    // The leaf a carries is good for a year or more: within ten, it expires.
+    let (code, _, err) = akit_cluster(&cli, &["certs", "-within", "3650d"], "");
+    assert_eq!(code, 1, "{err}");
+    let (code, out, err) = akit_cluster(&cli, &["metrics", "-node", "a", "-group", "eu"], "");
+    assert!(
+        code == 0 && out.contains("group eu") && out.contains("REQ/S"),
+        "{out}{err}"
+    );
+    let (code, out, err) = akit_cluster(&cli, &["logs", "-node", "a,b", "-level", "warn"], "");
+    assert!(
+        code == 0 && out.contains(" a WARN server: ") && out.contains(" b WARN server: "),
+        "{out}{err}"
+    );
+    for (args, want) in [
+        (&["logs"][..], "-node is required"),
+        (&["diff", "-node", "a", "-template", "t"][..], "not both"),
+        (&["certs", "-within", "soon"][..], "-within"),
+        (&["rollout", "start"][..], "give one of"),
+        (&["rollout", "status"][..], "give the rollout's ID"),
+        (&["bogus"][..], "unknown command"),
+    ] {
+        let (code, _, err) = akit_cluster(&cli, args, "");
+        assert!(code == 2 && err.contains(want), "{args:?}: {code} {err}");
+    }
+    let (code, _, err) = akit_cluster(&cli, &["rollout", "abort", "r999"], "");
+    assert!(code == 1 && err.contains("404"), "{err}");
+
+    // A template of the group, the members out of sync with it; rolled out by the command line,
+    // a member at a time, followed to its end.
+    let tpl = |v: &str| {
+        format!(
+            r#"{{"name": "base", "groups": ["eu"], "config": {{"routes": [{{"name": "tpl", "match": {{"path": ["/tpl"]}},
+            "handler": {{"module": "respond", "params": {{"body": "${{node.name}} {v}"}}}}}}]}}}}"#
+        )
+    };
+    let (st, _, v) = b.call("POST", "/api/m/cluster/templates", &tpl("v1"));
+    assert_eq!(st, 201, "{v}");
+    let (code, out, err) = akit_cluster(&cli, &["diff", "-template", "base"], "");
+    assert!(
+        code == 1 && out.contains("routes[tpl]"),
+        "{code} {out}{err}"
+    );
+    let (code, out, err) = akit_cluster(
+        &cli,
+        &[
+            "rollout",
+            "start",
+            "-template",
+            "base",
+            "-mode",
+            "rolling",
+            "-batch-size",
+            "1",
+            "-gate-wait",
+            "100ms",
+            "-yes",
+            "-wait",
+        ],
+        "",
+    );
+    assert!(
+        code == 0 && out.contains("planning rollout") && out.contains(": done"),
+        "{code} {out}{err}"
+    );
+    assert_eq!(get(a_web, "/tpl"), "a v1");
+    assert_eq!(get(b_web, "/tpl"), "b v1");
+    let (code, out, err) = akit_cluster(&cli, &["rollout", "list"], "");
+    assert!(
+        code == 0 && out.contains("template") && out.contains("done"),
+        "{out}{err}"
+    );
+
+    // v2: planned, not started when the answer is no; then taken by its ID and followed.
+    let (st, _, v) = b.call("PUT", "/api/m/cluster/templates/base", &tpl("v2"));
+    assert_eq!(st, 200, "{v}");
+    let (code, out, err) =
+        akit_cluster(&cli, &["rollout", "start", "-sync", "-group", "eu"], "n\n");
+    assert!(
+        code == 1 && out.contains("not started"),
+        "{code} {out}{err}"
+    );
+    let id = out
+        .split("rollout start -id ")
+        .nth(1)
+        .and_then(|r| r.split([',', ' ', '\n']).next())
+        .unwrap()
+        .to_owned();
+    let (code, out, err) = akit_cluster(&cli, &["rollout", "start", "-id", &id, "-yes"], "");
+    assert!(code == 0 && out.contains("started"), "{code} {out}{err}");
+    let (code, out, err) = akit_cluster(&cli, &["rollout", "status", "-wait", &id], "");
+    assert!(code == 0 && out.contains(": done"), "{code} {out}{err}");
+    assert_eq!(get(a_web, "/tpl"), "a v2");
+    let (code, out, err) = akit_cluster(&cli, &["rollout", "status", &id, "-json"], "");
+    assert!(
+        code == 0 && out.contains(r#""started_by":"Admin API""#),
+        "{code} {out}{err}"
+    );
+    // The Admin API's actions are audited as its own.
+    let (_, _, audit) = b.call("GET", "/api/m/cluster/audit?user=Admin%20API", "");
+    assert!(audit.contains(r#""action":"rollout.start""#), "{audit}");
+
+    let _ = (m.stop(), a.stop(), bm.stop());
 }

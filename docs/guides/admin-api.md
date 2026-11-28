@@ -66,12 +66,14 @@ What it serves:
 | `GET /metrics` | metrics in Prometheus's text format |
 | `GET /cache`, `POST /cache/purge` | what each cache zone keeps, and purges ([caching](caching.md)) |
 | `GET /logs`, `POST /logs/rotate`, `POST /logs/cleanup` | the log files of `log` and `access_log` with their rotation and files on disk, one rotated now, and what its retention removes, removed or (`dry_run`) listed |
+| `GET /logs/recent?level=&logger=&contains=&limit=&after=` | the latest messages of akit's own log, from the last 1,000 it keeps in memory, oldest first, those numbered after `after`; a cluster manager tails them across its members |
 | `POST /config/render?format=`, `POST /config/parse?format=` | a config fragment, a JSON object, written as `.conf`, `yaml` or `json`; and the JSON of such a text |
 | `PUT /config/text?format=&members=` | a text applied as the whole config, or as those top-level members only, the rest kept; `If-Match` and `dry_run` as `PUT /config`; its errors placed at their lines in the text |
 | `POST /config/export`, `POST /config/import?format=&members=` | the config (`admin` left out, secrets redacted), or some members, as a file; and a file applied, `admin` kept |
 | `GET /dashboard/` | a read-only dashboard of the status and the config |
 | `GET /tokens`, `GET` and `POST /tokens/{member}`, `PATCH` and `DELETE /tokens/{member}/{id}` | the link tokens the tunnel's hub and the LLM roles' listeners issue (`tunnel.hub`, `llm.hub`, `llm.node`, `llm.proxy`): listed with their expiry, last use, members and links; issued (`{name, note, ttl \| expires_at}`, the token shown once, `akitt1.<id>.<secret>`); their expiry changed; revoked. Each change is an edit of the member, logged to the `admin` logger; `akit token` calls them |
 | `/bittorrent/...` | the BitTorrent roles' torrents, events and statistics ([below](#bittorrent)); `akit bt` calls them |
+| `/cluster/...` | on a cluster manager (`admin.cluster`), its members, states, groups, drift, diffs, series, certificates, logs and rollouts, acting as a cluster-wide admin named `Admin API` ([the cluster guide](cluster.md#akit-cluster)); `akit cluster` calls them; 404 on an akit that manages no members |
 
 A change sent with `If-Match: <etag>` is refused with 412 if the config changed since it was read,
 so that two clients cannot overwrite each other. With `?dry_run=1` it is checked through the whole
@@ -184,6 +186,6 @@ traces of requests and the same metrics over OTLP/HTTP to a collector
 
 ## Not supported yet
 
-fit's assistant and cluster management are not supported yet: akit refuses them by name. The
+fit's assistant is not supported yet: akit refuses it by name. The
 [console](console.md), the encrypted store (`admin.store`, which `akit run` keeps the config in, and
 the `store` format of `/config/export` and `/config/import`) and `akit run -admin` are supported.

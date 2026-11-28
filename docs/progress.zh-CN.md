@@ -22,6 +22,27 @@
 
 ## 日志
 
+### 2026-11-28：I139c，跨成员的指标、日志和证书，以及 `akit cluster`
+
+- akit 自身的日志在内存中保留最近 1,000 条消息（`akit_observe::logger::ring`，fit 的 `logs/ring.go`）：自 akit 启动起从 1 编号，
+  连同属性截断到 2 KiB，放在加锁的固定环形缓冲中。Admin API 在 `GET /logs/recent?logger=&level=&contains=&limit=&after=` 回答它们，
+  即 fit 的 `recentLogs`（能力 `logs.recent`）。
+- 管理端保留每次轮询读到的内容（`akit_cluster::insight`，fit 的 `insight.go`）：每个成员在其节点上保存 360 个样本的环形缓冲，
+  作为两次轮询之间的速率（跨重启、相隔三个间隔以上或计数回退时没有）和瞬时值，并按分组以间隔为桶求和
+  （`GET /api/m/cluster/metrics`）；每个成员的证书，最先过期的在前，剩余天数按 Go 的算法（`/api/m/cluster/certificates`）。
+  成员日志的跟踪（fit 的 `logtail.go`）：同时 16 个成员，经管理端的调用向每个成员询问游标编号之后的消息，按时间合并，重启过的
+  成员从头读起，读不到或缺少 `logs.recent` 的成员单独说明；运行期间占用 8 个成员读取之一（`/api/m/cluster/logs`，需要对每个成员
+  都有角色）。
+- 管理端在其 Admin API 上的端点（`akit_cluster::adminapi`，fit 的 `adminapi.go`）：
+  `/cluster/{nodes,state,groups,drift,sync,metrics,certificates,logs,rollouts}`，以集群范围管理员 `Admin API` 的身份行事，由 API
+  提供而非控制台；不管理成员的 akit 回答 404。`POST /cluster/sync` 现在先检查用户的角色再占用同步名额（此前拒绝时会占用而不释放）。
+- `akit cluster`（fit 的 `cli/cluster.go`）：`nodes`、`state`、`groups`、`diff`、`certs [-within]`、`metrics`、`logs [-f]` 和
+  `rollout list|start|status|pause|resume|go|abort|rollback`，退出码与 fit 相同；`rollout start` 规划、打印计划、除非 `-yes`
+  否则询问、开始，并在 `-wait` 时跟踪。它也能访问 fit 管理端的 Admin API。
+- 测试：`logger::ring` 和 `insight` 的单元测试（fit 的 `TestRing`、`TestPoints`、游标和查询）；akit 的 `metrics_logs_and_cli`
+  （序列、证书清单、合并并跟踪的日志、Admin API 的端点和拒绝，以及命令行读取它们并驱动两次发布，其中一次回答“否”、之后按 ID
+  开始）和 `mixed_clusters_with_fit`（akit 管理端跟踪 fit 的日志，fit 管理端跟踪 akit 的日志，以及 `akit cluster` 访问 fit 管理端）。
+
 ### 2026-11-28：I139b，NAT 之后向外链接的成员
 
 - 管理端的链接（`akit_cluster::link`，fit 的 `cluster/linkserver.go`、`linkproto.go` 和 `enroll.go`）：`admin.cluster.link_address`，

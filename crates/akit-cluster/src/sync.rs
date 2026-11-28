@@ -1316,7 +1316,7 @@ pub(crate) fn serve(m: &Manager, ctx: &mut Context, user: &str, path: &str) -> b
     true
 }
 
-fn sync_route(m: &Manager, ctx: &mut Context, user: &str) {
+pub(crate) fn sync_route(m: &Manager, ctx: &mut Context, user: &str) {
     let Some(v) = decode(ctx) else { return };
     let nodes = json::strings_of(&v, "nodes");
     let template = json::str_of(&v, "template").to_owned();
@@ -1359,6 +1359,13 @@ fn sync_route(m: &Manager, ctx: &mut Context, user: &str) {
         all.sort();
         all
     };
+    // The user's roles first: a refusal is answered before anything is taken.
+    if let Err(e) = m.allow(
+        user,
+        &crate::roles::Need::on(crate::roles::VIEWER, names.clone()),
+    ) {
+        return ctx.respond(e.response());
+    }
     {
         let mut t = lock(&m.0.tpl);
         if t.syncs >= MAX_SYNCS {
@@ -1375,12 +1382,6 @@ fn sync_route(m: &Manager, ctx: &mut Context, user: &str) {
     #[allow(clippy::type_complexity)]
     let shared: Arc<Mutex<(BTreeMap<String, String>, Option<akio_http::Detached>)>> =
         Arc::new(Mutex::new((BTreeMap::new(), Some(det))));
-    if let Err(e) = m.allow(
-        user,
-        &crate::roles::Need::on(crate::roles::VIEWER, names.clone()),
-    ) {
-        return ctx.respond(e.response());
-    }
     let names = Arc::new(names);
     let (me, names2) = (m.clone(), Arc::clone(&names));
     let finish = Arc::new(

@@ -369,7 +369,7 @@ fn print_answer(cmd: &str, role: &str, out: &str) -> ExitCode {
 /// `s`, an RFC 3339 time with a `Z` or an offset, in seconds since 1970.
 // Every part is bounded first (a year of four digits, an offset of two), so nothing overflows.
 #[allow(clippy::arithmetic_side_effects)]
-fn parse_rfc3339(s: &str) -> Option<i64> {
+pub(crate) fn parse_rfc3339(s: &str) -> Option<i64> {
     let (date, rest) = s.split_once('T')?;
     let mut d = date.splitn(3, '-');
     let y = d.next()?;

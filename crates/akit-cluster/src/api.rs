@@ -57,6 +57,7 @@ impl akit_roles::pages::Module for Module {
             || crate::alerts::serve(m, ctx, user, path)
             || crate::roles::serve(m, ctx, user, path)
             || crate::link::serve(m, ctx, user, path)
+            || crate::insight::serve(m, ctx, user, path)
         {
             return;
         }
@@ -84,7 +85,7 @@ fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 }
 
 /// `GET /api/nodes`: the members, with their ETag.
-fn list(m: &Manager) -> Response {
+pub(crate) fn list(m: &Manager) -> Response {
     let mut nodes = String::from("[");
     for (i, mem) in m.members().iter().enumerate() {
         if i > 0 {
@@ -104,7 +105,7 @@ fn list(m: &Manager) -> Response {
 }
 
 /// `GET /api/state`.
-fn state(m: &Manager) -> Response {
+pub(crate) fn state(m: &Manager) -> Response {
     let lim = m.limits();
     answer(
         200,
