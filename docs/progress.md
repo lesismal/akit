@@ -22,6 +22,27 @@ done and where the work differs from the plan.
 
 ## Log
 
+### 2026-11-28: akio pinned at `2575a253`: A305 and A303
+
+- akio: `2575a253` on akio's main (from `5893a0ed`). akit's `rev` and `akit_runtime::AKIO_REV` move
+  with it; akit builds unchanged. What the range brings to akit:
+  - A305 (akio's `b238a1d7`, ADR-189): a plain WebSocket's late queue (what other threads send
+    while its handler's read is open) counts in `WsSender::queued_bytes`, `on_drain` waits for it,
+    and it is bounded by the connection's `max_queued_bytes` rather than a fixed 4 MiB; nothing
+    whose send returned `Ok` is dropped. The tunnel's console socket, paced on `queued_bytes`,
+    now holds the console's reads while the late queue fills, so `large_transfers_both_ways`
+    (akit-tunnel `tests/console.rs`) no longer fails with "could not be sent (overloaded)": on
+    gpu51, six copies at once, 240 runs per backend, 0 failed on epoll and 0 on io_uring
+    (at `deabe4bd`, 13 and 21); alone, 0 of 50 and 0 of 50.
+  - A303 (akio's `ede91bbc`, ADR-190): the memory `stream_download` saw under work stealing was
+    akio-buf's per-thread caches (up to 64 freed buffers of a size class a thread, each of 16
+    workers keeping up to 4 MiB of the relay's 64 KiB pieces), not backpressure lost across
+    workers; a thread now keeps at most 256 KiB of a size class. akit's stopgap goes in the next
+    change.
+  - Also in the range: akio's `tools/test-timeout.sh` fix (`2575a253`), which akit's copy takes
+    in its own change.
+- A303 and A305 marked done in [akio API requests](akio-api-requests.md).
+
 ### 2026-11-28: the sockmap relay's splice races, fixed
 
 - `akit-listener/tests/sockmap.rs` `client_proxy_header_spliced` and `sni_passthrough_spliced`,

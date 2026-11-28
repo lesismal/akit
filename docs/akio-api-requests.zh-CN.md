@@ -136,8 +136,8 @@
 | A298 | akio-media 的 RTMP 和 SRT 客户端在会话上线和结束时告诉其所有者，并给出其发送量 | 已提出；权宜做法：RTMP 推流由其客户端的 `Reconnect` 重试，并由对其流的监视重启；SRT 推流用 akit 自己的会话处理器拨号 | 1 | I146 |
 | A301 | `H2Client` 在引擎优雅关闭时结束其连接（`GOAWAY`；没有打开的流时立即关闭，否则在最后一个流结束后关闭），如同 HTTP/1 客户端关闭其空闲连接 | 已进入 akio 的 main 并锁定（自 `db34bfd7` 起）：`H2Acceptor::on_shutdown`；akit 的权宜做法（`EngineSlot::shutdown`）已去掉 | 4, 10 | I18, I18b |
 | A302 | io_uring 上的 `Conn::close` 像 epoll 上一样重置一个收到了未交付数据的 TCP 连接（或提供以重置方式关闭的 `Conn::abort`）：目前进行中的接收在 shutdown 之后取走数据，面对零窗口的对端永远收不到重置 | 已进入 akio 的 main 并锁定（自 `5893a0ed` 起）：建议 (a)，akio 的 ADR-188（未交付输入时以 `SO_LINGER` 0 关闭；`akio_sys::reset_on_close`）；fastcgi.rs 的 `cut_connections` 在 io_uring 上通过 | — | I75 |
-| A303 | 在工作窃取（ADR-104）下依然成立的联动背压：暂停的上游读取（akio-http 的 `ResponseBody::hold_reads`，akit 的 `Download::hold_reads` 在其上）与写满的下游（`BodyStream::queued_bytes`、`on_drain`）像在事件循环上一样限制流式转发占用的内存 | 已提出；权宜做法：akit 的 TCP 监听器选择 `Scheduling::EventLoops`（`akit_runtime::scheduled`，决定 91），除非设置了 `AKIO_DEFAULT_SCHEDULING` | 8, 11 | I16, I17, I18b |
-| A305 | 普通（plain）WebSocket 的迟到队列（其处理器的批次打开期间其他线程发送的内容）计入 `WsSender::queued_bytes` 并由 `on_drain` 等待，以连接的 `max_queued_bytes` 而不是固定的 4 MiB 为上限，并且在批次结束时绝不静默丢弃 | 已提出；akit 在发送被拒时结束加密的 WebSocket，而不是跳过一条消息的编号（其间 console.rs 的 `large_transfers_both_ways` 仍会偶尔失败） | 8, 9 | I103b |
+| A303 | 在工作窃取（ADR-104）下依然成立的联动背压：暂停的上游读取（akio-http 的 `ResponseBody::hold_reads`，akit 的 `Download::hold_reads` 在其上）与写满的下游（`BodyStream::queued_bytes`、`on_drain`）像在事件循环上一样限制流式转发占用的内存 | 已进入 akio 的 main 并锁定（自 `2575a253` 起）：原因不是背压，而是 akio-buf 的每线程缓存，现在每个线程每个大小类最多保留 256 KiB（akio 的 ADR-190）；akit 的权宜做法（`akit_runtime::scheduled`，决定 91）仍在 | 8, 11 | I16, I17, I18b |
+| A305 | 普通（plain）WebSocket 的迟到队列（其处理器的批次打开期间其他线程发送的内容）计入 `WsSender::queued_bytes` 并由 `on_drain` 等待，以连接的 `max_queued_bytes` 而不是固定的 4 MiB 为上限，并且在批次结束时绝不静默丢弃 | 已进入 akio 的 main 并锁定（自 `2575a253` 起）：akio 的 ADR-189；`large_transfers_both_ways` 在负载下通过；加密的 WebSocket 在发送被拒时仍会结束 | 8, 9 | I103b |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -2570,6 +2570,14 @@ akit FastCGI 处理器的跟踪显示：在响应开始后 2 ms 内，h2 客户�
 
 ## A303 工作窃取下的联动背压
 
+**完成。** 已进入 akio 的 main 并锁定（自 `2575a253` 起，akio 的 `ede91bbc`，ADR-190）。内存并不是被跨 worker 失效的背压占住的：
+akio 验证了 `hold_reads`、`queued_bytes` 和 `on_drain` 无论由哪个 worker 运行连接都会生效（在每种调度下等待客户端的字节都低于
+128 KiB）。原因是 akio-buf 的每线程缓存：一个线程每个大小类最多保留 64 个释放的缓冲区（每个线程约 21 MiB），而发送完整 64 KiB
+片段的转发中，每个片段被释放它的线程放进池里；在工作窃取下 16 个 worker 都运行两个连接的轮次，每个最多保留 4 MiB，
+16 × 4 MiB = 64 MiB。现在一个线程每个大小类最多保留 256 KiB（512 B 和 4 KiB 各 64 个，16 KiB 16 个，64 KiB 4 个，256 KiB 1 个；
+每个线程合计约 1 MiB），没有 API 变化；akio 的 `tests/relay_memory.rs` 保证经 16 个线程的转发内存有界。akit 的监听器交给 akio 的默认
+（工作窃取，下一个改动）时，akit-proxy 的 `stream_download` 在 gpu51 的 epoll 上单独运行 10 次中 10 次通过。akit 的权宜做法在那个改动中去掉。
+
 **状态。** 已提出（2026-11-28）。akit 中的权宜做法：其 TCP 和 Unix 域流监听器选择 `Scheduling::EventLoops`
 （`akit_runtime::scheduled`），除非设置了 `AKIO_DEFAULT_SCHEDULING`，此时由 akio 决定（决定 91，记录在[进度](progress.zh-CN.md)中）。
 
@@ -2591,6 +2599,14 @@ HTTP/1.1 客户端发送 64 MiB，采样进程的常驻内存，上限 `MAX_RISE
 **akit 如何使用。** `akit_runtime::scheduled` 连同决定 91 一起去掉：akit 的监听器重新采用 akio 的默认调度，`stream_download` 在其下通过。
 
 ## A305 节奏控制看得见的 WebSocket 迟到队列
+
+**完成。** 已进入 akio 的 main 并锁定（自 `2575a253` 起，akio 的 `b238a1d7`，ADR-189），按建议实现。在普通会话上，`queued_bytes`
+加上迟到队列的字节（在读取中询问时还包括处理器的批次）；持有迟到字节时设置的 `on_drain` 在它们和连接的队列都写出后才运行；
+`LATE_MAX` 去掉了，迟到字节、批次的预留（最多 64 KiB）和连接的队列合起来不超过连接的 `max_queued_bytes`，超过时发送以 `Overloaded`
+被拒；批次和迟到字节以已接纳的方式排队，只会被已在关闭的连接拒绝，因此发送返回了 `Ok` 的内容不会被丢弃。akit 无需改动：
+控制台套接字的闸门现在会在迟到队列填满时暂停控制台的读取。akit-tunnel 的 `tests/console.rs` 中的 `large_transfers_both_ways`
+在 gpu51 上同时运行六份、每个后端 240 次：epoll 上 240 次中 0 次失败，io_uring 上 240 次中 0 次（此前为 6–17 次和
+20–25 次）；单独运行时 50 次中 0 次和 50 次中 0 次。发送被拒的处理保留，用于其他原因导致的发送失败。
 
 **状态。** 已提出（2026-11-28）。没有能让传输继续的权宜做法：akit 在发送被拒时结束加密的 WebSocket，而不是跳过一条消息的编号，
 使失败如实说明原因；在 akio 实现之前，akit-tunnel 的 `tests/console.rs` 中的 `large_transfers_both_ways` 仍会偶尔失败。

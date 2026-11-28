@@ -41,49 +41,49 @@ rust-version = "1.85"
 [workspace.dependencies]
 # akio by commit hash, never a path or [patch] (rules.md rule 22). Move it only to a commit on
 # akio's main whose checks pass, and update akit_runtime::AKIO_REV with it.
-akio = { git = "https://github.com/lesismal/akio", rev = "5893a0edcd5e792793c44a6e9c10d6935f6a9deb" }
+akio = { git = "https://github.com/lesismal/akio", rev = "2575a253d23604d6ae2eba230007adf1ba774d8f" }
 # The same akio commit: every akio crate moves with `akio` (rule 22).
-akio-http = { git = "https://github.com/lesismal/akio", rev = "5893a0edcd5e792793c44a6e9c10d6935f6a9deb" }
+akio-http = { git = "https://github.com/lesismal/akio", rev = "2575a253d23604d6ae2eba230007adf1ba774d8f" }
 # Signals (`process::signal_pipe`): its `unsafe` stays in akio (rule 14).
-akio-sys = { git = "https://github.com/lesismal/akio", rev = "5893a0edcd5e792793c44a6e9c10d6935f6a9deb" }
+akio-sys = { git = "https://github.com/lesismal/akio", rev = "2575a253d23604d6ae2eba230007adf1ba774d8f" }
 # Certificates: the names a certificate is for, which pick it by SNI (akit-tls); in tests, to
 # make certificates and keys.
-akio-x509 = { git = "https://github.com/lesismal/akio", rev = "5893a0edcd5e792793c44a6e9c10d6935f6a9deb" }
-akio-crypto = { git = "https://github.com/lesismal/akio", rev = "5893a0edcd5e792793c44a6e9c10d6935f6a9deb" }
+akio-x509 = { git = "https://github.com/lesismal/akio", rev = "2575a253d23604d6ae2eba230007adf1ba774d8f" }
+akio-crypto = { git = "https://github.com/lesismal/akio", rev = "2575a253d23604d6ae2eba230007adf1ba774d8f" }
 # HTTP/3 listeners (akit-listener): akio-h3 serves akio-http's services over akio-quic.
-akio-h3 = { git = "https://github.com/lesismal/akio", rev = "5893a0edcd5e792793c44a6e9c10d6935f6a9deb" }
-akio-quic = { git = "https://github.com/lesismal/akio", rev = "5893a0edcd5e792793c44a6e9c10d6935f6a9deb" }
+akio-h3 = { git = "https://github.com/lesismal/akio", rev = "2575a253d23604d6ae2eba230007adf1ba774d8f" }
+akio-quic = { git = "https://github.com/lesismal/akio", rev = "2575a253d23604d6ae2eba230007adf1ba774d8f" }
 # BitTorrent: the client and tracker roles (akit-bittorrent, I151, decision 042).
-akio-bittorrent = { git = "https://github.com/lesismal/akio", rev = "5893a0edcd5e792793c44a6e9c10d6935f6a9deb" }
+akio-bittorrent = { git = "https://github.com/lesismal/akio", rev = "2575a253d23604d6ae2eba230007adf1ba774d8f" }
 # WebSockets: the LLM mesh's links (akit-llm, I104).
-akio-ws = { git = "https://github.com/lesismal/akio", rev = "5893a0edcd5e792793c44a6e9c10d6935f6a9deb" }
+akio-ws = { git = "https://github.com/lesismal/akio", rev = "2575a253d23604d6ae2eba230007adf1ba774d8f" }
 # WebRTC (akit-webrtc, I111-I114): the TURN server, and WHIP and WHEP's PeerConnections; the
 # streaming role's WHIP and WHEP (akit-media, I124).
-akio-turn = { git = "https://github.com/lesismal/akio", rev = "5893a0edcd5e792793c44a6e9c10d6935f6a9deb" }
-akio-webrtc = { git = "https://github.com/lesismal/akio", rev = "5893a0edcd5e792793c44a6e9c10d6935f6a9deb" }
+akio-turn = { git = "https://github.com/lesismal/akio", rev = "2575a253d23604d6ae2eba230007adf1ba774d8f" }
+akio-webrtc = { git = "https://github.com/lesismal/akio", rev = "2575a253d23604d6ae2eba230007adf1ba774d8f" }
 # Route path regexps (akit-router) and the redirect middleware's (akit-middleware), decision 001:
 # linear-time matching, no dependencies.
-akio-regex = { git = "https://github.com/lesismal/akio", rev = "5893a0edcd5e792793c44a6e9c10d6935f6a9deb" }
+akio-regex = { git = "https://github.com/lesismal/akio", rev = "2575a253d23604d6ae2eba230007adf1ba774d8f" }
 
 # The compressors (akit-middleware's `compress`, decision 001): gzip, brotli and zstd of akio's own.
-akio-deflate = { git = "https://github.com/lesismal/akio", rev = "5893a0edcd5e792793c44a6e9c10d6935f6a9deb" }
-akio-brotli = { git = "https://github.com/lesismal/akio", rev = "5893a0edcd5e792793c44a6e9c10d6935f6a9deb" }
-akio-zstd = { git = "https://github.com/lesismal/akio", rev = "5893a0edcd5e792793c44a6e9c10d6935f6a9deb" }
+akio-deflate = { git = "https://github.com/lesismal/akio", rev = "2575a253d23604d6ae2eba230007adf1ba774d8f" }
+akio-brotli = { git = "https://github.com/lesismal/akio", rev = "2575a253d23604d6ae2eba230007adf1ba774d8f" }
+akio-zstd = { git = "https://github.com/lesismal/akio", rev = "2575a253d23604d6ae2eba230007adf1ba774d8f" }
 # gRPC's client and server, for akit-proxy's gRPC tests (I50).
-akio-grpc = { git = "https://github.com/lesismal/akio", rev = "5893a0edcd5e792793c44a6e9c10d6935f6a9deb" }
+akio-grpc = { git = "https://github.com/lesismal/akio", rev = "2575a253d23604d6ae2eba230007adf1ba774d8f" }
 
 # WASM plugins (akit-plugin, I71): akio's WebAssembly runtime (akio ADR-125, decision 008).
-akio-wasm = { git = "https://github.com/lesismal/akio", rev = "5893a0edcd5e792793c44a6e9c10d6935f6a9deb" }
+akio-wasm = { git = "https://github.com/lesismal/akio", rev = "2575a253d23604d6ae2eba230007adf1ba774d8f" }
 
 # PROXY protocol headers and TLS ClientHellos read on accept (akit-l4, akit-listener: I52).
-akio-mux = { git = "https://github.com/lesismal/akio", rev = "5893a0edcd5e792793c44a6e9c10d6935f6a9deb" }
+akio-mux = { git = "https://github.com/lesismal/akio", rev = "2575a253d23604d6ae2eba230007adf1ba774d8f" }
 
 # The SOCKS server and HTTP CONNECT tunnels of the forward proxy (akit-l4, akit-listener,
 # akit-handler: I55).
-akio-socks = { git = "https://github.com/lesismal/akio", rev = "5893a0edcd5e792793c44a6e9c10d6935f6a9deb" }
+akio-socks = { git = "https://github.com/lesismal/akio", rev = "2575a253d23604d6ae2eba230007adf1ba774d8f" }
 
 # The streaming role (akit-media, I122): the hub, RTMP, RTSP, SRT, HTTP-FLV and HLS.
-akio-media = { git = "https://github.com/lesismal/akio", rev = "5893a0edcd5e792793c44a6e9c10d6935f6a9deb" }
+akio-media = { git = "https://github.com/lesismal/akio", rev = "2575a253d23604d6ae2eba230007adf1ba774d8f" }
 
 akit-config = { path = "crates/akit-config" }
 akit-runtime = { path = "crates/akit-runtime" }

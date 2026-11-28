@@ -21,6 +21,22 @@
 
 ## 日志
 
+### 2026-11-28：akio 锁定在 `2575a253`：A305 与 A303
+
+- akio：akio main 上的 `2575a253`（自 `5893a0ed` 起）。akit 的 `rev` 与 `akit_runtime::AKIO_REV` 随之移动；akit 无需改动即可构建。
+  这一段对 akit 带来的变化：
+  - A305（akio 的 `b238a1d7`，ADR-189）：普通 WebSocket 的迟到队列（其处理器的读取进行中时其他线程发送的内容）计入
+    `WsSender::queued_bytes`，`on_drain` 等待它，其上限是连接的 `max_queued_bytes` 而不是固定的 4 MiB；发送返回了 `Ok` 的内容
+    不会被丢弃。按 `queued_bytes` 控制节奏的隧道控制台套接字现在会在迟到队列填满时暂停控制台的读取，因此
+    `large_transfers_both_ways`（akit-tunnel 的 `tests/console.rs`）不再以 “could not be sent (overloaded)” 失败：在 gpu51 上同时运行
+    六份、每个后端 240 次，epoll 上失败 0 次，io_uring 上 0 次（在 `deabe4bd` 上为 13 次和 21 次）；单独运行时 50 次中
+    0 次和 50 次中 0 次。
+  - A303（akio 的 `ede91bbc`，ADR-190）：`stream_download` 在工作窃取下看到的内存是 akio-buf 的每线程缓存（每个线程每个大小类
+    最多 64 个释放的缓冲区，16 个 worker 每个最多保留转发的 64 KiB 片段 4 MiB），而不是跨 worker 失效的背压；现在一个线程每个
+    大小类最多保留 256 KiB。akit 的权宜做法在下一个改动中去掉。
+  - 这一段中还有 akio 的 `tools/test-timeout.sh` 修复（`2575a253`），akit 的副本在其单独的改动中跟进。
+- A303 与 A305 在 [akio API 请求](akio-api-requests.zh-CN.md)中标记为完成。
+
 ### 2026-11-28：sockmap 转发的拼接竞态已修复
 
 - `akit-listener/tests/sockmap.rs` 的 `client_proxy_header_spliced` 和 `sni_passthrough_spliced`

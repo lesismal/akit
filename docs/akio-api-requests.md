@@ -137,8 +137,8 @@ first; its status here records the branch, then the akio commit akit pins.
 | A298 | akio-media's RTMP and SRT clients tell their owner when a session goes live and ends, with what it sent | requested; stopgap: an RTMP push retried by its client's `Reconnect` and restarted by a watch of its stream; an SRT push dialed with a session handler of akit's own | 1 | I146 |
 | A301 | `H2Client` ends its connection at the engine's graceful shutdown (`GOAWAY`; closed now with no stream open, else after its last), as the HTTP/1 client closes its idle ones | on akio's main and pinned (since `db34bfd7`): `H2Acceptor::on_shutdown`; akit's stopgap (`EngineSlot::shutdown`) removed | 4, 10 | I18, I18b |
 | A302 | `Conn::close` on io_uring resets a TCP connection whose received data it did not deliver, as on epoll (or a `Conn::abort` that closes with a reset): today a receive in flight takes the data after the shutdown, so the peer, facing a zero window, is never reset | on akio's main and pinned (since `5893a0ed`): suggestion (a), akio's ADR-188 (`SO_LINGER` 0 when input was not delivered; `akio_sys::reset_on_close`); fastcgi.rs `cut_connections` passes on io_uring | — | I75 |
-| A303 | Linked backpressure that holds under work stealing (ADR-104): a held upstream read (akio-http's `ResponseBody::hold_reads`, under akit's `Download::hold_reads`) and a full downstream write (`BodyStream::queued_bytes`, `on_drain`) bound what a streamed relay holds, as on event loops | requested; stopgap: akit's TCP listeners choose `Scheduling::EventLoops` (`akit_runtime::scheduled`, decision 91) unless `AKIO_DEFAULT_SCHEDULING` is set | 8, 11 | I16, I17, I18b |
-| A305 | A plain WebSocket's late queue (what other threads send while its handler's batch is open) counted in `WsSender::queued_bytes` and waited for by `on_drain`, bounded by the connection's `max_queued_bytes` rather than a fixed 4 MiB, and never dropped silently when the batch ends | requested; akit ends a sealed WebSocket on a refused send instead of skipping a message's number (console.rs `large_transfers_both_ways` still fails now and then meanwhile) | 8, 9 | I103b |
+| A303 | Linked backpressure that holds under work stealing (ADR-104): a held upstream read (akio-http's `ResponseBody::hold_reads`, under akit's `Download::hold_reads`) and a full downstream write (`BodyStream::queued_bytes`, `on_drain`) bound what a streamed relay holds, as on event loops | on akio's main and pinned (since `2575a253`): not backpressure but akio-buf's per-thread caches, now at most 256 KiB of a size class a thread (akio's ADR-190); akit's stopgap (`akit_runtime::scheduled`, decision 91) still in place | 8, 11 | I16, I17, I18b |
+| A305 | A plain WebSocket's late queue (what other threads send while its handler's batch is open) counted in `WsSender::queued_bytes` and waited for by `on_drain`, bounded by the connection's `max_queued_bytes` rather than a fixed 4 MiB, and never dropped silently when the batch ends | on akio's main and pinned (since `2575a253`): akio's ADR-189; `large_transfers_both_ways` passes under load; a sealed WebSocket still ends on a refused send | 8, 9 | I103b |
 
 ## A1 TCP listeners on a running engine
 
@@ -3234,6 +3234,19 @@ close, a connection given up before its response ended (`Exchange::fail` releasi
 
 ## A303 Linked backpressure under work stealing
 
+**Done.** On akio's main and pinned (since `2575a253`, akio's `ede91bbc`, ADR-190). The memory
+was not held by backpressure that failed across workers: akio verified that `hold_reads`,
+`queued_bytes` and `on_drain` take effect whichever worker runs a connection (the bytes waiting for
+the client stayed under 128 KiB on every scheduling). It was akio-buf's per-thread caches: a
+thread kept up to 64 freed buffers of each size class (about 21 MiB a thread), and a relay that
+sends whole 64 KiB pieces had each piece pooled by whichever thread freed it; under work stealing
+all 16 workers ran both connections' rounds and each kept up to 4 MiB, 16 × 4 MiB = 64 MiB. A
+thread now keeps at most 256 KiB of a size class (64 buffers of 512 B and 4 KiB, 16 of 16 KiB, 4 of
+64 KiB, 1 of 256 KiB; about 1 MiB a thread in all), with no API change; akio's
+`tests/relay_memory.rs` keeps a relay through 16 threads bounded. With akit's listeners left to
+akio's default (work stealing, the next change), akit-proxy's `stream_download` passes alone on
+gpu51's epoll 10 of 10. akit's stopgap goes in that change.
+
 **Status.** Requested (2026-11-28). Stopgap in akit: its TCP and Unix-domain stream listeners
 choose `Scheduling::EventLoops` (`akit_runtime::scheduled`), unless `AKIO_DEFAULT_SCHEDULING` is
 set, which leaves the choice to akio (decision 91, recorded in [progress](progress.md)).
@@ -3263,6 +3276,19 @@ relay between two connections on different workers, its memory bounded, would ke
 take akio's default scheduling again, and `stream_download` passes under it.
 
 ## A305 A WebSocket's late queue seen by pacing
+
+**Done.** On akio's main and pinned (since `2575a253`, akio's `b238a1d7`, ADR-189), as
+suggested. On a plain session `queued_bytes` adds the late queue's bytes (and, asked from inside
+the read, the handler's batch); an `on_drain` set while late bytes are held runs once they and the
+connection's queue are written; `LATE_MAX` is gone, the late bytes, the batch's reservation (at
+most 64 KiB) and the connection's queue staying within its `max_queued_bytes`, a send past it
+refused with `Overloaded`; and the batch and the late bytes are queued as admitted, refused only
+by a connection already closing, so nothing whose send returned `Ok` is dropped. Nothing changes in
+akit: the console socket's gate now holds the console's reads while the late queue fills.
+akit-tunnel's `tests/console.rs` `large_transfers_both_ways` on gpu51, six copies at once, 240
+runs per backend: 0 of 240 failed on epoll and 0 of 240 on io_uring (before, 6–17 and
+20–25); alone, 0 of 50 and 0 of 50. The handling of a refused send stays, for a send
+that fails for any other reason.
 
 **Status.** Requested (2026-11-28). No stopgap that keeps the transfer going: akit ends a sealed
 WebSocket whose send is refused rather than skip a message's number, so the failure says what it
