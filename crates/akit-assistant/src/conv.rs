@@ -1,9 +1,9 @@
 //! The users' conversations (I162, fit's `assistant/conversations.go`): kept in the store, a
 //! section a user (`assistant.chats.<hash>`, fit's document), bounded in number, in size each
 //! and in size together; read the first time a user asks, written back by the assistant's pool
-//! after each chat, with the pending proposal (I163) and what became of the last one. What akit
-//! does not use of a conversation yet (a skill's inputs) is kept as it was read, so that a store
-//! moves between akit and fit.
+//! after each chat, with the pending proposal (I163) and what became of the last one, and the
+//! skill it runs (I164). A member akit does not know is kept as it was read, so that a store moves
+//! between akit and fit.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -184,9 +184,11 @@ pub struct Conversation {
     pub proposal: Option<crate::proposal::Proposal>,
     /// What the model is told of its last proposal: applied, or discarded.
     pub proposal_note: String,
-    /// The skill it runs (I164), kept as read.
+    /// The skill it runs (I164): set by `/name`, the panel's picker or `skill_load`.
     pub skill: String,
-    /// The members akit does not use yet (`skill_inputs`), kept as read.
+    /// The inputs the person gave the skill.
+    pub skill_inputs: BTreeMap<String, String>,
+    /// The members akit does not know, kept as read.
     pub extra: Vec<(String, Value)>,
     /// Whether a chat is under way in it.
     pub busy: bool,
@@ -203,6 +205,7 @@ const OWN: &[&str] = &[
     "proposal",
     "proposal_note",
     "skill",
+    "skill_inputs",
 ];
 
 impl Conversation {
@@ -220,21 +223,23 @@ impl Conversation {
         if self.folded > 0 {
             o = o.num("folded", self.folded);
         }
-        // fit's members in fit's order: the proposal's before the skill, its inputs after.
-        let extra = |o: Obj, k: &str| match self.extra.iter().find(|(n, _)| n == k) {
-            Some((_, v)) => o.raw(k, &json::compact(v)),
-            None => o,
-        };
+        // fit's members in fit's order: the proposal's, the skill and its inputs (a Go map: by
+        // name).
         if let Some(p) = &self.proposal {
             o = o.raw("proposal", &p.json());
         }
         o = o.str_omit("proposal_note", &self.proposal_note);
         o = o.str_omit("skill", &self.skill);
-        o = extra(o, "skill_inputs");
+        if !self.skill_inputs.is_empty() {
+            let inputs = self
+                .skill_inputs
+                .iter()
+                .fold(Obj::new(), |o, (k, v)| o.str(k, v))
+                .end();
+            o = o.raw("skill_inputs", &inputs);
+        }
         for (k, v) in &self.extra {
-            if k != "skill_inputs" {
-                o = o.raw(k, &json::compact(v));
-            }
+            o = o.raw(k, &json::compact(v));
         }
         if let Some(b) = busy {
             o = o.bool("busy", b);
@@ -271,6 +276,16 @@ impl Conversation {
             proposal: v.get("proposal").and_then(crate::proposal::Proposal::from),
             proposal_note: json::str_of(v, "proposal_note").to_owned(),
             skill: json::str_of(v, "skill").to_owned(),
+            skill_inputs: match v.get("skill_inputs") {
+                Some(Value::Object(ms)) => ms
+                    .iter()
+                    .filter_map(|(k, x)| match x {
+                        Value::String(s) => Some((k.clone(), s.clone())),
+                        _ => None,
+                    })
+                    .collect(),
+                _ => BTreeMap::new(),
+            },
             extra,
             busy: false,
         })
@@ -296,6 +311,9 @@ impl Conversation {
             self.summary.len(),
             self.skill.len(),
             self.proposal_note.len(),
+            self.skill_inputs.iter().fold(0usize, |n, (k, v)| {
+                n.saturating_add(k.len()).saturating_add(v.len())
+            }),
             self.proposal
                 .as_ref()
                 .map_or(0, crate::proposal::Proposal::bytes),
@@ -524,7 +542,7 @@ mod tests {
     /// A conversation as fit's store holds it reads back the same, its proposal kept.
     #[test]
     fn fit_documents() {
-        let fit = r#"{"conversations":[{"id":"abc","title":"t","created":1,"updated":2,"messages":[{"role":"user","content":"hi","at":1},{"role":"assistant","tool_calls":[{"id":"c1","name":"status_get","arguments":{}}],"at":2},{"role":"tool","content":"{}","tool_call_id":"c1","tool_name":"status_get","at":3,"cut":true}],"proposal":{"id":"p1","created":5,"updated":6,"revision":2,"base_version":3,"base_etag":"\"e3\"","steps":[{"tool":"cache_purge_propose","summary":"Purge <all>","args":{"summary":"Purge <all>","all":true},"at":5}],"valid":true,"problems":1,"error":"no"},"proposal_note":"ada applied the proposal p0.","skill":"explain"}],"day":"2026-11-28","tokens":42}"#;
+        let fit = r#"{"conversations":[{"id":"abc","title":"t","created":1,"updated":2,"messages":[{"role":"user","content":"hi","at":1},{"role":"assistant","tool_calls":[{"id":"c1","name":"status_get","arguments":{}}],"at":2},{"role":"tool","content":"{}","tool_call_id":"c1","tool_name":"status_get","at":3,"cut":true}],"proposal":{"id":"p1","created":5,"updated":6,"revision":2,"base_version":3,"base_etag":"\"e3\"","steps":[{"tool":"cache_purge_propose","summary":"Purge <all>","args":{"summary":"Purge <all>","all":true},"at":5}],"valid":true,"problems":1,"error":"no"},"proposal_note":"ada applied the proposal p0.","skill":"explain","skill_inputs":{"host":"a.example","path":"/x"}}],"day":"2026-11-28","tokens":42}"#;
         let u = UserChats::read(fit.as_bytes()).unwrap();
         assert_eq!(u.tokens, 42);
         let c = &u.convs[0];

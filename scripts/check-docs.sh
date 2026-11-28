@@ -3,6 +3,8 @@
 # under its title. CLAUDE.md is the one exception (instructions for sessions, not a document).
 # Copies of other projects' files (tests/compat/fixtures) are not akit documents.
 # Reports benchmark runs write (bench/results) are generated, as fit's benchreport writes them.
+# The assistant's built-in skills (crates/akit-assistant/skills, I164) are data its prompts are
+# made of, as fit's: each has its English and Chinese words in its front matter.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 bad=0
@@ -20,9 +22,9 @@ while IFS= read -r f; do
             echo "no language links under the title: $doc"; bad=1
         fi
     done
-done < <(find . -name '*.md' -not -path './target/*' -not -path './.git/*' -not -path './.claude/*' -not -path './fuzz/target/*' -not -path './tests/compat/fixtures/*' -not -path './bench/results/*' | sort)
+done < <(find . -name '*.md' -not -path './target/*' -not -path './.git/*' -not -path './.claude/*' -not -path './fuzz/target/*' -not -path './tests/compat/fixtures/*' -not -path './bench/results/*' -not -path './crates/akit-assistant/skills/*' | sort)
 while IFS= read -r twin; do
     [ -f "${twin%.zh-CN.md}.md" ] || { echo "missing English original of $twin"; bad=1; }
-done < <(find . -name '*.zh-CN.md' -not -path './target/*' -not -path './.git/*' -not -path './.claude/*' -not -path './fuzz/target/*' -not -path './tests/compat/fixtures/*' -not -path './bench/results/*')
+done < <(find . -name '*.zh-CN.md' -not -path './target/*' -not -path './.git/*' -not -path './.claude/*' -not -path './fuzz/target/*' -not -path './tests/compat/fixtures/*' -not -path './bench/results/*' -not -path './crates/akit-assistant/skills/*')
 if [ "$bad" -eq 0 ]; then echo "docs: every document has its twin"; fi
 exit "$bad"

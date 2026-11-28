@@ -37,6 +37,8 @@
 //!                           the console's change, with If-Match
 //! POST /api/proposals/<conversation>/discard  {"id", "user"}: dropped
 //! GET  /api/audit           the audit log, the latest first ([`audit`])
+//! GET  /api/skills          the skills, built in and added ([`skills`]); POST one added
+//! GET  /api/skills/<name>, PUT, DELETE  one whole, changed, deleted; POST .../enable, .../disable
 //! ```
 //!
 //! Nothing here blocks an I/O thread (rule 1): what writes the store runs on a pool of the
@@ -55,6 +57,7 @@ pub mod proposal;
 pub mod redact;
 pub mod registry;
 pub mod settings;
+pub mod skills;
 mod test;
 pub mod tools;
 pub mod tree;
@@ -62,6 +65,8 @@ pub mod tree;
 pub use test::{CALL_WAIT, MAX_TESTS, MODELS_WAIT};
 #[cfg(any(test, feature = "stand-ins"))]
 pub mod standin;
+#[cfg(test)]
+mod testkit;
 
 use std::collections::{BTreeMap, HashMap};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -256,6 +261,8 @@ struct Inner {
     audit: Mutex<audit::Log>,
     /// The apply under way and those waiting their turn.
     applies: Mutex<apply::Applies>,
+    /// The skills.
+    skills: skills::Skills,
     /// When the assistant started.
     started: Instant,
 }
@@ -328,8 +335,9 @@ impl Assistant {
         }
         log.bound(state.settings.limits.audit_entries());
         let mut tools = tools::read_tools();
+        tools.push(skills::load_tool());
         tools.extend(proposal::tools());
-        Assistant(Arc::new(Inner {
+        let a = Assistant(Arc::new(Inner {
             o,
             state: Mutex::new(state),
             pool: Pool::new(cfg),
@@ -342,8 +350,11 @@ impl Assistant {
             tools_pool: Pool::new(tc),
             audit: Mutex::new(log),
             applies: Mutex::new(apply::Applies::default()),
+            skills: skills::Skills::default(),
             started: Instant::now(),
-        }))
+        }));
+        a.load_skills();
+        a
     }
 
     /// The model client, when the assistant has an engine to call with.
@@ -753,6 +764,11 @@ impl Module for Assistant {
             (p, _) if p.starts_with("/api/proposals/") => {
                 let rest = p.trim_start_matches("/api/proposals/").to_owned();
                 self.proposal(ctx, user, &rest);
+            }
+            ("/api/skills", _) => self.skills_endpoint(ctx, user, ""),
+            (p, _) if p.starts_with("/api/skills/") => {
+                let rest = p.trim_start_matches("/api/skills/").to_owned();
+                self.skills_endpoint(ctx, user, &rest);
             }
             ("/api/audit", Method::Get) => {
                 let query = ctx

@@ -19,9 +19,36 @@ done and where the work differs from the plan.
 | akio requests | A1–A24, A29, A30, A32, A33, A35–A38, A45, A48, A49, A51–A54, A57, A58, A63–A66, A75, A78, A79, A90–A94, A105, A108, A109, A111–A113, A117, A132–A135, A148, A165–A172, A180, A200, A214, A215, A220, A230–A238, A245 and A247–A249 on akio's main and pinned; A225 (an external review, L15) requested ([akio API requests](akio-api-requests.md)) |
 | Streaming and media auth | [I120–I126](dev-plan.md#streaming-and-media-auth), fit's I115–I117 (decision 040): I120 (`media_auth` and `streaming` in the config), I121 (the policies, the checks, `akit media-token`), I122 (the role's hub, RTMP, RTSP and SRT), I123 (`httpflv`, `hls`), I124 (the WebRTC port, `stream_whip`, `stream_whep`), I125 (`media_pages`) and I126 (`auth` on `whip`, `whep` and `webrtc_proxy`) done; the media library's `libraries`, `vod` and `channels` wait for its track; akio requests A263–A268 |
 | Media library and channels | [I140–I149](dev-plan.md#media-library-and-channels), fit's I131–I139 and I119 (decision 043): I140 (`media_library` in the config) I141 (the catalog, the role `media_library`, `/media/library`) I142 (`vod`), I143 (`keys`, `media_tokens`), I144 (`url_signing`), I145 (channels), I146 (push targets), I147 (encrypted segments), I148 (the video site) and I149 (the console's media pages, the files managed) done: the track is done; akio requests A295–A298 |
-| AI assistant | [I160–I169](dev-plan.md#ai-assistant), fit's I124–I130 and I152–I154 (decision 044): I160 (`admin.assistant`, the module `ai`, its settings and keys in the store) I161 (the model client, the provider test) I162 (the chat and the read tools), I162b (the logs' tools, the converter) and I163 (proposals, levels, the audit log) done; I164 next |
+| AI assistant | [I160–I169](dev-plan.md#ai-assistant), fit's I124–I130 and I152–I154 (decision 044): I160 (`admin.assistant`, the module `ai`, its settings and keys in the store) I161 (the model client, the provider test) I162 (the chat and the read tools), I162b (the logs' tools, the converter) and I163 (proposals, levels, the audit log) and I164 (skills) done; I165 next |
 
 ## Log
+
+### 2026-11-28: I164, the assistant V: skills
+
+- Skills (fit's I127, `akit_assistant::skills`): a named task in Markdown with YAML front matter
+  (name, titles and descriptions in English and Chinese, inputs, tools, model, examples) and its
+  prompt, refused with the line of what is wrong. fit's 22 built-in skills are embedded with
+  akit's names, in fit's order; the cluster's three are a manager's (I169). Users add theirs on the
+  Skills page (`/api/m/ai/skills`: list, read whole, add, change, rename, delete, enable and
+  disable, at most 64, a level of apply to change), kept in the store's section
+  `assistant.skills` with the built-ins disabled; a kept skill that no longer reads is left out
+  and logged.
+- A chat runs one skill: `/name`, the panel's picker (`skill` and `inputs`, checked), or the
+  model's `skill_load` from the catalog the system prompt lists (within three tenths of the
+  window, by name alone past it). The skill's prompt and inputs (redacted) go in the system
+  prompt, its tools narrowed to those it names and the user's level allows, those it may not call
+  named with why; a skill's model is used when it names one. The conversation keeps its skill and
+  inputs in fit's form; a skill disabled since is dropped. The `start` event names the skill, and
+  `skill_load` sends a `skill` event; the audit log names it.
+- `akit_config::located`: a YAML document read with the line of each value and key, and of its
+  first alias, which a skill's front matter is checked with.
+- Checked: fit's skills tests ported (`skills::tests`), the built-in skills each run by `/name`
+  but those whose first tool comes with I168 or the sync track; through the console
+  (`skills_through_the_console`); and in the browser against `akit run` with a stand-in model:
+  the Skills page lists them, and a question the model answers with `skill_load` shows the skill
+  loaded. The browser pass of I163's proposal and audit pages (propose, diff, apply, an audit entry,
+  a stale proposal offered again and applied, a discard) found nothing the pages do not read, and
+  akio request A311 (a `412` answered `Unknown`). Next: I165.
 
 ### 2026-11-28: I163, the assistant IV: proposals, levels and the audit log
 

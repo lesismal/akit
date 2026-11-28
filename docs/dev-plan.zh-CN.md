@@ -282,7 +282,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I162 | 助手 III：对话和读取工具 | I161 | done |
 | I162b | 助手 III b：基于 akit 自身日志环的 `log_tail`、`access_log_sample`、`adapt_convert` | I162 | done |
 | I163 | 助手 IV：提案、级别和审计日志 | I162 | done |
-| I164 | 助手 V：技能 | I162 | todo |
+| I164 | 助手 V：技能 | I162 | done |
 | I165 | 助手 VI：问 AI、迁移和审查 | I163, I164, I74 | todo |
 | I166 | 助手 VII：MCP 服务器 | I163, I164 | todo |
 | I167 | 助手 VIII：在页面上编辑 | I163 | todo |
@@ -2312,7 +2312,7 @@ fit 的 I124–I130 和 I152–I154（fit 的 [工作台中的 AI
 - **完成标准**：fit 的技能测试移植后通过。
 - **涉及**：`akit-assistant`、`docs`。
 - **fit**：`assistant/{skills,skillstore,chatskill}.go`、`assistant/skills`；I127。
-- **状态**：todo。
+- **状态**：done（2026-11-28）。用到 akit 尚无工具的内置技能，待 I167–I169 带来这些工具后即可运行；见进展日志。
 
 ### I165 助手 VI：问 AI、迁移和审查
 

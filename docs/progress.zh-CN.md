@@ -18,9 +18,25 @@
 | akio 需求 | A1–A24、A29、A30、A32、A33、A35–A38、A45、A48、A49、A51–A54、A57、A58、A63–A66、A75、A78、A79、A90–A94、A105、A108、A109、A111–A113、A117、A132–A135、A148、A165–A172、A180、A200、A214、A215、A220、A230–A238、A245 和 A247–A249 已进入 akio 的 main 并锁定；A225（外部审查，L15）已提出（[akio API 请求](akio-api-requests.zh-CN.md)） |
 | 流媒体与媒体认证 | [I120–I126](dev-plan.zh-CN.md#流媒体与媒体认证)，fit 的 I115–I117（决定 040）：I120（配置中的 `media_auth` 和 `streaming`）、I121（策略、检查、`akit media-token`）I122（角色的媒体中心、RTMP、RTSP 和 SRT）、I123（`httpflv`、`hls`）、I124（WebRTC 端口、`stream_whip`、`stream_whep`）、I125（`media_pages`）和 I126（`whip`、`whep` 和 `webrtc_proxy` 上的 `auth`）已完成；媒体库的 `libraries`、`vod` 和 `channels` 等待其那条线；akio 请求 A263–A268 |
 | 媒体库与频道 | [I140–I149](dev-plan.zh-CN.md#媒体库与频道)，fit 的 I131–I139 和 I119（决定 043）：I140（配置中的 `media_library`）、I141（目录、角色 `media_library`、`/media/library`）、I142（`vod`）、I143（`keys`、`media_tokens`）、I144（`url_signing`）、I145（频道）、I146（推送目标）、I147（加密分片）、I148（视频网站）和 I149（控制台的媒体页面、文件管理）已完成：这条线已完成；akio 需求 A295–A298 |
-| AI 助手 | [I160–I169](dev-plan.zh-CN.md#ai-助手)，fit 的 I124–I130 和 I152–I154（决定 044）：I160（`admin.assistant`、模块 `ai`、存储中的设置和密钥）、I161（模型客户端、提供方测试）、I162（对话和读取工具）、I162b（日志工具、转换器）和 I163（提案、级别、审计日志）已完成；下一个是 I164 |
+| AI 助手 | [I160–I169](dev-plan.zh-CN.md#ai-助手)，fit 的 I124–I130 和 I152–I154（决定 044）：I160（`admin.assistant`、模块 `ai`、存储中的设置和密钥）、I161（模型客户端、提供方测试）、I162（对话和读取工具）、I162b（日志工具、转换器）和 I163（提案、级别、审计日志）和 I164（技能）已完成；下一个是 I165 |
 
 ## 日志
+
+### 2026-11-28：I164，助手 V：技能
+
+- 技能（fit 的 I127，`akit_assistant::skills`）：用带 YAML front matter 的 Markdown 写成的具名任务（名称、中英文标题与描述、输入、
+  工具、模型、示例）及其提示词，出错时指出所在行。fit 的 22 个内置技能以 akit 的名字内嵌，顺序同 fit；其中集群的三个只在管理端提供
+  （I169）。用户在"技能"页添加自己的技能（`/api/m/ai/skills`：列出、读取全文、添加、修改、改名、删除、启用和停用，最多 64 个，
+  修改需要 apply 级别），连同停用的内置技能保存在存储分区 `assistant.skills`；不再能读取的已存技能会被略过并记录日志。
+- 一次对话运行一个技能：`/name`、面板的选择器（`skill` 和 `inputs`，会检查），或模型从系统提示列出的目录中用 `skill_load` 加载
+  （占窗口的十分之三以内，超出时只列名称）。技能的提示词和输入（已脱敏）放入系统提示，工具收窄为它列出且用户级别允许的那些，不能调用
+  的工具连同原因一并说明；技能指定了模型时使用该模型。会话以 fit 的形式保存其技能和输入；之后被停用的技能会被移除。`start` 事件带上
+  技能名，`skill_load` 发出 `skill` 事件；审计日志记录技能名。
+- `akit_config::located`：读取 YAML 文档并给出每个值和键所在的行，以及第一个别名所在的行，用于检查技能的 front matter。
+- 核对：移植了 fit 的技能测试（`skills::tests`），除第一个工具要等 I168 或数据同步轨道带来的技能外，每个内置技能都以 `/name` 运行过；
+  经控制台（`skills_through_the_console`）；并在浏览器中对接 `akit run` 和替身模型：技能页列出全部技能，模型用 `skill_load` 回答问题时
+  显示已加载的技能。对 I163 的提案和审计页面做的浏览器检查（提案、差异、应用、审计条目、过期提案重新提供后应用、丢弃）未发现页面读不到
+  的字段，并发现 akio 请求 A311（`412` 的原因短语是 `Unknown`）。下一个：I165。
 
 ### 2026-11-28：I163，助手 IV：提案、级别和审计日志
 

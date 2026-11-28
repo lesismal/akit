@@ -294,7 +294,7 @@ Tunnel and LLM track; I110–I114 are the WebRTC track, and I115–I119 are rese
 | I162 | The assistant III: the chat and the read tools | I161 | done |
 | I162b | The assistant III b: `log_tail` on a ring of akit's own log, `access_log_sample`, `adapt_convert` | I162 | done |
 | I163 | The assistant IV: proposals, levels and the audit log | I162 | done |
-| I164 | The assistant V: skills | I162 | todo |
+| I164 | The assistant V: skills | I162 | done |
 | I165 | The assistant VI: Ask AI, migration and review | I163, I164, I74 | todo |
 | I166 | The assistant VII: the MCP server | I163, I164 | todo |
 | I167 | The assistant VIII: edits on the page | I163 | todo |
@@ -2784,7 +2784,8 @@ of the model APIs on port 0, never to a real API or with a real key.
 - **Done when**: fit's skills tests pass ported.
 - **Touches**: `akit-assistant`, `docs`.
 - **fit**: `assistant/{skills,skillstore,chatskill}.go`, `assistant/skills`; I127.
-- **Status**: todo.
+- **Status**: done (2026-11-28). The built-in skills naming tools akit has not yet run once
+  I167–I169 bring them; see the progress log.
 
 ### I165 The assistant VI: Ask AI, migration and review
 

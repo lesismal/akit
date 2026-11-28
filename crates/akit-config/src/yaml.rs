@@ -44,6 +44,17 @@ pub(crate) fn parse(src: &str) -> Result<Node, ParseError> {
 /// [`parse`], and whether `src` holds a comment, which writing the document again loses
 /// (`akit fmt`, I73).
 pub(crate) fn parse_noting_comments(src: &str) -> Result<(Node, bool), ParseError> {
+    read(src).map(|(n, comments, _)| (n, comments))
+}
+
+/// [`parse`], and where the first alias is when the document has one: a skill's front matter
+/// takes none (I164, as fit's `assistant/skills.go` refuses them).
+pub(crate) fn parse_noting_aliases(src: &str) -> Result<(Node, Option<usize>), ParseError> {
+    read(src).map(|(n, _, alias)| (n, alias))
+}
+
+/// The document, whether it holds a comment, and where its first alias is.
+fn read(src: &str) -> Result<(Node, bool, Option<usize>), ParseError> {
     check_chars(src)?;
     let bom = if src.starts_with('\u{feff}') { 3 } else { 0 };
     let mut p = Parser {
@@ -63,9 +74,15 @@ pub(crate) fn parse_noting_comments(src: &str) -> Result<(Node, bool), ParseErro
             off: 0,
             kind: Kind::Object(Vec::new()),
         };
-        return Ok((empty, p.comments));
+        return Ok((empty, p.comments, None));
     };
-    Ok((Conv { nodes: 0, bytes: 0 }.value(&root, 0)?, p.comments))
+    let mut c = Conv {
+        nodes: 0,
+        bytes: 0,
+        alias: None,
+    };
+    let n = c.value(&root, 0)?;
+    Ok((n, p.comments, c.alias))
 }
 
 /// Refuses what YAML does not allow in a stream: control characters other than tab, line feed
@@ -1835,6 +1852,8 @@ fn go_exp(sign: &str, digits: &str, exp: i32) -> String {
 struct Conv {
     nodes: usize,
     bytes: usize,
+    /// Where the first alias read is.
+    alias: Option<usize>,
 }
 
 impl Conv {
@@ -1859,6 +1878,7 @@ impl Conv {
         }
         let kind = match &y.v {
             Yv::Alias(t) => {
+                self.alias.get_or_insert(y.off);
                 let mut n = self.value(t, depth + 1)?;
                 n.off = y.off;
                 return Ok(n);

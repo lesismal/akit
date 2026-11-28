@@ -737,3 +737,63 @@ fn logs_and_converter() {
     assert!(tools.contains("data.send_logs is off"), "{tools}");
     api.shutdown();
 }
+
+/// The skills through the console (I164): the built-ins listed, a skill added (kept in the
+/// store's section), run by `/name` with its prompt in the system prompt and its tools only, and
+/// the model's own `skill_load` of a built-in.
+#[test]
+fn skills_through_the_console() {
+    let model = scripted(vec![
+        Turn::Text("All bound.".into()),
+        Turn::Tools(vec![(
+            "skill_load".into(),
+            r#"{"name": "diagnose"}"#.into(),
+        )]),
+        Turn::Text("Loaded.".into()),
+    ]);
+    let store = Arc::new(Sections::default());
+    let (api, addr) = start(&model.url(), "", Some(Arc::clone(&store)));
+    let b = login(addr, "ada");
+    let (status, list) = send(&b, "GET", "/api/m/ai/skills", None);
+    assert!(
+        status == 200
+            && list.contains(r#""name":"route-builder""#)
+            && list.contains(r#""can_change":true"#),
+        "{status} {list}"
+    );
+    let src = "---\nname: ops-check\ntitle: Ops check\ndescription: The morning check.\ntools: [status_get]\n---\nRead the status and say whether the listeners are bound.\n";
+    let body = format!(r#"{{"source": {}}}"#, akit_assistant::json::quoted(src));
+    let (status, out) = send(&b, "POST", "/api/m/ai/skills", Some(&body));
+    assert_eq!(status, 200, "{out}");
+    let kept = store
+        .0
+        .lock()
+        .unwrap()
+        .get("assistant.skills")
+        .cloned()
+        .unwrap_or_default();
+    assert!(String::from_utf8_lossy(&kept).contains("ops-check"));
+
+    let evs = chat(&b, r#"{"message": "/ops-check is everything bound?"}"#);
+    assert_eq!(s(&evs[0].1, "skill"), "ops-check", "{evs:?}");
+    let first = model
+        .requests()
+        .into_iter()
+        .find(|r| r.method == "POST")
+        .unwrap();
+    let sent = String::from_utf8_lossy(&first.body).into_owned();
+    assert!(
+        sent.contains("The current skill is ops-check")
+            && sent.contains(r#""name":"status_get""#)
+            && !sent.contains(r#""name":"config_get""#),
+        "{sent}"
+    );
+
+    let evs = chat(&b, r#"{"message": "why does /app answer 401?"}"#);
+    assert!(
+        evs.iter()
+            .any(|(_, v)| typ(v) == "skill" && s(v, "skill") == "diagnose"),
+        "{evs:?}"
+    );
+    api.shutdown();
+}

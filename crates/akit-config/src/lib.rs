@@ -39,6 +39,7 @@ mod fastcgi;
 pub mod fuzzing;
 pub mod hardening;
 mod json;
+pub mod located;
 mod log;
 pub mod media;
 pub mod medialib;

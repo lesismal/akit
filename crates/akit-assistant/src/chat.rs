@@ -3,7 +3,8 @@
 //! and calls it again, until an answer, a question to the person (`ask_user`) or a limit.
 //!
 //! The events are fit's: `start`, `text`, `thinking`, `tool_call`, `tool_result`, `ask`, `usage`,
-//! `summary`, `proposal` (a step joined the conversation's proposal, I163), and last the SSE event
+//! `summary`, `proposal` (a step joined the conversation's proposal, I163), `skill` (`skill_load`
+//! made a skill the conversation's, I164), and last the SSE event
 //! `end` (`done` with its reason) or `error`. An answer that called tools is in the audit log. The tools run on a
 //! pool of the assistant's own, each within 30 s; nothing blocks an I/O thread.
 //!
@@ -12,6 +13,7 @@
 //! they have drained; a browser that takes nothing for [`STALL_TIMEOUT`] has its stream cut, which
 //! stops the chat, as fit's. A quiet stream gets a comment every [`PING_INTERVAL`], for proxies.
 
+use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
@@ -27,6 +29,7 @@ use crate::model::{self, Answer, Event as ModelEvent, Message, Request, Role, To
 use crate::prompt::{self, Budget};
 use crate::redact::Redactor;
 use crate::registry::{Call, Kind, Tool};
+use crate::skills::{self, Skill};
 use crate::tools::MAX_ASK_OPTIONS;
 use crate::{Assistant, audit};
 
@@ -72,6 +75,7 @@ pub(crate) struct Ev<'a> {
     pub(crate) model: &'a str,
     pub(crate) folded: usize,
     pub(crate) revision: u64,
+    pub(crate) skill: &'a str,
     pub(crate) reason: &'a str,
 }
 
@@ -112,7 +116,9 @@ impl Ev<'_> {
         if self.revision > 0 {
             o = o.num("revision", self.revision);
         }
-        o.str_omit("reason", self.reason).end()
+        o.str_omit("skill", self.skill)
+            .str_omit("reason", self.reason)
+            .end()
     }
 
     fn sse(&self) -> String {
@@ -141,6 +147,9 @@ pub(crate) fn parse_ask(args: &str) -> Result<(String, Vec<String>), String> {
     Ok((q, opts))
 }
 
+/// The skill a chat runs, and the inputs the person gave it.
+type RunningSkill = (Option<Arc<Skill>>, BTreeMap<String, String>);
+
 /// What runs once a tool's call has its result.
 type Next = Arc<Mutex<Option<Box<dyn FnOnce() + Send>>>>;
 
@@ -158,7 +167,13 @@ pub(crate) struct Chat {
     pub(crate) p: model::Provider,
     pub(crate) model: String,
     pub(crate) window: u64,
-    pub(crate) tools: Vec<Tool>,
+    /// The tools the user's level and the model allow; `tools` is them narrowed to the skill's.
+    base: Vec<Tool>,
+    tools: Mutex<Vec<Tool>>,
+    /// The skill the chat runs (I164), and the inputs the person gave it.
+    skill: Mutex<RunningSkill>,
+    /// The skills the model may load, while it runs none.
+    catalog: Vec<skills::Entry>,
     pub(crate) red: Redactor,
     pub(crate) page: String,
     pub(crate) lang: String,
@@ -210,6 +225,7 @@ impl Chat {
         lang: String,
         conv: String,
     ) -> Chat {
+        let catalog = a.catalog();
         Chat {
             a,
             user,
@@ -218,7 +234,10 @@ impl Chat {
             p,
             model,
             window,
-            tools,
+            tools: Mutex::new(tools.clone()),
+            base: tools,
+            skill: Mutex::new((None, BTreeMap::new())),
+            catalog,
             red,
             page,
             lang,
@@ -232,14 +251,85 @@ impl Chat {
         }
     }
 
+    /// Makes `sk` the skill the chat runs, with `inputs`: its tools narrowed to the skill's.
+    pub(crate) fn run_skill(&self, sk: Option<Arc<Skill>>, inputs: BTreeMap<String, String>) {
+        if let Some(sk) = &sk {
+            *lock(&self.tools) = skills::narrow(&self.base, sk);
+        }
+        *lock(&self.skill) = (sk, inputs);
+    }
+
+    fn skill_name(&self) -> String {
+        lock(&self.skill)
+            .0
+            .as_ref()
+            .map(|s| s.name.clone())
+            .unwrap_or_default()
+    }
+
+    /// Makes `sk` the chat's skill, as `skill_load` asks: from the next model call its prompt is
+    /// in the system prompt and the tools are narrowed to its own, and the conversation runs it
+    /// from then on; a call given up on past its timeout (`expired`) changes nothing. The tools
+    /// offered from then on, and those `sk` names that are not, with why.
+    pub(crate) fn load_skill(
+        self: &Arc<Self>,
+        sk: &Arc<Skill>,
+        expired: bool,
+    ) -> (Vec<String>, Vec<String>) {
+        let tools = skills::narrow(&self.base, sk);
+        let not = self.not_offered(sk, &tools);
+        let ok: Vec<String> = tools.iter().map(|t| t.name.to_owned()).collect();
+        if expired {
+            return (ok, not);
+        }
+        *lock(&self.tools) = tools;
+        *lock(&self.skill) = (Some(Arc::clone(sk)), BTreeMap::new());
+        {
+            let mut chats = self.a.chats();
+            if let Some(c) = chats
+                .users
+                .get_mut(&self.user)
+                .and_then(|u| u.get(&self.conv))
+            {
+                c.skill.clone_from(&sk.name);
+                c.skill_inputs.clear();
+            }
+        }
+        self.emit(&Ev {
+            typ: "skill",
+            skill: &sk.name,
+            ..Ev::default()
+        });
+        (ok, not)
+    }
+
+    /// The tools `sk` names that `tools`, the chat's, leave out, each with why.
+    fn not_offered(&self, sk: &Skill, tools: &[Tool]) -> Vec<String> {
+        self.a
+            .skill_tools(sk, self.level, &self.s)
+            .into_iter()
+            .filter(|st| !tools.iter().any(|t| t.name == st.name))
+            .map(|st| {
+                let why = if st.why.is_empty() {
+                    "the model calls no tools".to_owned()
+                } else {
+                    st.why
+                };
+                format!("{} ({why})", st.name)
+            })
+            .collect()
+    }
+
     /// Starts the stream on `stream`: its first event, and the ping.
     pub(crate) fn open(self: &Arc<Self>, stream: BodyStream, title: &str) {
         *lock(&self.stream) = Some(stream);
+        let skill = self.skill_name();
         self.emit(&Ev {
             typ: "start",
             conversation: &self.conv,
             title,
             model: &self.model,
+            skill: &skill,
             ..Ev::default()
         });
         self.arm_ping();
@@ -392,6 +482,7 @@ impl Chat {
                 user: self.user.clone(),
                 kind: audit::KIND_CHAT.to_owned(),
                 conversation: self.conv.clone(),
+                skill: self.skill_name(),
                 calls,
                 proposal: prop,
                 outcome: if err.is_empty() { reason } else { REASON_ERROR }.to_owned(),
@@ -497,14 +588,40 @@ impl Chat {
                 None => (Vec::new(), 0, String::new(), String::new()),
             }
         };
+        let (sk, inputs) = lock(&self.skill).clone();
+        let offered = lock(&self.tools).clone();
+        let skill = sk.as_ref().map(|sk| prompt::SkillPart {
+            skill: sk,
+            inputs: if inputs.is_empty() {
+                String::new()
+            } else {
+                let o = inputs
+                    .iter()
+                    .fold(Obj::new(), |o, (k, v)| o.str(k, v))
+                    .end();
+                self.red.text(&o)
+            },
+            tools: offered.iter().map(|t| t.name.to_owned()).collect(),
+            not: self.not_offered(sk, &offered),
+        });
+        // The catalog, while the model may load a skill of it, within a tenth of the window.
+        let catalog = if sk.is_none() && offered.iter().any(|t| t.name == "skill_load") {
+            self.catalog.as_slice()
+        } else {
+            &[]
+        };
         let system = prompt::system(&prompt::Parts {
             level: self.level,
             lang: &self.lang,
             page: &self.page,
             summary: &summary,
             proposal: &self.red.text(&proposal),
+            catalog,
+            catalog_bytes: usize::try_from((self.window / 10).saturating_mul(3))
+                .unwrap_or(usize::MAX),
+            skill,
         });
-        let tools: Vec<model::Tool> = self.tools.iter().map(Tool::model).collect();
+        let tools: Vec<model::Tool> = offered.iter().map(Tool::model).collect();
         let tools_text: String = tools
             .iter()
             .map(|t| format!("{}{}{}", t.name, t.description, t.parameters))
@@ -515,10 +632,24 @@ impl Chat {
             output: max.min(self.window / 4),
             fixed: prompt::tokens(&system).saturating_add(prompt::tokens(&tools_text)),
         };
+        let mut messages = prompt::history(msgs.get(from..).unwrap_or(&[]));
+        if sk.is_some() {
+            // The skill's prompt is in the system prompt: the results that loaded one are not
+            // sent again.
+            for m in messages
+                .iter_mut()
+                .filter(|m| m.role == Role::Tool && m.tool_name == "skill_load" && !m.is_error)
+            {
+                m.content = prompt::fence(
+                    "skill_load",
+                    "(a skill was loaded here; the current skill's prompt is in the system prompt)",
+                );
+            }
+        }
         let mut req = Request {
             model: self.model.clone(),
             system,
-            messages: prompt::history(msgs.get(from..).unwrap_or(&[])),
+            messages,
             tools,
             max_tokens: max,
             temperature: self.s.params.temperature.clone(),
@@ -683,8 +814,8 @@ impl Chat {
         self.run_calls(Arc::new(a.tool_calls), 0, None);
     }
 
-    fn tool(&self, name: &str) -> Option<&Tool> {
-        self.tools.iter().find(|t| t.name == name)
+    fn tool(&self, name: &str) -> Option<Tool> {
+        lock(&self.tools).iter().find(|t| t.name == name).cloned()
     }
 
     /// Runs the calls from `i` on, one at a time, then goes on: the next step, the question
@@ -700,7 +831,7 @@ impl Chat {
             if self.ended() {
                 return;
             }
-            let Some(t) = self.tool(&tc.name).cloned() else {
+            let Some(t) = self.tool(&tc.name) else {
                 self.result(
                     None,
                     tc,
@@ -763,7 +894,7 @@ impl Chat {
         let asked = ask.and_then(|k| calls.get(k));
         if self.limited.load(Ordering::SeqCst) {
             if let Some(tc) = asked {
-                let t = self.tool(&tc.name).cloned();
+                let t = self.tool(&tc.name);
                 self.result(
                     t.as_ref(),
                     tc,
