@@ -17,7 +17,7 @@ so in a note marked **akit:**; nine defaults that name the gateway are akit's, `
 say `fit` ([decision 037](../decisions/037-akit-names.md)).
 
 <!-- BEGIN GENERATED: summary -->
-akit reads **1274** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 191 objects akit reads, each has its table below.
+akit reads **1287** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 193 objects akit reads, each has its table below.
 <!-- END GENERATED -->
 
 How to read the tables:
@@ -2778,8 +2778,8 @@ signs plays on akit given the same secret and policy name, and the other way rou
 `streaming` is fit's streaming role ([fit's guide](https://github.com/lesismal/fit/blob/main/docs/streaming.md)):
 one media hub, on akio-media, where a stream is published once by its path, over RTMP, RTSP, SRT
 or WHIP, and played over any of them and over HTTP-FLV, HLS and WHEP. akit reads and checks the
-role as fit does (I120), and `akit run` runs it (I122; its `webrtc` port from I124). Not read yet: `channels` and `push`
-(the media library's track), Multipath TCP, RTMP's `max_message_bytes` (akio API request A263),
+role as fit does (I120), and `akit run` runs it (I122; its `webrtc` port from I124; its `channels`
+from I145). Not read yet: `push` (I146), Multipath TCP, RTMP's `max_message_bytes` (akio API request A263),
 and RTSP's `auth_methods` and `realm`, Digest and Basic, and its `idle_timeout` (A264): RTSP takes credentials in the
 URL's query until then.
 
@@ -2800,7 +2800,7 @@ streaming {
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
 | `access` | [object](#cfg-streaming-access) |  | The client addresses the rtmp, rtsp, srt and webrtc listeners serve, deciding before the global access: a connection it refuses is closed as soon as it is accepted, and the datagrams of an srt caller or webrtc peer it refuses are dropped. A change applies to the next connection and peer, without starting a listener again; those connected are kept. |
-| `channels` | list of object |  | **Not supported yet**: refused by name. Channels: items of a media_library played into the hub as live streams, in order, shuffled, looped or on a schedule, paced by their timestamps, which run on from one item to the next; every egress plays them under its auth. A reload changes a channel in place, from its next item. At most 256. None when left out. |
+| `channels` | list of [object](#cfg-streaming-channels) |  | Channels: items of a media_library played into the hub as live streams, in order, shuffled, looped or on a schedule, paced by their timestamps, which run on from one item to the next; every egress plays them under its auth. A reload changes a channel in place, from its next item. At most 256. None when left out. |
 | `gop_cache_bytes` | integer, 0 or more | `8388608` | The bytes each stream keeps of its latest group of pictures, from its last key frame on, so that a new player starts at once with a picture; a group that outgrows it is dropped and caching starts again at the next key frame. 8 MiB when left out or 0. |
 | `max_players` | integer, 0 or more | `256` | The most players of one stream at once, over every protocol, HLS counting once a stream and format; one more is refused. Each packet a publisher sends is handed to every player on the worker that received it. 256 when left out or 0. |
 | `max_streams` | integer, 0 or more | `64` | The most streams at once, each a path with a publisher or players waiting for one; one more publisher is refused. 64 when left out or 0. A change of max_streams, max_players or gop_cache_bytes starts the hub again, ending every stream and connection. |
@@ -2903,7 +2903,60 @@ streaming {
 | `deny_files` | list of string |  | Files of more deny entries, written as allow_files. |
 <!-- END GENERATED -->
 
-## Media library
+## Media 
+### `streaming.channels[]`
+
+Channels (I145): items of a media library played into the hub as live streams, in order, shuffled,
+looped or on a schedule in a time zone, paced by their timestamps, which run on from one item to the
+next; every egress plays them under its auth. A reload changes a channel in place from its next
+item; the Admin API lists them and starts, stops and skips them at `/streaming/channels`. A
+channel's `push` (I146) and `encrypt` and `key_rotation` (I147) are not read yet.
+
+```fit
+media_library films { roots /srv/films }
+
+streaming {
+	rtmp { listen :1935 }
+	channels tv/films {
+		library films
+		items films/bbb sintel
+		schedule { at "mon-fri 20:00"; item sintel }
+		time_zone Asia/Shanghai
+	}
+}
+```
+
+<!-- BEGIN GENERATED: streaming.channels[] -->
+<a id="cfg-streaming-channels"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `library` | string | required | The media_library the channel's items are of. |
+| `name` | string | required | The stream the channel publishes into the hub, as tv/films: every egress of the streaming role plays it by that path, under its auth, as rtmp://host/tv/films or /hls/tv/films/index.m3u8. Parts of letters, digits, '.', '_', '~' and '-', split at '/'. A channel renamed is another channel: the old one ends. **akit:** Run by `akit run` (I145): each channel paced on akit-media's timer thread until akio gives a handler a timer of its engine (A296), its samples read on its library's file pool. `/metrics` has fit's channel families named `akit_streaming_channel*`; the Admin API serves `/streaming/channels`. |
+| `encrypt` | boolean |  | **Not supported yet**: refused by name. Encrypts the channel's HLS segments with AES-128 (METHOD=AES-128), fMP4 and MPEG-TS alike, under a key derived from the library's secret, which the hls handler serves only to a request its auth lets play the channel; so that segments copied, as a CDN keeps them, do not play without it. Needs the library's secret or secret_file. Low-Latency HLS parts are encrypted too, each on its own. The other egresses play the channel as before, under their auth. Off when left out. |
+| `items` | list of string |  | The IDs of the library's items the channel plays, in this order unless order is shuffle, and again from the first when loop is on; between the schedule's slots too. An item the library does not hold, or cannot serve, is skipped. At most 10000. |
+| `key_rotation` | integer, 0 to 100000 | `10` | **Not supported yet**: refused by name. With encrypt, how many segments one key encrypts before the next takes over, so that a key handed out opens a few segments only. 10 when left out or 0. |
+| `loop` | boolean | `true` | Play items again from the first once the last has played. With loop off, the channel goes quiet after the last, staying published, until its next slot, or until the Admin API stops and starts it, which plays the list again from the first. On when left out. |
+| `max_buffer_bytes` | integer, 0 or more | `16777216` | The most bytes read ahead and not yet sent, whatever read_ahead says, at least 1 MiB; a sample larger than it ends its item. 16 MiB when left out or 0. |
+| `order` | string: `sequence`, `shuffle` | `"sequence"` | The order items are played in: sequence, as listed, or shuffle, every item once in a random order each time round. sequence when left out. |
+| `push` | list of object |  | **Not supported yet**: refused by name. Outside servers the channel is relayed to, as streaming's push names them, their stream being the channel's. |
+| `read_ahead` | duration | `"3s"` | How much of the items is read ahead of what is sent, on the library's file pool, so that a slow disk does not stall the channel and the next item follows the last without a gap. 500ms to 1m. 3s when left out. |
+| `rendition` | string |  | The rendition played of each item, by its name, as 720p; one an item lacks plays its best instead. The rendition with the most pixels, the highest bit rate among equals, when left out. |
+| `schedule` | list of [object](#cfg-streaming-channels-schedule) |  | Items started at set times, in time_zone, cutting what plays: daily, on days of the week, or once. A slot whose time has passed while its item would still be playing, when the channel starts, is joined where it would be. Between slots the channel plays items, or goes quiet without them. At most 1000. |
+| `time_zone` | string | `"UTC"` | The IANA time zone the schedule's times are in, as Asia/Shanghai or Local for the host's. UTC when left out. **akit:** Its form is checked when the config is read; the zone itself is loaded from the system's zoneinfo files when the role applies the config, which reports a zone it does not know (decision 043). |
+<!-- END GENERATED -->
+
+### `streaming.channels[].schedule[]`
+
+<!-- BEGIN GENERATED: streaming.channels[].schedule[] -->
+<a id="cfg-streaming-channels-schedule"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `at` | string | required | When the slot starts, in the channel's time_zone: HH:MM or HH:MM:SS every day; days of the week before it, as mon,wed,fri 20:00 or sat-sun 09:30; or a date, as 2026-12-31 23:00, once. |
+| `item` | string | required | The ID of the library's item the slot plays, from its start. |
+<!-- END GENERATED -->
+library
 
 `media_library` lists fit's named media libraries
 ([fit's guide](https://github.com/lesismal/fit/blob/main/docs/media-library.md)): directories of

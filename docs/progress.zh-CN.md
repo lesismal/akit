@@ -17,7 +17,7 @@
 | 下一步 | 外部安全审查（[范围](security/review-scope.zh-CN.md)），其发现完成 I80b；fit 对决定 035 所提议字段（CRL 文件、WASM 摘要）的答复；1.0 之后的各条线（[开发计划](dev-plan.zh-CN.md#10-之后)）：控制台与加密的 store 已完成（I89–I94、I93b、I93c）；fit 的 Admin API 对没有令牌的连接的规则，基于控制台的 slots（akio 的 A232）（日志已完成：I81–I83；访问控制列表已完成：I85–I87）；Gateway API 一致性测试的运行（tests/conformance，由维护者运行） |
 | akio 需求 | A1–A24、A29、A30、A32、A33、A35–A38、A45、A48、A49、A51–A54、A57、A58、A63–A66、A75、A78、A79、A90–A94、A105、A108、A109、A111–A113、A117、A132–A135、A148、A165–A172、A180、A200、A214、A215、A220、A230–A238、A245 和 A247–A249 已进入 akio 的 main 并锁定；A225（外部审查，L15）已提出（[akio API 请求](akio-api-requests.zh-CN.md)） |
 | 流媒体与媒体认证 | [I120–I126](dev-plan.zh-CN.md#流媒体与媒体认证)，fit 的 I115–I117（决定 040）：I120（配置中的 `media_auth` 和 `streaming`）、I121（策略、检查、`akit media-token`）I122（角色的媒体中心、RTMP、RTSP 和 SRT）、I123（`httpflv`、`hls`）、I124（WebRTC 端口、`stream_whip`、`stream_whep`）、I125（`media_pages`）和 I126（`whip`、`whep` 和 `webrtc_proxy` 上的 `auth`）已完成；媒体库的 `libraries`、`vod` 和 `channels` 等待其那条线；akio 请求 A263–A268 |
-| 媒体库与频道 | [I140–I149](dev-plan.zh-CN.md#媒体库与频道)，fit 的 I131–I139 和 I119（决定 043）：I140（配置中的 `media_library`）、I141（目录、角色 `media_library`、`/media/library`）、I142（`vod`）、I143（`keys`、`media_tokens`）和 I144（`url_signing`）已完成；akio 需求 A295、A296 |
+| 媒体库与频道 | [I140–I149](dev-plan.zh-CN.md#媒体库与频道)，fit 的 I131–I139 和 I119（决定 043）：I140（配置中的 `media_library`）、I141（目录、角色 `media_library`、`/media/library`）、I142（`vod`）、I143（`keys`、`media_tokens`）、I144（`url_signing`）和 I145（频道）已完成；akio 需求 A295、A296 |
 
 ## 日志
 
@@ -56,6 +56,26 @@
     它对吞吐的影响留给基准任务测量（规则 30）。
   - 在 io_uring 上，`Engine::remove_listener` 在监听器的 accept 取消完成后才返回，重载移除的监听器此后不再接受连接；`H3Upload::finish`
     不再被其自身的响应拒绝；池压力监视器每 500 ms 采样一次（原为 100 ms）。
+### 2026-11-28：I145，频道
+
+- **构建**：fit 的 I134 的频道。akit-config 读取 `streaming.channels`（`name`、`library`、`items`、`order`、`loop`、带 `at` 的
+  `schedule`、`time_zone`、`rendition`、`read_ahead`、`max_buffer_bytes`，带 fit 的检查；媒体库在读完所有文件后检查；只有频道的
+  角色也算接收流）；频道的 `push`（I146）、`encrypt` 和 `key_rotation`（I147）以及 `streaming.push` 作为尚不支持而拒绝。
+  `akit_media::channels`，即 fit 的那个包：频道在角色的媒体中心里预留其流，按顺序、随机、循环或按某个时区（akit-observe 的时区）
+  的节目表播放其条目，每个条目的影片通过媒体库读取，其样本在媒体库的文件池上提前读取，至多 `read_ahead` 和 `max_buffer_bytes`，
+  在频道的计时器上按解码时间到期发送，下一个条目的时间戳接续上一个，只有轨道不同时才重新设置轨道；时段在其开始时切入，进行中的
+  时段被加入；重载从频道的下一个条目起修改频道；跳过、停止和启动。流媒体角色在其媒体中心上运行一个管理器（媒体库现在先于它应用）；
+  Admin API 的 `/streaming/channels`（列表、单个、`start`、`stop`、`skip`）；`/metrics` 的 `akit_streaming_channel*`。
+- **与 fit 的不同**：在 akio 的 A296 之前，计时器运行在 akit-media 的计时线程上；频道的 `time_zone` 在角色应用时加载（不认识的时区
+  是角色的错误），而不是在读取配置时（决定 043）。
+- **验证**：在测试拨动的时钟上移植 fit 的 `streaming/channels` 测试，等待媒体库的文件池无事可做而不是等待时间
+  （`src/channels/tests.rs`：背靠背、不循环、相同轨道、跳过、按时开始的节目表、切入和加入、只有节目表、重载、随机、跳过的条目、
+  被占用的流、停止和启动、迟到的计时、来源、时段、边界、指标和注册表、订阅者、Admin API）；在上海和纽约的时区上移植 fit 的
+  `TestChannelAt`；fit 的配置测试。`akit run` 运行一个播放两次 bbb 的频道：ffmpeg 通过 RTMP、HLS fMP4 和 HLS MPEG-TS 解码其 5 秒，
+  没有错误，跨越五个条目视频每 40 毫秒、音频每 20 毫秒，没有空隙也没有跳变；对画面尺寸或编码不同的条目，ffmpeg 的 HLS 读取器在
+  不连续处报告解码错误，与 fit 的二进制提供同样的频道时相同。gate 的报告不再有 `video-site` 的 `streaming.channels`。
+- **下一步**：I146，推送目标。
+
 ### 2026-11-28：I144，会过期的播放 URL
 
 - **构建**：fit 的 I135。akit-config 读取 `media_auth` 的 `url_signing`（`ttl`、`bind_address`、`play_grace`、`cookie`、

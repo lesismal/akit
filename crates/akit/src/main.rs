@@ -1629,6 +1629,11 @@ fn run(args: &[String]) -> ExitCode {
                     akit_media::library::admin::serve(key, ctx)
                 }),
             ));
+            // The streaming role's channels, at /streaming/channels (I145).
+            api_opts.endpoints.push((
+                akit_media::channels::PREFIX,
+                Arc::new(move |ctx: &mut akio_http::Context| akit_media::channels::serve(key, ctx)),
+            ));
             match akit_admin::Server::start(a, configs.clone(), submit, &api_opts) {
                 Ok(s) => {
                     println!("akit: admin API on {}", s.address());

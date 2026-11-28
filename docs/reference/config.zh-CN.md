@@ -14,7 +14,7 @@ akit 配置的每个字段：配置的每一部分是做什么的、一个示例
 akit 与 fit 不同之处，在表格中以 **akit：** 标出。
 
 <!-- BEGIN GENERATED: summary -->
-fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **1274** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 191 个对象，下文各有一张表。
+fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **1287** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 193 个对象，下文各有一张表。
 <!-- END GENERATED -->
 
 字段说明来自 fit 代码中的 `doc` 标签，是英文的，所以每个字段的完整说明在[英文版](config.md)的同一张表中；本页的表格给出每个字段的
@@ -2921,8 +2921,8 @@ fit 签发的 URL 能在 akit 上播放，反之亦然。
 
 `streaming` 是 fit 的流媒体角色（[fit 的指南](https://github.com/lesismal/fit/blob/main/docs/streaming.zh-CN.md)）：
 一个基于 akio-media 的媒体中心，一路流按其路径通过 RTMP、RTSP、SRT 或 WHIP 推送一次，即可通过其中任一协议以及 HTTP-FLV、
-HLS 和 WHEP 播放。akit 像 fit 一样读取并检查该角色（I120），`akit run` 运行它（I122；其 `webrtc` 端口从 I124 起）。尚不读取：`channels` 和 `push`
-（媒体库那条线）、Multipath TCP、RTMP 的 `max_message_bytes`（akio API 请求 A263），以及 RTSP 的 `auth_methods` 和
+HLS 和 WHEP 播放。akit 像 fit 一样读取并检查该角色（I120），`akit run` 运行它（I122；其 `webrtc` 端口从 I124 起；其 `channels` 从 I145 起）。尚不读取：`push`（I146）、
+Multipath TCP、RTMP 的 `max_message_bytes`（akio API 请求 A263），以及 RTSP 的 `auth_methods` 和
 `realm`（即 Digest 和 Basic）及其 `idle_timeout`（A264）：在此之前 RTSP 从 URL 的查询参数中取凭据。
 
 ```fit
@@ -2944,7 +2944,7 @@ streaming {
 | 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
 | `access` | [对象](#cfg-streaming-access) |  |  |
-| `channels` | 对象的列表 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `channels` | [对象](#cfg-streaming-channels)的列表 |  |  |
 | `gop_cache_bytes` | 整数，≥ 0 | `8388608` |  |
 | `max_players` | 整数，≥ 0 | `256` |  |
 | `max_streams` | 整数，≥ 0 | `64` |  |
@@ -3057,6 +3057,61 @@ streaming {
 | `allow_files` | 字符串的列表 |  |  |
 | `deny` | 字符串的列表 |  |  |
 | `deny_files` | 字符串的列表 |  |  |
+<!-- END GENERATED -->
+
+### `streaming.channels[]`
+
+频道（I145）：把媒体库的条目作为直播流播放到媒体中心，按顺序、随机、循环或按某个时区的节目表播放，按其时间戳控制节奏，时间戳从一个条目
+延续到下一个；每种出口都在其 auth 下播放它们。重载就地修改频道，从其下一个条目生效；Admin API 在 `/streaming/channels` 列出它们，
+并启动、停止和跳过它们。频道的 `push`（I146）以及 `encrypt` 和 `key_rotation`（I147）尚不读取。
+
+```fit
+media_library films { roots /srv/films }
+
+streaming {
+	rtmp { listen :1935 }
+	channels tv/films {
+		library films
+		items films/bbb sintel
+		schedule { at "mon-fri 20:00"; item sintel }
+		time_zone Asia/Shanghai
+	}
+}
+```
+
+<!-- BEGIN GENERATED: streaming.channels[] -->
+<a id="cfg-streaming-channels"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-streaming-channels)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `library` | 字符串 | 必填 |  |
+| `name` | 字符串 | 必填 | **akit：**由 `akit run` 运行（I145）：在 akio 给处理器提供其引擎的计时器（A296）之前，每个频道在 akit-media 的计时线程上控制节奏，其样本在其媒体库的文件池上读取。`/metrics` 有 fit 的频道指标族，名为 `akit_streaming_channel*`；Admin API 提供 `/streaming/channels`。 |
+| `encrypt` | 布尔值 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `items` | 字符串的列表 |  |  |
+| `key_rotation` | 整数，0 到 100000 | `10` | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `loop` | 布尔值 | `true` |  |
+| `max_buffer_bytes` | 整数，≥ 0 | `16777216` |  |
+| `order` | 字符串：`sequence`、`shuffle` | `"sequence"` |  |
+| `push` | 对象的列表 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `read_ahead` | 时长 | `"3s"` |  |
+| `rendition` | 字符串 |  |  |
+| `schedule` | [对象](#cfg-streaming-channels-schedule)的列表 |  |  |
+| `time_zone` | 字符串 | `"UTC"` | **akit：**读取配置时检查其形式；时区本身在角色应用配置时从系统的 zoneinfo 文件加载，角色会报告它不认识的时区（决定 043）。 |
+<!-- END GENERATED -->
+
+### `streaming.channels[].schedule[]`
+
+<!-- BEGIN GENERATED: streaming.channels[].schedule[] -->
+<a id="cfg-streaming-channels-schedule"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-streaming-channels-schedule)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `at` | 字符串 | 必填 |  |
+| `item` | 字符串 | 必填 |  |
 <!-- END GENERATED -->
 
 ## 媒体库

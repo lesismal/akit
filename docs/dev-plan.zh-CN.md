@@ -247,7 +247,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I142 | 点播：`vod`，由样本表生成的 HLS，按范围提供的文件 | I141, I121 | done |
 | I143 | 媒体 token：`media_auth` 的 `keys` 和 `media_tokens`（fit 的 I119） | I121 | done |
 | I144 | 会过期的播放 URL：`url_signing`、会话、`media_tokens` 的 `/urls` | I142, I143 | done |
-| I145 | 频道：作为直播流播放的媒体库条目，`streaming.channels` | I141, I123 | todo |
+| I145 | 频道：作为直播流播放的媒体库条目，`streaming.channels` | I141, I123 | done |
 | I146 | 推送目标：`streaming.push` 和频道的 `push` | I145 | todo |
 | I147 | 加密分片：`vod` 和频道 HLS 上的 `encrypt` | I144, I145 | todo |
 | I148 | 视频网站：`media_pages` 的 `libraries`、`vod` 和 `channels`，示例，指南 | I144, I145 | todo |
@@ -1888,7 +1888,7 @@ SAMPLE-AES（fib 的 A69）；它缺少的部分作为 akio A295–A300 请求�
   条目，没有间隙或跳变。
 - **涉及**：`akit-config`（`media`）、`akit-media`（`channels`）、`akit-admin`。
 - **fit**：`streaming/channels`；I134。
-- **状态**：todo。
+- **状态**：已完成（2026-11-28）；在 akio 的 A296 之前，计时器在 akit-media 的计时线程上。见进度日志。
 
 ### I146 推送目标
 

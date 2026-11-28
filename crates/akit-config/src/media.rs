@@ -5,9 +5,9 @@
 //!
 //! The members are read as strictly as the rest of the config. What is left out is kept empty
 //! (a string), zero (a number, a duration) or `None`; the methods give fit's defaults for it.
-//! What fit reads here and akit does not run yet is refused as not supported yet: a policy's
-//! `keys` and `url_signing` (fit's I119 and the media library's track), the role's `channels`
-//! and `push` (the media library's track), Multipath TCP, RTMP's `max_message_bytes` and RTSP's
+//! A policy's `keys` and `url_signing` are read since I143 and I144, the role's `channels` since
+//! I145 ([`crate::channels`]). What fit reads here and akit does not run yet is refused as not
+//! supported yet: the role's `push` (I146), Multipath TCP, RTMP's `max_message_bytes` and RTSP's
 //! `auth_methods`, `realm` and `idle_timeout` (akio requests A263 and A264).
 
 use std::time::Duration;
@@ -459,6 +459,8 @@ pub struct Streaming {
     pub webrtc: Option<StreamWebRtc>,
     /// `access`: the client addresses the role's listeners serve, before the global `access`.
     pub access: Option<Access>,
+    /// `channels` (I145): library items played into the hub as live streams.
+    pub channels: Vec<crate::channels::StreamChannel>,
 }
 
 impl Streaming {
@@ -675,9 +677,11 @@ const STREAMING_FIELDS: &[&str] = &[
     "srt",
     "webrtc",
     "access",
+    // I145.
+    "channels",
 ];
-// The media library's track.
-const STREAMING_FIT_ONLY: &[&str] = &["channels", "push"];
+// Push targets: I146.
+const STREAMING_FIT_ONLY: &[&str] = &["push"];
 const STREAM_RTMP_FIELDS: &[&str] = &[
     "listen",
     "auth",
@@ -724,6 +728,8 @@ pub(crate) struct AuthRef {
     pub(crate) name: String,
     pub(crate) off: usize,
     pub(crate) path: String,
+    /// A channel's `library` (I145), not a policy: checked against `media_library`.
+    pub(crate) library: bool,
 }
 
 /// Decodes `media_auth`, with fit's checks of each policy and of the list.
@@ -1022,6 +1028,7 @@ pub(crate) fn streaming(
                     name: name.clone(),
                     off,
                     path: o.at("auth"),
+                    library: false,
                 });
                 name
             }
@@ -1093,10 +1100,23 @@ pub(crate) fn streaming(
         s.webrtc = webrtc(d, v, &p);
     }
     s.access = access_of(d, &mut o);
+    let mut libs = Vec::new();
+    s.channels = crate::channels::channels(d, &mut o, &mut libs);
+    refs.extend(libs.into_iter().map(|l| AuthRef {
+        name: l.name,
+        off: l.off,
+        path: l.path,
+        library: true,
+    }));
     o.finish(d, STREAMING_FIELDS, STREAMING_FIT_ONLY);
-    if s.rtmp.is_none() && s.rtsp.is_none() && s.srt.is_none() && s.webrtc.is_none() {
+    if s.rtmp.is_none()
+        && s.rtsp.is_none()
+        && s.srt.is_none()
+        && s.webrtc.is_none()
+        && s.channels.is_empty()
+    {
         let fit_only = matches!(&n.kind, Kind::Object(ms) if ms.iter().any(|m| STREAMING_FIT_ONLY.contains(&m.key.as_str())));
-        // A role of channels alone is the media library's track: refused as not supported yet.
+        // A role of push targets alone is I146's: refused as not supported yet.
         if !fit_only {
             d.error(
                 n.off,
@@ -1212,7 +1232,7 @@ fn link_safe(s: &str) -> bool {
 /// Reports each name of `refs` that `policies` has no policy of, as fit's
 /// `there is no media_auth policy named`.
 pub(crate) fn check_refs(d: &mut Decoder<'_>, refs: &[AuthRef], policies: &[MediaAuth]) {
-    for r in refs {
+    for r in refs.iter().filter(|r| !r.library) {
         if !policies.iter().any(|p| p.name == r.name) {
             d.error(
                 r.off,

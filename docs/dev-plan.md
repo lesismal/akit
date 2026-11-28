@@ -259,7 +259,7 @@ Tunnel and LLM track; I110–I114 are the WebRTC track, and I115–I119 are rese
 | I142 | Video on demand: `vod`, HLS from the sample tables, the file with ranges | I141, I121 | done |
 | I143 | Media tokens: `media_auth`'s `keys` and `media_tokens` (fit's I119) | I121 | done |
 | I144 | Playback URLs that expire: `url_signing`, sessions, `media_tokens`' `/urls` | I142, I143 | done |
-| I145 | Channels: library items played as live streams, `streaming.channels` | I141, I123 | todo |
+| I145 | Channels: library items played as live streams, `streaming.channels` | I141, I123 | done |
 | I146 | Push targets: `streaming.push` and a channel's `push` | I145 | todo |
 | I147 | Encrypted segments: `encrypt` on `vod` and on channels' HLS | I144, I145 | todo |
 | I148 | A video site: `media_pages`' `libraries`, `vod` and `channels`, the example, the guide | I144, I145 | todo |
@@ -2270,7 +2270,8 @@ is asked as akio A295–A300. Names akit shows are akit's (decision 037), format
   time; ffmpeg plays two items back to back over HLS and RTMP without a gap or a jump.
 - **Touches**: `akit-config` (`media`), `akit-media` (`channels`), `akit-admin`.
 - **fit**: `streaming/channels`; I134.
-- **Status**: todo.
+- **Status**: done (2026-11-28); the timers on akit-media's deadline thread until akio's A296. See
+  the progress log.
 
 ### I146 Push targets
 

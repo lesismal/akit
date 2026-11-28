@@ -10,6 +10,7 @@
 //! decision 040.
 
 pub mod auth;
+pub mod channels;
 mod deadline;
 pub mod handlers;
 pub mod http;

@@ -136,6 +136,7 @@ version of the schema or the API, which says so in its list of changes.
 | `GET`, `HEAD` `/tokens` and `/tokens/{member}`, `POST /tokens/{member}`, `PATCH` and `DELETE /tokens/{member}/{id}` | The link tokens of the tunnel's hub and the LLM roles, issued, listed, their expiry changed and revoked, as fit's `admin/tokens.go`; akit's work on the member the running config sets, whether or not its role runs yet (added after the freeze, I100) |
 | `GET`, `HEAD` `/media/library`, `/media/library/{name}`, `/media/library/{name}/items/{id...}`, `POST /media/library/{name}/rescan` | The media libraries: their scans' status, a library's items paged and filtered, an item whole, and a scan asked for now, as fit's `admin/medialib.go` (added after the freeze, I141) |
 | `/bittorrent/torrents`, `/bittorrent/torrents/{id}` and its `files`, `peers`, `trackers`, `/bittorrent/alt_speed`, `/bittorrent/publish/...`, `/bittorrent/events`, `/bittorrent/tracker/...` | The BitTorrent roles' torrents, changes, events and statistics, as fit's `admin/bittorrent.go` and `admin/btevents.go`; what akio cannot do yet answered 501 by name (added after the freeze, I157) |
+| `GET`, `HEAD` `/streaming/channels`, `/streaming/channels/{name...}`, `POST /streaming/channels/{name...}` | The streaming role's channels: what each plays and comes next, its counters, and an action (`start`, `stop`, `skip`, to the next item or one named), as fit's `admin/channels.go` (added after the freeze, I145) |
 | `GET /dashboard/` | The dashboard, for people (not covered) |
 
 A path in the config is a JSON pointer's tokens. A change answers with the version applied, in the
@@ -396,7 +397,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 1274 supported.
+3821 fields in 121 sections, at fit `7daee573`; 1287 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -453,7 +454,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`routes`](#fields-routes) | 24 | 24 | 0 |
 | [`schema_version`](#fields-schema-version) | 1 | 1 | 0 |
 | [`services`](#fields-services) | 13 | 13 | 0 |
-| [`streaming`](#fields-streaming) | 76 | 41 | 35 |
+| [`streaming`](#fields-streaming) | 76 | 54 | 22 |
 | [`sync`](#fields-sync) | 42 | 0 | 42 |
 | [`sync.codecs/canal_json`](#fields-sync-codecs-canal-json) | 87 | 0 | 87 |
 | [`sync.codecs/csv`](#fields-sync-codecs-csv) | 116 | 0 | 116 |
@@ -521,7 +522,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 161 | 3 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 76 | 0 |
-| **Total** | 3821 | 1274 | 2547 |
+| **Total** | 3821 | 1287 | 2534 |
 
 <a id="fields-access"></a>
 
@@ -2014,15 +2015,15 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `streaming.access.allow_files` | `array<string>` | supported |
 | `streaming.access.deny` | `array<string>` | supported |
 | `streaming.access.deny_files` | `array<string>` | supported |
-| `streaming.channels` | `array<object>` | not supported yet |
+| `streaming.channels` | `array<object>` | supported |
 | `streaming.channels[].encrypt` | `boolean` | not supported yet |
-| `streaming.channels[].items` | `array<string>` | not supported yet |
+| `streaming.channels[].items` | `array<string>` | supported |
 | `streaming.channels[].key_rotation` | `integer` | not supported yet |
-| `streaming.channels[].library` | `string, required` | not supported yet |
-| `streaming.channels[].loop` | `boolean` | not supported yet |
-| `streaming.channels[].max_buffer_bytes` | `integer` | not supported yet |
-| `streaming.channels[].name` | `string, required` | not supported yet |
-| `streaming.channels[].order` | `enum(sequence\|shuffle)` | not supported yet |
+| `streaming.channels[].library` | `string, required` | supported |
+| `streaming.channels[].loop` | `boolean` | supported |
+| `streaming.channels[].max_buffer_bytes` | `integer` | supported |
+| `streaming.channels[].name` | `string, required` | supported |
+| `streaming.channels[].order` | `enum(sequence\|shuffle)` | supported |
 | `streaming.channels[].push` | `array<object>` | not supported yet |
 | `streaming.channels[].push[].connect_timeout` | `duration` | not supported yet |
 | `streaming.channels[].push[].name` | `string` | not supported yet |
@@ -2030,12 +2031,12 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `streaming.channels[].push[].retry_min` | `duration` | not supported yet |
 | `streaming.channels[].push[].stream` | `string` | not supported yet |
 | `streaming.channels[].push[].url` | `string, required` | not supported yet |
-| `streaming.channels[].read_ahead` | `duration` | not supported yet |
-| `streaming.channels[].rendition` | `string` | not supported yet |
-| `streaming.channels[].schedule` | `array<object>` | not supported yet |
-| `streaming.channels[].schedule[].at` | `string, required` | not supported yet |
-| `streaming.channels[].schedule[].item` | `string, required` | not supported yet |
-| `streaming.channels[].time_zone` | `string` | not supported yet |
+| `streaming.channels[].read_ahead` | `duration` | supported |
+| `streaming.channels[].rendition` | `string` | supported |
+| `streaming.channels[].schedule` | `array<object>` | supported |
+| `streaming.channels[].schedule[].at` | `string, required` | supported |
+| `streaming.channels[].schedule[].item` | `string, required` | supported |
+| `streaming.channels[].time_zone` | `string` | supported |
 | `streaming.gop_cache_bytes` | `integer` | supported |
 | `streaming.max_players` | `integer` | supported |
 | `streaming.max_streams` | `integer` | supported |

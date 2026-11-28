@@ -932,3 +932,22 @@ config	added	supported	media_auth[].url_signing.trusted_proxies
 config	added	supported	media_auth[].url_signing.ttl
 config	added	supported	routes[].handler<media_tokens>.params.url_base
 config	added	supported	routes[].handler<media_tokens>.params.url_prefixes
+# I145: the streaming role's channels (fit's admin/channels.go).
+admin	added	endpoint	GET	/streaming/channels
+admin	added	endpoint	HEAD	/streaming/channels
+admin	added	endpoint	GET	/streaming/channels/{name...}
+admin	added	endpoint	HEAD	/streaming/channels/{name...}
+admin	added	endpoint	POST	/streaming/channels/{name...}
+config	added	supported	streaming.channels
+config	added	supported	streaming.channels[].items
+config	added	supported	streaming.channels[].library
+config	added	supported	streaming.channels[].loop
+config	added	supported	streaming.channels[].max_buffer_bytes
+config	added	supported	streaming.channels[].name
+config	added	supported	streaming.channels[].order
+config	added	supported	streaming.channels[].read_ahead
+config	added	supported	streaming.channels[].rendition
+config	added	supported	streaming.channels[].schedule
+config	added	supported	streaming.channels[].schedule[].at
+config	added	supported	streaming.channels[].schedule[].item
+config	added	supported	streaming.channels[].time_zone

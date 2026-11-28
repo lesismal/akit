@@ -1,6 +1,6 @@
 //! fit's `config/mediaauth_test.go` and `config/streaming_test.go`, ported (I120; a policy's
-//! `url_signing`, I144). What fit reads there and akit does not yet (the role's `channels` and
-//! `push`, RTSP's `auth_methods` and `realm`) is refused as not supported yet.
+//! `url_signing`, I144; the role's `channels`, I145). What fit reads there and akit does not yet (the
+//! role's `push`, RTSP's `auth_methods` and `realm`) is refused as not supported yet.
 
 use super::*;
 use crate::from_json;
@@ -315,7 +315,7 @@ fn streaming() {
             r#"{"rtsp": {"listen": ":8554", "idle_timeout": "5s"}}"#,
             "not supported yet",
         ),
-        (r#"{"channels": []}"#, "not supported yet"),
+        (r#"{"channels": []}"#, "nothing takes streams in"),
     ] {
         refused(&doc(bad), want);
     }

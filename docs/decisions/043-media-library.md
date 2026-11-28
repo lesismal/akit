@@ -130,3 +130,24 @@ not supported yet for this track.
   media playlist the cache keeps sent with the grant's cookie when `cookie` is on, as fit's.
 - **The Admin API's sessions and refusal counts** (fit's `admin/media.go`) come with the console's
   pages (I149); the policy has them now (`sessions`, `end_session`, `url_refusals`).
+
+## I145: channels
+
+- **The channels are fit's**: their states, their choices of item (the list, shuffle, the
+  schedule's slots cutting in and joined), their timeline (each packet sent when its decode time
+  falls due, the next item placed by its presentation after the last's, decode times never going
+  back on a track), their Admin API and their metrics, named akit's (`akit_streaming_channel*`).
+- **The timers run on akit-media's deadline thread**, one thread for every channel, until akio
+  gives a handler a timer of its engine (A296); a channel's tick takes its lock for a few steps and
+  hands packets to the hub, never blocking. Movies and samples are read on the library's pool.
+- **Work that calls out runs once the channel's lock is released**: the library may answer a
+  movie at once, on the caller's thread, which then takes the lock again; fit spawns a goroutine
+  for it.
+- **A time zone is loaded when the role applies**, from the system's zoneinfo files with
+  akit-observe's reader, as the access log's and BitTorrent's schedules' are; akit-config checks
+  its name's form. Slots fall on the time of day as written across a change of the clocks, as Go's
+  `time.Date` puts them.
+- **Tests move a clock** (`clock::Clock`): a channel's pace, its schedule and its retries are
+  tested on the test's time, waiting for the library's pool to be idle, never for wall time.
+- **The media libraries apply before the streaming role**, so that a channel finds its library at
+  its first item.

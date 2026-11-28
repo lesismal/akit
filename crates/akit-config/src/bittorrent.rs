@@ -1306,6 +1306,7 @@ fn tracker(
                 name: name.clone(),
                 off,
                 path: o.at("auth"),
+                library: false,
             });
         }
         t.auth = name;

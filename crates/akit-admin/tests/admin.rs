@@ -1734,6 +1734,11 @@ fn v1_surface_is_frozen() {
         akit_media::library::admin::PREFIX,
         Arc::new(|ctx: &mut akio_http::Context| akit_media::library::admin::serve(usize::MAX, ctx)),
     ));
+    // I145: the channels', as akit run registers them (on an engine without the role).
+    opts.endpoints.push((
+        akit_media::channels::PREFIX,
+        Arc::new(|ctx: &mut akio_http::Context| akit_media::channels::serve(usize::MAX, ctx)),
+    ));
     let f = start_with(&doc("v1"), admin(|_| {}), opts);
 
     // Endpoints: every method on every path frozen, each path's numbers and pointers filled in.
@@ -1748,6 +1753,7 @@ fn v1_surface_is_frozen() {
             .replace("{n}", "1")
             .replace("{member}", "tunnel.hub")
             .replace("{id}", "0123456789abcdef")
+            .replace("{name...}", "tv/films")
             .replace("{name}", "films")
             .replace("{id...}", "films/bbb");
         let mut get_served = false;

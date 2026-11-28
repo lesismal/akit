@@ -141,6 +141,9 @@ impl Pool {
                 (job.run)();
                 st = self.lock();
                 st.busy = st.busy.saturating_sub(1);
+                if st.busy == 0 && st.queue.is_empty() {
+                    self.0.ended.notify_all();
+                }
                 continue;
             }
             if st.closed {
@@ -181,6 +184,25 @@ impl Pool {
         let deadline = Instant::now().checked_add(limit);
         let mut st = self.lock();
         while st.threads > 0 {
+            let left = deadline.map_or(limit, |d| d.saturating_duration_since(Instant::now()));
+            if left.is_zero() {
+                return false;
+            }
+            st = self
+                .0
+                .ended
+                .wait_timeout(st, left)
+                .unwrap_or_else(PoisonError::into_inner)
+                .0;
+        }
+        true
+    }
+
+    /// Waits until the pool has no job queued or running, `limit` at most; whether it had none.
+    pub fn wait_idle(&self, limit: Duration) -> bool {
+        let deadline = Instant::now().checked_add(limit);
+        let mut st = self.lock();
+        while st.busy > 0 || !st.queue.is_empty() {
             let left = deadline.map_or(limit, |d| d.saturating_duration_since(Instant::now()));
             if left.is_zero() {
                 return false;

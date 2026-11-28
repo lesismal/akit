@@ -210,6 +210,8 @@ pub struct Current {
     pub hub_no: u64,
     /// The WebRTC port, while `streaming.webrtc` is set.
     pub rtc: Option<Arc<Rtc>>,
+    /// The channels (I145).
+    pub channels: Option<Arc<crate::channels::Manager>>,
 }
 
 /// The numbers of the hubs ([`Current::hub_no`]).
@@ -356,6 +358,8 @@ pub struct Server {
     hub: Option<Hub>,
     hub_no: u64,
     hub_key: String,
+    /// The channels of the hub (I145), found by the Admin API by the engine.
+    channels: Option<Arc<crate::channels::Manager>>,
     access: Option<Arc<akit_access::Policy>>,
     rtmp: Option<Bound<StreamRtmp>>,
     rtsp: Option<Bound<StreamRtsp>>,
@@ -548,6 +552,7 @@ impl Server {
             hub: None,
             hub_no: 0,
             hub_key: String::new(),
+            channels: None,
             access: None,
             rtmp: None,
             rtsp: None,
@@ -859,6 +864,10 @@ impl Server {
         if let Some(b) = self.webrtc.take() {
             self.close(&b);
         }
+        if let Some(m) = self.channels.take() {
+            m.stop();
+            crate::channels::unregister(registry::key(&self.engine), &m);
+        }
         if let Some(h) = self.hub.take() {
             h.close();
         }
@@ -890,6 +899,15 @@ impl Role for Server {
             Some(h) => h.clone(),
             None => {
                 let h = self.make_hub(cfg);
+                let key = registry::key(&self.engine);
+                let m = Arc::new(crate::channels::Manager::new(crate::channels::Options {
+                    hub: h.clone(),
+                    libraries: key,
+                    clock: None,
+                    seed: 0,
+                }));
+                crate::channels::register(key, &m);
+                self.channels = Some(m);
                 self.hub = Some(h.clone());
                 self.hub_no = HUB_NOS.fetch_add(1, SeqCst);
                 self.hub_key = hub_key;
@@ -950,10 +968,16 @@ impl Role for Server {
         );
         self.webrtc = webrtc;
         errs.extend(e.map(|e| format!("webrtc: {e}")));
+        if let Some(m) = &self.channels {
+            if let Err(e) = m.apply(&cfg.channels) {
+                errs.push(format!("channels: {e}"));
+            }
+        }
         self.slot.cur.set(Some(Arc::new(Current {
             hub,
             hub_no: self.hub_no,
             rtc: self.webrtc.as_ref().and_then(|b| b.rtc.clone()),
+            channels: self.channels.clone(),
         })));
         if errs.is_empty() {
             Ok(())
@@ -1053,6 +1077,10 @@ fn write_metrics(slot: &Slot, w: &mut dyn akit_observe::MetricWriter) {
         shared.meters.restarts.load(SeqCst),
         &[],
     );
+    // The channels' (I145).
+    if let Some(m) = slot.with(|c| c.and_then(|c| c.channels.clone())) {
+        m.write_metrics(w);
+    }
 }
 
 #[cfg(test)]

@@ -3351,6 +3351,8 @@ fn akit_config_lists_match_the_inventory() {
         "media.rs",
         // I140: the media libraries.
         "medialib.rs",
+        // I145: the streaming role's channels.
+        "channels.rs",
     ]
     .iter()
     .map(|f| fs::read_to_string(compat_dir().join("../../crates/akit-config/src").join(f)).unwrap())
@@ -3366,7 +3368,7 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 190] = [
+    let objects: [(&str, &str, Option<&str>); 192] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         (
             "providers[].kubernetes",
@@ -3752,6 +3754,12 @@ fn akit_config_lists_match_the_inventory() {
             Some("VOD_FIT_ONLY"),
         ),
         ("streaming", "STREAMING_FIELDS", Some("STREAMING_FIT_ONLY")),
+        (
+            "streaming.channels[]",
+            "CHANNEL_FIELDS",
+            Some("CHANNEL_FIT_ONLY"),
+        ),
+        ("streaming.channels[].schedule[]", "SLOT_FIELDS", None),
         (
             "streaming.rtmp",
             "STREAM_RTMP_FIELDS",

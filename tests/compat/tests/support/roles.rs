@@ -1586,6 +1586,7 @@ pub(crate) fn samples() -> Vec<(String, String, Read)> {
     media_library(&mut out);
     vod(&mut out);
     media_tokens(&mut out);
+    channels(&mut out);
     out
 }
 
@@ -1767,5 +1768,59 @@ fn media_library(out: &mut Vec<(String, String, Read)>) {
             f("secret", q("0123456789abcdef"), q("0123456789abcdeg")),
             f("secret_file", q("a"), q("b")),
         ],
+    );
+}
+
+/// The streaming role's channels (I145).
+fn channels(out: &mut Vec<(String, String, Read)>) {
+    const L: &str = r#"[{"name": "l", "roots": ["/srv/a"]}, {"name": "m", "roots": ["/srv/b"]}]"#;
+    let s = |c: &str| {
+        format!(
+            r#"{{"media_library": {L}, "streaming": {{"rtmp": {{"listen": ":1935"}}, "channels": {c}}}}}"#
+        )
+    };
+    out.push((
+        "streaming.channels".into(),
+        s(r#"[{"name": "a", "library": "l", "items": ["x"]}]"#),
+        Read::Differs(s(r#"[{"name": "b", "library": "l", "items": ["x"]}]"#)),
+    ));
+    let w = |m: &str| s(&format!("[{m}]"));
+    emit(
+        out,
+        "streaming.channels[]",
+        &w,
+        &[
+            ("name", q("a")),
+            ("library", q("l")),
+            ("items", r#"["x"]"#.into()),
+        ],
+        vec![
+            f("name", q("a"), q("b")),
+            f("library", q("l"), q("m")),
+            f("items", r#"["x"]"#, r#"["y"]"#),
+            f("order", q("sequence"), q("shuffle")),
+            f("loop", "true", "false"),
+            f(
+                "schedule",
+                r#"[{"at": "10:00", "item": "x"}]"#,
+                r#"[{"at": "11:00", "item": "x"}]"#,
+            ),
+            f("time_zone", q("UTC"), q("Asia/Shanghai")),
+            f("rendition", q("a"), q("b")),
+            f("read_ahead", q("1s"), q("2s")),
+            f("max_buffer_bytes", "1048576", "2097152"),
+        ],
+    );
+    let sl = |m: &str| {
+        w(&format!(
+            r#"{{"name": "a", "library": "l", "schedule": [{m}]}}"#
+        ))
+    };
+    emit(
+        out,
+        "streaming.channels[].schedule[]",
+        &sl,
+        &[("at", q("10:00")), ("item", q("x"))],
+        vec![f("at", q("10:00"), q("11:00")), f("item", q("x"), q("y"))],
     );
 }

@@ -18,7 +18,7 @@ done and where the work differs from the plan.
 | Next | the external security review ([scope](security/review-scope.md)), whose findings finish I80b; fit's answer to the fields decision 035 proposes (CRL files, a WASM digest); the tracks after 1.0 ([the plan](dev-plan.md#after-10)): Console and encrypted store done (I89–I94, I93b, I93c); fit's Admin API rules for connections without the token, on the console's slots (akio's A232) (Logging done: I81–I83; Access lists done: I85–I87); the Gateway API's conformance run (tests/conformance, the maintainer's) |
 | akio requests | A1–A24, A29, A30, A32, A33, A35–A38, A45, A48, A49, A51–A54, A57, A58, A63–A66, A75, A78, A79, A90–A94, A105, A108, A109, A111–A113, A117, A132–A135, A148, A165–A172, A180, A200, A214, A215, A220, A230–A238, A245 and A247–A249 on akio's main and pinned; A225 (an external review, L15) requested ([akio API requests](akio-api-requests.md)) |
 | Streaming and media auth | [I120–I126](dev-plan.md#streaming-and-media-auth), fit's I115–I117 (decision 040): I120 (`media_auth` and `streaming` in the config), I121 (the policies, the checks, `akit media-token`), I122 (the role's hub, RTMP, RTSP and SRT), I123 (`httpflv`, `hls`), I124 (the WebRTC port, `stream_whip`, `stream_whep`), I125 (`media_pages`) and I126 (`auth` on `whip`, `whep` and `webrtc_proxy`) done; the media library's `libraries`, `vod` and `channels` wait for its track; akio requests A263–A268 |
-| Media library and channels | [I140–I149](dev-plan.md#media-library-and-channels), fit's I131–I139 and I119 (decision 043): I140 (`media_library` in the config) I141 (the catalog, the role `media_library`, `/media/library`) I142 (`vod`), I143 (`keys`, `media_tokens`) and I144 (`url_signing`) done; akio requests A295, A296 |
+| Media library and channels | [I140–I149](dev-plan.md#media-library-and-channels), fit's I131–I139 and I119 (decision 043): I140 (`media_library` in the config) I141 (the catalog, the role `media_library`, `/media/library`) I142 (`vod`), I143 (`keys`, `media_tokens`), I144 (`url_signing`) and I145 (channels) done; akio requests A295, A296 |
 
 ## Log
 
@@ -73,6 +73,38 @@ done and where the work differs from the plan.
   - On io_uring, `Engine::remove_listener` returns once the listener's accepts are cancelled, so a
     listener a reload removes takes no connection after it; `H3Upload::finish` is no longer
     refused by its own response; the pool pressure watcher samples every 500 ms (was 100 ms).
+### 2026-11-28: I145, channels
+
+- **Built**: fit's I134's channels. akit-config reads `streaming.channels` (`name`, `library`,
+  `items`, `order`, `loop`, `schedule` with its `at`, `time_zone`, `rendition`, `read_ahead`,
+  `max_buffer_bytes`, with fit's checks; the libraries checked once every file is read; a role
+  of channels alone takes streams in); a channel's `push` (I146), `encrypt` and `key_rotation`
+  (I147) and `streaming.push` are refused as not supported yet. `akit_media::channels`, fit's
+  package: a channel reserves its stream in the role's hub and plays its items, in order,
+  shuffled, looped or on a schedule in a time zone (akit-observe's zones), each item's movies
+  read through the library and its samples on the library's file pool up to `read_ahead` and
+  `max_buffer_bytes` ahead, sent on the channel's timer as their decode times fall due, the next
+  item's timestamps carrying on from the last's, its tracks set anew only when they differ; a
+  slot cuts in at its start, one under way is joined; a reload changes a channel from its next
+  item; skips, stops and starts. The streaming role runs a manager on its hub (the media
+  libraries now apply before it); the Admin API's `/streaming/channels` (list, one, `start`,
+  `stop`, `skip`); `/metrics`' `akit_streaming_channel*`.
+- **Differs from fit**: the timers run on akit-media's deadline thread until akio's A296; a
+  channel's `time_zone` is loaded when the role applies (an unknown zone is the role's error), not
+  when the config is read (decision 043).
+- **Checked**: fit's `streaming/channels` tests ported on a clock the test moves, waiting for the
+  library's pool to have nothing to do rather than for time (`src/channels/tests.rs`: back to
+  back, no loop, the same tracks, skips, the schedule on time, cutting in and joined, a schedule
+  alone, a reload, shuffle, items skipped, a stream taken, stop and start, late ticks, sources,
+  slots, edges, metrics and the registry, subscribers, the Admin API); fit's `TestChannelAt` on
+  Shanghai's and New York's zones; fit's config tests. `akit run` with a channel of bbb twice:
+  ffmpeg decodes 5 s of it over RTMP, HLS fMP4 and HLS MPEG-TS without an error, video every
+  40 ms and audio every 20 ms across five items, without a gap or a jump; with items whose picture
+  size or codec differ, ffmpeg's HLS reader reports decode errors at the discontinuity, as it
+  does with fit's binary serving the same channel. The gate's report loses `video-site`'s
+  `streaming.channels`.
+- **Next**: I146, push targets.
+
 ### 2026-11-28: I144, playback URLs that expire
 
 - **Built**: fit's I135. akit-config reads `media_auth`'s `url_signing` (`ttl`, `bind_address`,

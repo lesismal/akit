@@ -3194,6 +3194,17 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
     let streaming = streaming.map(|((s, refs), file)| {
         if let Some(d) = ds.get_mut(file) {
             crate::media::check_refs(d, &refs, &media_auth);
+            // The libraries the channels play (I145).
+            let names: Vec<&str> = media_library.iter().map(|l| l.name.as_str()).collect();
+            for r in refs.iter().filter(|r| r.library) {
+                if !names.contains(&r.name.as_str()) {
+                    d.error(
+                        r.off,
+                        &r.path,
+                        format!("there is no media_library named {:?}", r.name),
+                    );
+                }
+            }
         }
         s
     });

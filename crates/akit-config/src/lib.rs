@@ -25,6 +25,7 @@ pub mod adapt;
 mod auto_https;
 mod binds;
 pub mod bittorrent;
+pub mod channels;
 pub mod cluster;
 mod conf;
 pub mod convert;

@@ -119,6 +119,7 @@ API 的下一个版本中才会去掉，并在其改动清单中写明。
 | `GET`、`HEAD` `/tokens` 和 `/tokens/{成员}`、`POST /tokens/{成员}`、`PATCH` 和 `DELETE /tokens/{成员}/{id}` | 隧道 hub 和 LLM 角色的链路 token：签发、列出、修改过期时间和撤销，同 fit 的 `admin/tokens.go`；akit 的作用于运行中配置所设置的成员，无论其角色是否已在运行（冻结之后新增，I100） |
 | `GET`、`HEAD` `/media/library`、`/media/library/{name}`、`/media/library/{name}/items/{id...}`、`POST /media/library/{name}/rescan` | 媒体库：其扫描的状态、分页和筛选的媒体库条目、完整的单个条目，以及立即请求一次扫描，同 fit 的 `admin/medialib.go`（冻结之后新增，I141） |
 | `/bittorrent/torrents`、`/bittorrent/torrents/{id}` 及其 `files`、`peers`、`trackers`、`/bittorrent/alt_speed`、`/bittorrent/publish/...`、`/bittorrent/events`、`/bittorrent/tracker/...` | BitTorrent 角色的种子、修改、事件和统计，同 fit 的 `admin/bittorrent.go` 和 `admin/btevents.go`；akio 尚不能做的事按名称以 501 应答（冻结之后新增，I157） |
+| `GET`、`HEAD` `/streaming/channels`、`/streaming/channels/{name...}`、`POST /streaming/channels/{name...}` | 流媒体角色的频道：每个频道在播放什么、接下来播放什么、其计数器，以及一个操作（`start`、`stop`、`skip`，跳到下一个条目或指定的条目），同 fit 的 `admin/channels.go`（冻结之后新增，I145） |
 | `GET /dashboard/` | 仪表盘，给人看（不覆盖） |
 
 配置中的路径是 JSON pointer 的各个 token。变更的应答给出所应用的版本，在内容中（`version`）和 `Akit-Config-Version` 中，并给出配置的
@@ -326,7 +327,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 1274 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 1287 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
@@ -383,7 +384,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`routes`](#fields-routes) | 24 | 24 | 0 |
 | [`schema_version`](#fields-schema-version) | 1 | 1 | 0 |
 | [`services`](#fields-services) | 13 | 13 | 0 |
-| [`streaming`](#fields-streaming) | 76 | 41 | 35 |
+| [`streaming`](#fields-streaming) | 76 | 54 | 22 |
 | [`sync`](#fields-sync) | 42 | 0 | 42 |
 | [`sync.codecs/canal_json`](#fields-sync-codecs-canal-json) | 87 | 0 | 87 |
 | [`sync.codecs/csv`](#fields-sync-codecs-csv) | 116 | 0 | 116 |
@@ -451,7 +452,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`tunnel`](#fields-tunnel) | 164 | 161 | 3 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 76 | 0 |
-| **合计** | 3821 | 1274 | 2547 |
+| **合计** | 3821 | 1287 | 2534 |
 
 <a id="fields-access"></a>
 
@@ -1944,15 +1945,15 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | `streaming.access.allow_files` | `array<string>` | 已支持 |
 | `streaming.access.deny` | `array<string>` | 已支持 |
 | `streaming.access.deny_files` | `array<string>` | 已支持 |
-| `streaming.channels` | `array<object>` | 尚不支持（not supported yet） |
+| `streaming.channels` | `array<object>` | 已支持 |
 | `streaming.channels[].encrypt` | `boolean` | 尚不支持（not supported yet） |
-| `streaming.channels[].items` | `array<string>` | 尚不支持（not supported yet） |
+| `streaming.channels[].items` | `array<string>` | 已支持 |
 | `streaming.channels[].key_rotation` | `integer` | 尚不支持（not supported yet） |
-| `streaming.channels[].library` | `string, required` | 尚不支持（not supported yet） |
-| `streaming.channels[].loop` | `boolean` | 尚不支持（not supported yet） |
-| `streaming.channels[].max_buffer_bytes` | `integer` | 尚不支持（not supported yet） |
-| `streaming.channels[].name` | `string, required` | 尚不支持（not supported yet） |
-| `streaming.channels[].order` | `enum(sequence\|shuffle)` | 尚不支持（not supported yet） |
+| `streaming.channels[].library` | `string, required` | 已支持 |
+| `streaming.channels[].loop` | `boolean` | 已支持 |
+| `streaming.channels[].max_buffer_bytes` | `integer` | 已支持 |
+| `streaming.channels[].name` | `string, required` | 已支持 |
+| `streaming.channels[].order` | `enum(sequence\|shuffle)` | 已支持 |
 | `streaming.channels[].push` | `array<object>` | 尚不支持（not supported yet） |
 | `streaming.channels[].push[].connect_timeout` | `duration` | 尚不支持（not supported yet） |
 | `streaming.channels[].push[].name` | `string` | 尚不支持（not supported yet） |
@@ -1960,12 +1961,12 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | `streaming.channels[].push[].retry_min` | `duration` | 尚不支持（not supported yet） |
 | `streaming.channels[].push[].stream` | `string` | 尚不支持（not supported yet） |
 | `streaming.channels[].push[].url` | `string, required` | 尚不支持（not supported yet） |
-| `streaming.channels[].read_ahead` | `duration` | 尚不支持（not supported yet） |
-| `streaming.channels[].rendition` | `string` | 尚不支持（not supported yet） |
-| `streaming.channels[].schedule` | `array<object>` | 尚不支持（not supported yet） |
-| `streaming.channels[].schedule[].at` | `string, required` | 尚不支持（not supported yet） |
-| `streaming.channels[].schedule[].item` | `string, required` | 尚不支持（not supported yet） |
-| `streaming.channels[].time_zone` | `string` | 尚不支持（not supported yet） |
+| `streaming.channels[].read_ahead` | `duration` | 已支持 |
+| `streaming.channels[].rendition` | `string` | 已支持 |
+| `streaming.channels[].schedule` | `array<object>` | 已支持 |
+| `streaming.channels[].schedule[].at` | `string, required` | 已支持 |
+| `streaming.channels[].schedule[].item` | `string, required` | 已支持 |
+| `streaming.channels[].time_zone` | `string` | 已支持 |
 | `streaming.gop_cache_bytes` | `integer` | 已支持 |
 | `streaming.max_players` | `integer` | 已支持 |
 | `streaming.max_streams` | `integer` | 已支持 |
