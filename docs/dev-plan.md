@@ -288,8 +288,6 @@ Tunnel and LLM track; I110–I114 are the WebRTC track, and I115–I119 are rese
 | I139 | Cluster X: users, roles and the audit log | I137 | done |
 | I139b | Cluster XI: members behind NAT, linking out | I132 | done |
 | I139c | Cluster XII: metrics, logs and certificates across members; `akit cluster` | I138 | done |
-
-| I139c | Cluster XII: metrics, logs and certificates across members; `akit cluster` | I138 | todo |
 | **After 1.0: AI assistant** | | | |
 | I160 | The assistant I: `admin.assistant` in the config, its settings and keys in the store, the module `ai` | I93c, I91 | done |
 | I161 | The assistant II: the model client and the provider test | I160, I107 | done |
@@ -2673,7 +2671,6 @@ default: no `admin.cluster`, no Cluster menu, no outgoing calls.
 - **Status**: done (2026-11-28). fit's formats: `GET /logs/recent` and its ring, the series, the
   inventory, the cursor and the Admin API's `/cluster/...` (on the Admin API alone, acting as
   `Admin API`); `akit cluster` reads a fit manager too (decision 041, 13). See the progress log.
-
 
 ### AI assistant
 
