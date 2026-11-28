@@ -510,7 +510,9 @@ impl Node {
 
     /// Polls the member once, and calls `done` when it is over, whatever came of it.
     pub fn poll(self: &Arc<Self>, done: Box<dyn FnOnce() + Send>) {
-        // The certificate is read by a probe at the first poll (A277's stopgap).
+        // The certificate is read by a probe at the first poll (A277's stopgap), before the
+        // member is read: a member over TLS is never told up without the certificate it showed.
+        // The probe always ends, within its own timeout.
         let probe = {
             let mut mu = lock(&self.mu);
             let first = !mu.probed;
@@ -519,9 +521,16 @@ impl Node {
         };
         if let (true, Some(t)) = (probe, &self.t) {
             if t.tls() {
-                t.probe(Box::new(|_| {}));
+                let me = Arc::clone(self);
+                t.probe(Box::new(move |_| me.read(done)));
+                return;
             }
         }
+        self.read(done);
+    }
+
+    /// Reads the member's `GET /node`, `/status` and `/config/check`: the poll's reads.
+    fn read(self: &Arc<Self>, done: Box<dyn FnOnce() + Send>) {
         let me = Arc::clone(self);
         let path = self.paths.node;
         self.get(
