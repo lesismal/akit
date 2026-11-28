@@ -395,14 +395,18 @@ fn akit_bt_through_the_admin_api() {
     let id: String = mi.info_hash.0.iter().map(|b| format!("{b:02x}")).collect();
     let torrent = dir.join("t.torrent");
     std::fs::write(&torrent, mi.to_bytes()).unwrap();
-    let (web, admin, peer) = (free(), free(), free());
+    // The Admin API on a Unix socket, where `akit bt` reaches it by the config's address (short:
+    // a socket's path is bounded); the listener and the client on port 0.
+    let sock = std::env::temp_dir().join(format!("akit-bt-{}.sock", std::process::id()));
+    let _ = std::fs::remove_file(&sock);
     let path = dir.join("akit.json");
     std::fs::write(
         &path,
         format!(
-            r#"{{"listeners": [{{"name": "web", "address": "{web}"}}],
-                "admin": {{"address": "{admin}"}},
-                "bittorrent": {{"client": {{"listen": "{peer}", "data_dir": {:?}, "dht": false}}}}}}"#,
+            r#"{{"listeners": [{{"name": "web", "address": "{ANY}"}}],
+                "admin": {{"address": "unix/{}"}},
+                "bittorrent": {{"client": {{"listen": "{ANY}", "data_dir": {:?}, "dht": false}}}}}}"#,
+            sock.display(),
             dir.join("data").to_str().unwrap()
         ),
     )
@@ -482,13 +486,12 @@ fn a_private_tracker_under_akit_run() {
     let dir = std::path::PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("bittorrent-private");
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    let web = free();
     let log = dir.join("access.log");
     let path = dir.join("akit.json");
     std::fs::write(
         &path,
         format!(
-            r#"{{"listeners": [{{"name": "web", "address": "{web}"}}],
+            r#"{{"listeners": [{{"name": "web", "address": "{ANY}"}}],
                 "access_log": {{"output": {:?}, "flush_interval": "10ms"}},
                 "media_auth": [{{"name": "bt", "secret": "0123456789abcdef0123456789abcdef",
                     "users": [{{"name": "alice", "password": "alice-password", "play": ["bittorrent/*"]}}]}}],
@@ -498,7 +501,15 @@ fn a_private_tracker_under_akit_run() {
         ),
     )
     .unwrap();
-    let _akit = run(&path, "akit: running bittorrent.tracker");
+    let (_akit, lines) = run(&path, "akit: running bittorrent.tracker");
+    // Where `web` listens, as `akit run` printed it (port 0 in its config).
+    let web = after(
+        lines
+            .iter()
+            .find(|l| l.starts_with("akit: listener \"web\" on "))
+            .unwrap(),
+        "akit: listener \"web\" on ",
+    );
     // fit's passkey of alice under this secret.
     let alice = "c3751c196e55193e0c3be763bcc1b8ab";
     let target = |prefix: &str| {
