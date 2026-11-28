@@ -367,16 +367,6 @@ fn reload_knows_h3_listeners() {
     e.wait();
 }
 
-/// A port free in TCP and UDP both.
-fn free_port() -> u16 {
-    loop {
-        let t = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let port = t.local_addr().unwrap().port();
-        if std::net::UdpSocket::bind(("127.0.0.1", port)).is_ok() {
-            return port;
-        }
-    }
-}
 
 /// Waits for HTTP/3 at `udp` to answer no more, within 15 seconds: a removed listener's UDP
 /// sockets close once its last peer is gone, or at its drain's end.
@@ -447,8 +437,8 @@ fn reload_drains_h3() {
     use akit_listener::Listeners;
 
     let p = pki("h3-drain");
-    let port = free_port();
-    let listener = |name: &str, body: &str| {
+    // On port 0 first; then renamed on the port it bound, which it holds meanwhile.
+    let listener = |name: &str, body: &str, port: u16| {
         format!(
             r#"{{"listeners": [{{"name": "{name}", "address": "127.0.0.1:{port}", "protocols": [{ALL}],
                 "tls": {{"certificates": [{{"cert_file": "{}", "key_file": "{}"}}]}}}}],
@@ -463,18 +453,19 @@ fn reload_drains_h3() {
         let c = akit_config::from_json(j, None).unwrap();
         compile(&c, &registry, &Env::default()).unwrap()
     };
-    let cell = GraphCell::new(compiled(&listener("one", "slow")));
+    let cell = GraphCell::new(compiled(&listener("one", "slow", 0)));
     let e = Arc::new(akit_listener::engine(&cell, &options()).unwrap());
     e.start().unwrap();
     let mut l = Listeners::new(Arc::clone(&e), cell.clone(), &options());
-    let udp: std::net::SocketAddr = format!("127.0.0.1:{port}").parse().unwrap();
+    let udp = l.served()[0].address;
+    let port = udp.port();
 
     let seen = h3::get(udp, h3::client(&p.ca, None), "a.example", "/").unwrap();
     assert_eq!(seen.body, "hi");
     // Changed (renamed), on the same address: the old one drains, the new one serves. The
     // kernel may hash a new peer to the old sockets while they drain, which drop it: tried
     // again until they are gone.
-    let r = l.reload(compiled(&listener("two", "slow"))).unwrap();
+    let r = l.reload(compiled(&listener("two", "slow", port))).unwrap();
     assert_eq!((r.kept, r.added.len(), r.removed.len()), (0, 1, 1));
     let deadline = std::time::Instant::now() + Duration::from_secs(15);
     let seen = loop {

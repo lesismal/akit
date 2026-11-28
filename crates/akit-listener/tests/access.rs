@@ -348,11 +348,11 @@ fn h3_peers_are_filtered() {
     let r = l.reload(graph(&json("127.0.0.1:0", allow, ""))).unwrap();
     assert_eq!(r.kept, 1);
     assert_eq!(h3(a), Some(200), "refused after a reload allowed it");
-    // A listener a reload binds (another address) refuses from its first datagram.
-    let other = format!("127.0.0.1:{}", free_udp_port());
-    let r = l.reload(graph(&json(&other, deny, ""))).unwrap();
+    // A listener a reload binds (another address: every interface's, on port 0) refuses from
+    // its first datagram.
+    let r = l.reload(graph(&json("0.0.0.0:0", deny, ""))).unwrap();
     assert_eq!(r.added.len(), 1);
-    let moved: SocketAddr = other.parse().unwrap();
+    let moved = SocketAddr::from(([127, 0, 0, 1], r.added[0].address.port()));
     let before = filtered(&e);
     assert_eq!(
         h3(moved),
@@ -364,13 +364,4 @@ fn h3_peers_are_filtered() {
     let _ = std::fs::remove_dir_all(&d);
 }
 
-/// A port free for both TCP and UDP on 127.0.0.1, for a listener a reload adds.
-fn free_udp_port() -> u16 {
-    loop {
-        let t = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let port = t.local_addr().unwrap().port();
-        if std::net::UdpSocket::bind(("127.0.0.1", port)).is_ok() {
-            return port;
-        }
-    }
-}
+
