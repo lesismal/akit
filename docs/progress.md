@@ -55,6 +55,15 @@ done and where the work differs from the plan.
   files: akit-listener's `support/certs.rs` `dir` (every test's certificates), `limits.rs`
   `pending_bytes_budget`'s files and akit-admin `console.rs`'s directory now take the process's
   ID.
+- akit-tunnel's `with_fits_node_and_proxy_over_quic` failed 4 times in 240 on io_uring, six at
+  once: fit's proxy never learned the node akit's hub had just registered ("no hub has node").
+  The hub's node list started at version 0, which a proxy takes whenever it comes (fit's
+  `Older`): the answer to the proxy's `nodes` call, made before the node registered, overwrote
+  the list the node's registration sent when the proxy took it after (fit's proxy takes a
+  call's answer on the goroutine that called, a notify on its read loop), and nothing changed
+  again. The hub's lists now count from 1
+  (`HubState::new`), so that answer is older and kept out; test
+  `hub::tests::node_lists_are_versioned_from_the_start`. fit's hub counts from 0 too.
 
 ### 2026-11-28: I165, the assistant VI: Ask AI, migration and review
 

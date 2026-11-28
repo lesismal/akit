@@ -96,8 +96,24 @@ struct HubState {
     routes: HashMap<u64, Route>,
     next_peer: u32,
     next_conn: u32,
+    /// The version of the node list: from 1 ([`HubState::new`]), so that every list the hub
+    /// sends, its answer to a proxy's `nodes` too, is ordered against the others.
     nodes_version: u64,
     closing: bool,
+}
+
+impl HubState {
+    /// A hub's state, its node list at version 1. A list of version 0 is unversioned, which a
+    /// proxy takes whenever it comes (fit's `Older`): the answer to a proxy's `nodes`, made
+    /// before a node registered, then overwrote the list the node's registration sent it when
+    /// it was taken after it (fit's proxy takes a call's answer on the goroutine that called, a
+    /// notify on its read loop), and the proxy did not know the node until the next change.
+    fn new() -> HubState {
+        HubState {
+            nodes_version: 1,
+            ..HubState::default()
+        }
+    }
 }
 
 pub(crate) struct HubCore {
@@ -1095,7 +1111,7 @@ pub fn new(host: Host) -> Result<Box<dyn Role>, String> {
         generated: Mutex::new(None),
         access: Mutex::new(None),
         fingerprint: Mutex::new(String::new()),
-        st: Mutex::new(HubState::default()),
+        st: Mutex::new(HubState::new()),
         epoch: u64::from_be_bytes(epoch) >> 1,
         started: akit_roles::linktoken::unix_now(),
         sweep_gen: std::sync::atomic::AtomicU64::new(0),
@@ -1516,5 +1532,29 @@ impl Role for Hub {
 
     fn module(&self) -> Option<akit_roles::pages::ModuleRef> {
         Some(Arc::clone(&self.module))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, clippy::arithmetic_side_effects)]
+    use super::*;
+    use crate::proxy::NodeList;
+
+    /// A proxy's `nodes` answered before a node registered, taken after the list the node's
+    /// registration sent: older, so the proxy keeps the node. Unversioned (0), as the hub's
+    /// first list was, it was taken over the newer one.
+    #[test]
+    fn node_lists_are_versioned_from_the_start() {
+        let st = HubState::new();
+        let list = |version: u64| NodeList {
+            epoch: 7,
+            version: i64::try_from(version).unwrap(),
+            ..NodeList::default()
+        };
+        let answered = list(st.nodes_version);
+        let broadcast = list(st.nodes_version + 1);
+        assert!(answered.older(Some(&broadcast)));
+        assert!(!list(0).older(Some(&broadcast)));
     }
 }

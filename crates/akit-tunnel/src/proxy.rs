@@ -154,7 +154,7 @@ impl NodeList {
 
     /// Whether it is older than `cur`, a list from the same hub (fit's `Older`): both counted, in
     /// the same epoch, this one with the lower version.
-    fn older(&self, cur: Option<&NodeList>) -> bool {
+    pub(crate) fn older(&self, cur: Option<&NodeList>) -> bool {
         cur.is_some_and(|c| {
             self.version != 0 && c.version != 0 && self.epoch == c.epoch && self.version < c.version
         })

@@ -49,6 +49,13 @@
 - 同一个测试二进制同时运行多份（这些检查就是每次 6 份同时运行）时会共用文件：akit-listener 的
   `support/certs.rs` 的 `dir`（所有测试的证书）、`limits.rs` 的 `pending_bytes_budget` 的文件，以及
   akit-admin `console.rs` 的目录，现在都带上进程 ID。
+- akit-tunnel 的 `with_fits_node_and_proxy_over_quic` 在 io_uring 上同时 6 份时 240 次失败 4 次：fit
+  的 proxy 一直不知道 akit 的 hub 刚注册的 node（"no hub has node"）。hub 的 node 列表版本从 0 开始，
+  而版本 0 的列表 proxy 无论何时收到都会接受（fit 的 `Older`）：proxy 的 `nodes` 调用的应答在 node
+  注册之前生成，若 proxy 在 node 注册所发的列表之后才处理它（fit 的 proxy 在发起调用的 goroutine
+  里处理调用的应答，在读循环里处理 notify），就会覆盖新列表，而之后没有新的变化。现在 hub 的列表从
+  1 开始计数（`HubState::new`），这样的应答更旧，会被忽略；测试
+  `hub::tests::node_lists_are_versioned_from_the_start`。fit 的 hub 同样从 0 开始计数。
 
 ### 2026-11-28：I165，助手 VI：问 AI、迁移和审查
 
