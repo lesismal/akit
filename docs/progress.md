@@ -19,9 +19,59 @@ done and where the work differs from the plan.
 | akio requests | A1–A24, A29, A30, A32, A33, A35–A38, A45, A48, A49, A51–A54, A57, A58, A63–A66, A75, A78, A79, A90–A94, A105, A108, A109, A111–A113, A117, A132–A135, A148, A165–A172, A180, A200, A214, A215, A220, A230–A238, A245 and A247–A249 on akio's main and pinned; A225 (an external review, L15) requested ([akio API requests](akio-api-requests.md)) |
 | Streaming and media auth | [I120–I126](dev-plan.md#streaming-and-media-auth), fit's I115–I117 (decision 040): I120 (`media_auth` and `streaming` in the config), I121 (the policies, the checks, `akit media-token`), I122 (the role's hub, RTMP, RTSP and SRT), I123 (`httpflv`, `hls`), I124 (the WebRTC port, `stream_whip`, `stream_whep`), I125 (`media_pages`) and I126 (`auth` on `whip`, `whep` and `webrtc_proxy`) done; the media library's `libraries`, `vod` and `channels` wait for its track; akio requests A263–A268 |
 | Media library and channels | [I140–I149](dev-plan.md#media-library-and-channels), fit's I131–I139 and I119 (decision 043): I140 (`media_library` in the config) I141 (the catalog, the role `media_library`, `/media/library`) I142 (`vod`), I143 (`keys`, `media_tokens`), I144 (`url_signing`), I145 (channels), I146 (push targets), I147 (encrypted segments), I148 (the video site) and I149 (the console's media pages, the files managed) done: the track is done; akio requests A295–A298 |
-| AI assistant | [I160–I169](dev-plan.md#ai-assistant), fit's I124–I130 and I152–I154 (decision 044): I160 (`admin.assistant`, the module `ai`, its settings and keys in the store) and I161 (the model client, the provider test) done; I162 next |
+| AI assistant | [I160–I169](dev-plan.md#ai-assistant), fit's I124–I130 and I152–I154 (decision 044): I160 (`admin.assistant`, the module `ai`, its settings and keys in the store) I161 (the model client, the provider test) and I162 (the chat and the read tools) done; I162b next |
 
 ## Log
+
+### 2026-11-28: I162, the assistant III: the chat and the read tools
+
+- `POST /api/m/ai/chat` (fit's I125): the agent loop runs in akit, answered as Server-Sent Events
+  with fit's events (`start`, `text`, `thinking`, `tool_call`, `tool_result`, `ask`, `usage`,
+  `summary`, then `end`/`done` with its reason, or `error`); a message, a retry of the last answer,
+  or the choice of an `ask_user` question; the system prompt (akit's role, concepts and rules, the
+  person's level and language, the page context, redacted and bounded to 16 KiB, the summary); the
+  history within the model's window, the early tools' results cut first, then the early turns
+  summarized by the model, the summary kept with the conversation; the limits of turns, tool calls,
+  result bytes, conversations, chats at once and tokens a day. `POST /api/m/ai/chat/stop`,
+  `GET /api/m/ai/tools`, `GET /api/m/ai/conversations` and `GET`/`DELETE
+  /api/m/ai/conversations/<id>`, fit's members.
+- The tool registry (`akit_assistant::registry`) and the read tools (`tools`): `config_get`
+  (base or effective, by members, as JSON, `.conf` or YAML), `schema_describe`,
+  `config_validate` (text read as `akit validate` reads it, or a patch over the running config,
+  its redacted secrets the running config's again), `versions_diff`, `status_get`,
+  `metrics_query`, `upstream_health`, `consistency_check`, `certs_list`, `cache_zones`, and
+  `ask_user`; each runs on a pool of the assistant's own (4 threads), within 30 s, the user's level
+  checked at every call against the settings in use.
+- They read the Admin API in process (`akit_admin`'s `LocalApi`, fit's `admincall.go`): the reads
+  of `/config`, `/config/effective`, `/config/check`, `/versions`, `/status`, `/node`, `/cache`,
+  `/metrics`, `/schema`, `/config/render` and a check (`/config/validate`), answered at once from
+  what the API keeps, never a change, its secrets redacted as the API's own answers are.
+- Redaction (`akit_assistant::redact`, fit's `redact.go`): the providers' keys, fit's patterns on
+  akio-regex (private keys, hashes, JWTs, bearer and basic, API keys, `name=value` secrets, signed
+  playback URLs and `akit_media_grant`), `data.redact`, and in JSON every string under a secret's
+  member, `admin.assistant`, the console's users, the store and the Admin API's address and token
+  left out; every result and the page context pass through it before they reach a model.
+- Conversations are kept a user each in the store's sections `assistant.chats.<hash>`, fit's
+  document (what akit does not use yet, a proposal, kept as read), bounded (512 KiB a
+  conversation, 8 MiB a user, `max_conversations`), written on the assistant's pool after each
+  chat; in memory without a store.
+- The backpressure of decision row 102: past 64 KiB of events not yet sent, the model's answer is
+  held (`Call::hold`) and resumed on the stream's drain; a browser that takes nothing for 60 s has
+  its stream cut. A quiet stream is pinged every 15 s.
+- Checked: unit tests of the redactor, the prompt and budget, the conversations' documents (one as
+  fit's store holds it reads back byte for byte) and the tools' parts; through a running console
+  against a scripted stand-in of a model (`akit-admin/tests/assistant_chat.rs`, fit's
+  `chat_test.go`): a question answered from `config_get` and `status_get` in fit's event order,
+  their results fenced, no secret (a route's bcrypt hash, the console users' hashes,
+  `admin.assistant`) in any request the model got; `ask_user` and its choice, an option not
+  offered refused; `max_tool_calls` and a result cut to `max_tool_result_bytes`; a long
+  conversation summarized and the summary sent in its early turns' place; a browser that reads
+  nothing holding a 24 MiB answer back (the stand-in could send only part of it), the answer whole
+  once read; a chat stopped, its partial answer kept; two users' conversations apart, kept across
+  a restart, one deleted. In a browser (the console under `akit run`, a local stand-in model): the
+  panel opens, sends, shows the tool call folded and the answer as Markdown, counts the tokens.
+- Not yet, as planned: `log_tail`, `access_log_sample` and `adapt_convert` (I162b), skills and their
+  catalog (I164), proposals and the audit log (I163). Next: I162b and I163.
 
 ### 2026-11-28: two load-only failures: an upload refused before its files went, and a closed try on macOS
 

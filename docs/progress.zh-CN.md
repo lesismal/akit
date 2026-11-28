@@ -18,9 +18,40 @@
 | akio 需求 | A1–A24、A29、A30、A32、A33、A35–A38、A45、A48、A49、A51–A54、A57、A58、A63–A66、A75、A78、A79、A90–A94、A105、A108、A109、A111–A113、A117、A132–A135、A148、A165–A172、A180、A200、A214、A215、A220、A230–A238、A245 和 A247–A249 已进入 akio 的 main 并锁定；A225（外部审查，L15）已提出（[akio API 请求](akio-api-requests.zh-CN.md)） |
 | 流媒体与媒体认证 | [I120–I126](dev-plan.zh-CN.md#流媒体与媒体认证)，fit 的 I115–I117（决定 040）：I120（配置中的 `media_auth` 和 `streaming`）、I121（策略、检查、`akit media-token`）I122（角色的媒体中心、RTMP、RTSP 和 SRT）、I123（`httpflv`、`hls`）、I124（WebRTC 端口、`stream_whip`、`stream_whep`）、I125（`media_pages`）和 I126（`whip`、`whep` 和 `webrtc_proxy` 上的 `auth`）已完成；媒体库的 `libraries`、`vod` 和 `channels` 等待其那条线；akio 请求 A263–A268 |
 | 媒体库与频道 | [I140–I149](dev-plan.zh-CN.md#媒体库与频道)，fit 的 I131–I139 和 I119（决定 043）：I140（配置中的 `media_library`）、I141（目录、角色 `media_library`、`/media/library`）、I142（`vod`）、I143（`keys`、`media_tokens`）、I144（`url_signing`）、I145（频道）、I146（推送目标）、I147（加密分片）、I148（视频网站）和 I149（控制台的媒体页面、文件管理）已完成：这条线已完成；akio 需求 A295–A298 |
-| AI 助手 | [I160–I169](dev-plan.zh-CN.md#ai-助手)，fit 的 I124–I130 和 I152–I154（决定 044）：I160（`admin.assistant`、模块 `ai`、存储中的设置和密钥）和 I161（模型客户端、提供方测试）已完成；下一个是 I162 |
+| AI 助手 | [I160–I169](dev-plan.zh-CN.md#ai-助手)，fit 的 I124–I130 和 I152–I154（决定 044）：I160（`admin.assistant`、模块 `ai`、存储中的设置和密钥）、I161（模型客户端、提供方测试）和 I162（对话和读取工具）已完成；下一个是 I162b |
 
 ## 日志
+
+### 2026-11-28：I162，助手 III：对话和读取工具
+
+- `POST /api/m/ai/chat`（fit 的 I125）：代理循环在 akit 中运行，以 Server-Sent Events 应答 fit 的事件（`start`、`text`、`thinking`、
+  `tool_call`、`tool_result`、`ask`、`usage`、`summary`，最后是带原因的 `end`/`done`，或 `error`）；一条消息、对上一个应答的重试，或
+  `ask_user` 问题的选择；系统提示（akit 的角色、概念和规则，用户的级别和语言，页面上下文（脱敏，不超过 16 KiB），摘要）；在模型窗口内的
+  历史，先截断早期工具结果，再由模型总结早期轮次，摘要随会话保存；轮次、工具调用、结果字节、会话数、同时对话数和每日令牌的上限。
+  `POST /api/m/ai/chat/stop`、`GET /api/m/ai/tools`、`GET /api/m/ai/conversations` 和 `GET`/`DELETE /api/m/ai/conversations/<id>`，
+  成员与 fit 相同。
+- 工具注册表（`akit_assistant::registry`）和读取工具（`tools`）：`config_get`（基础或生效配置，按成员，JSON、`.conf` 或 YAML）、
+  `schema_describe`、`config_validate`（按 `akit validate` 的方式读取文本，或在运行配置上叠加补丁，其中被脱敏的秘密恢复为运行配置中的值）、
+  `versions_diff`、`status_get`、`metrics_query`、`upstream_health`、`consistency_check`、`certs_list`、`cache_zones` 以及 `ask_user`；
+  每个都在助手自己的线程池（4 个线程）上运行，限时 30 s，每次调用都按当时的设置检查用户级别。
+- 它们在进程内读取 Admin API（`akit_admin` 的 `LocalApi`，fit 的 `admincall.go`）：`/config`、`/config/effective`、`/config/check`、
+  `/versions`、`/status`、`/node`、`/cache`、`/metrics`、`/schema`、`/config/render` 的读取和一次检查（`/config/validate`），由 API
+  保存的内容立即应答，从不改动，其秘密与 API 自己的应答一样脱敏。
+- 脱敏（`akit_assistant::redact`，fit 的 `redact.go`）：提供方的密钥，在 akio-regex 上实现的 fit 的模式（私钥、哈希、JWT、bearer 和
+  basic、API 密钥、`name=value` 形式的秘密、签名的播放 URL 和 `akit_media_grant`），`data.redact`，以及 JSON 中秘密成员下的每个字符串，
+  略去 `admin.assistant`、控制台用户、存储以及 Admin API 的地址和令牌；每个结果和页面上下文在到达模型之前都经过它。
+- 会话按用户保存在存储分区 `assistant.chats.<hash>` 中，即 fit 的文档（akit 尚未使用的部分如提案按读到的原样保留），有上限（每个会话
+  512 KiB、每个用户 8 MiB、`max_conversations`），每次对话结束后在助手的线程池上写入；没有存储时保存在内存中。
+- 待定决定第 102 行的背压：尚未发出的事件超过 64 KiB 时暂停模型的应答（`Call::hold`），流排空后恢复；60 s 内什么都不取的浏览器被切断其
+  流。安静的流每 15 s ping 一次。
+- 核对：脱敏器、提示和预算、会话文档（fit 存储中的会话逐字节读回）以及工具各部分的单元测试；经运行中的控制台对脚本化的模型替身
+  （`akit-admin/tests/assistant_chat.rs`，fit 的 `chat_test.go`）：由 `config_get` 和 `status_get` 回答问题，事件顺序与 fit 相同，结果
+  被包围为数据，模型收到的请求中没有秘密（路由的 bcrypt 哈希、控制台用户的哈希、`admin.assistant`）；`ask_user` 及其选择，非选项被拒绝；
+  `max_tool_calls` 和按 `max_tool_result_bytes` 截断的结果；长会话被总结，摘要代替早期轮次发送；什么都不读的浏览器压住 24 MiB 的应答
+  （替身只能发出一部分），读取后应答完整到达；停止的对话保留其部分应答；两个用户的会话互相隔离、重启后保留、可删除。在浏览器中
+  （`akit run` 下的控制台、本地替身模型）：面板打开、发送，工具调用折叠显示，应答以 Markdown 显示，令牌计数。
+- 尚未完成（按计划）：`log_tail`、`access_log_sample` 和 `adapt_convert`（I162b），技能及其目录（I164），提案和审计日志（I163）。
+  下一个：I162b 和 I163。
 
 ### 2026-11-28：两个只在负载下出现的失败：上传在文件删除前就被拒绝应答，以及 macOS 上被关闭的尝试
 

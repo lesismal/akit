@@ -647,6 +647,8 @@ impl Server {
                     roots: opts.assistant_roots.clone(),
                     limits: akit_assistant::model::Limits::default(),
                     proxy_addr: opts.assistant_proxy_addr.clone(),
+                    // The read tools read the Admin API in process (I162).
+                    api: Some(Arc::new(LocalApi(shared.clone()))),
                     log: Arc::new(|msg: String| {
                         akit_observe::logger::log(
                             akit_observe::logger::Logger::Admin,
@@ -1202,6 +1204,124 @@ pub(crate) fn submit_detached(
     }
 }
 
+/// The Admin API's reads, called in process by the console's assistant (I162, fit's
+/// `admincall.go`): what its read tools ask of `GET /config[/<pointer>]`, `/config/effective`,
+/// `/config/check`, `/versions[/<n>]`, `/status`, `/node`, `/cache`, `/metrics`, `/schema`, and
+/// `POST /config/render`. Answered at once, from what the API keeps: no control thread, no
+/// pool; nothing else is reachable, a change least of all. Its secrets are redacted as the
+/// API's own answers are.
+pub(crate) fn local_answer(
+    shared: &Shared,
+    method: &str,
+    path: &str,
+    query: &str,
+    body: Vec<u8>,
+) -> Response {
+    let param = |name: &str| {
+        query
+            .split('&')
+            .filter_map(|kv| kv.split_once('='))
+            .find(|(k, _)| *k == name)
+            .map(|(_, v)| v.to_owned())
+    };
+    match (method, path) {
+        ("POST", "/config/render") => crate::text::render_body(param("format").as_deref(), body),
+        ("POST", "/config/validate") => local_validate(&shared.configs, &body),
+        ("GET", "/config/effective") => effective(&shared.configs.effective()),
+        ("GET", "/config/check") => crate::check::check(
+            &shared.configs,
+            shared.status.as_ref(),
+            shared.node.as_ref(),
+        ),
+        ("GET", "/versions") => versions(&shared.configs),
+        ("GET", p) if p.starts_with("/versions/") => {
+            version(&shared.configs, p.get("/versions/".len()..).unwrap_or(""))
+        }
+        ("GET", "/status") => crate::status::status(&shared.configs, shared.status.as_ref()),
+        ("GET", "/node") => crate::node::answer(
+            &shared.configs,
+            shared.node.as_ref(),
+            shared.metrics.is_some(),
+        ),
+        ("GET", "/cache") => crate::cache::zones(),
+        ("GET", "/schema") => crate::node::schema_answer(),
+        ("GET", "/metrics") => match &shared.metrics {
+            Some(write) => {
+                let mut out = Vec::new();
+                write(&mut out);
+                Response::with_body(200, METRICS_CONTENT_TYPE, out)
+            }
+            None => error(404, "there is no such endpoint"),
+        },
+        ("GET", p) if p == "/config" || p.starts_with("/config/") => {
+            get_config_of(None, &shared.configs, p)
+        }
+        _ => error(
+            404,
+            "the assistant reads the Admin API's config, versions, status, node, check, cache, \
+             metrics and schema only",
+        ),
+    }
+}
+
+/// The assistant's check of a whole config, JSON, as `akit validate` reads one: what it holds
+/// redacted is the running config's again (as a change's is), then it is read and checked;
+/// nothing is applied. `{"valid", "errors": [{"path", "line", "col", "msg"}]}`.
+fn local_validate(configs: &Configs, body: &[u8]) -> Response {
+    let Some(mut v) = std::str::from_utf8(body)
+        .ok()
+        .and_then(|t| akit_config::value::parse(t).ok())
+    else {
+        return error(400, "the config is not JSON");
+    };
+    let old = akit_config::value::parse(configs.current().data()).ok();
+    if let Err(msg) = redact::restore(&mut v, old.as_ref(), "the config") {
+        return json(
+            200,
+            format!("{{\"valid\":false,\"errors\":[{{\"msg\":{}}}]}}\n", {
+                let mut q = String::new();
+                write_string(&mut q, &msg);
+                q
+            }),
+        );
+    }
+    let text = v.to_json();
+    let mut b = String::from("{\"valid\":");
+    match akit_config::from_json(&text, None) {
+        Ok(_) => b.push_str("true"),
+        Err(errs) => {
+            b.push_str("false,\"errors\":[");
+            for (i, e) in errs.0.iter().take(50).enumerate() {
+                if i > 0 {
+                    b.push(',');
+                }
+                b.push_str("{\"path\":");
+                write_string(&mut b, &e.path);
+                b.push_str(&format!(",\"line\":{},\"col\":{},\"msg\":", e.line, e.col));
+                write_string(&mut b, &e.msg);
+                b.push('}');
+            }
+            b.push(']');
+        }
+    }
+    b.push_str("}\n");
+    json(200, b)
+}
+
+/// The Admin API's reads, in process, for the assistant's tools (I162).
+struct LocalApi(Shared);
+
+impl akit_assistant::Api for LocalApi {
+    fn call(&self, method: &str, target: &str, body: Vec<u8>) -> akit_assistant::ApiAnswer {
+        let (path, query) = target.split_once('?').unwrap_or((target, ""));
+        let r = local_answer(&self.0, method, path, query, body);
+        akit_assistant::ApiAnswer {
+            status: r.status,
+            body: r.body,
+        }
+    }
+}
+
 /// What must not reach the API, refused as fit refuses it: with a token asked for, a request
 /// without it (401), but for the dashboard's files, which hold no data and ask for the token
 /// themselves (I63); a request from a web page, which a browser marks with `Origin` (but a read
@@ -1394,11 +1514,13 @@ pub(crate) fn read_body(
 
 /// `GET /config[/<pointer>]`.
 fn get_config(ctx: &Context, configs: &Configs, path: &str) -> Response {
+    get_config_of(ctx.header("If-None-Match"), configs, path)
+}
+
+/// `GET /config[/<pointer>]`, with the request's `If-None-Match`.
+fn get_config_of(if_none_match: Option<&str>, configs: &Configs, path: &str) -> Response {
     let v = configs.current();
-    if ctx
-        .header("If-None-Match")
-        .is_some_and(|m| etag_matches(m, &v.etag))
-    {
+    if if_none_match.is_some_and(|m| etag_matches(m, &v.etag)) {
         return Response::new(304)
             .header("ETag", &v.etag)
             .header(VERSION_HEADER, v.number.to_string());

@@ -21,6 +21,10 @@ akio-crypto = { workspace = true }
 # The requests the console module answers.
 akio-http = { workspace = true }
 akit-config = { workspace = true }
+# Secrets found in what the tools hand a model (fit's patterns), and data.redact's in Go's
+# syntax (akit-router's compiler, as the config checked them).
+akio-regex = { workspace = true }
+akit-router = { workspace = true }
 # The console module the assistant is served as (akit_roles::pages::Module).
 akit-roles = { workspace = true }
 

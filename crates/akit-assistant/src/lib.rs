@@ -23,23 +23,37 @@
 //! POST /api/providers/test  {"provider", "key", "model", "models_only"}: the provider, saved or
 //!                           not, tried: its model list (15 s), then a short call (30 s);
 //!                           4 at once
+//! POST /api/chat            {"message" | "retry" | "answer", "conversation", "page", "lang"}:
+//!                           the chat, as Server-Sent Events ([`chat`])
+//! POST /api/chat/stop       {"conversation"}: its chat stopped
+//! GET  /api/tools           the tools, and which this user may call
+//! GET  /api/conversations   the user's conversations, the latest first
+//! GET  /api/conversations/<id>, DELETE  one, with the question it waits on; deleted
 //! ```
 //!
 //! Nothing here blocks an I/O thread (rule 1): what writes the store runs on a pool of the
 //! assistant's own, one write at a time.
 
+pub mod chat;
+pub mod conv;
+mod endpoints;
 pub mod json;
 pub mod model;
+pub mod prompt;
+pub mod redact;
+pub mod registry;
 pub mod settings;
 mod test;
+pub mod tools;
 
 pub use test::{CALL_WAIT, MAX_TESTS, MODELS_WAIT};
 #[cfg(any(test, feature = "stand-ins"))]
 pub mod standin;
 
-use std::collections::BTreeMap;
-use std::sync::atomic::AtomicUsize;
+use std::collections::{BTreeMap, HashMap};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::time::Instant;
 
 use akio::{Pool, PoolConfig};
 use akio_http::{Context, Detached, Method, Response};
@@ -54,6 +68,10 @@ pub const MODULE_ID: &str = "ai";
 pub const SECTION: &str = "assistant";
 /// The writes of the store waiting for the pool; one more is answered 503.
 pub const MAX_WRITES_WAITING: usize = 16;
+
+/// The threads the tools run on, and the calls waiting for one.
+const TOOL_THREADS: usize = 4;
+const TOOL_QUEUE: usize = 64;
 
 /// What a save answers without a store: fit's, in akit's words.
 pub const NO_STORE: &str = "the assistant's settings are not saved: akit has no admin.store, so \
@@ -79,6 +97,22 @@ pub type Log = Arc<dyn Fn(String) + Send + Sync>;
 
 /// The running config, as JSON: whose `llm.proxy` an `llm_proxy` provider calls.
 pub type Running = Arc<dyn Fn() -> String + Send + Sync>;
+
+/// An answer of the Admin API, called in process.
+#[derive(Debug, Clone)]
+pub struct ApiAnswer {
+    /// Its status.
+    pub status: u16,
+    /// Its body.
+    pub body: Vec<u8>,
+}
+
+/// The Admin API's reads, called in process (fit's `admincall.go`): what the read tools ask of
+/// it, as the console's pages do. Called on the assistant's tools' pool, where it may block.
+pub trait Api: Send + Sync {
+    /// `method` on `target` (a path and its query) with `body`.
+    fn call(&self, method: &str, target: &str, body: Vec<u8>) -> ApiAnswer;
+}
 
 /// Where `llm.proxy`'s agents' API listens, its port as bound; `None` while it does not run.
 pub type ProxyAddr = Arc<dyn Fn() -> Option<std::net::SocketAddr> + Send + Sync>;
@@ -108,6 +142,8 @@ pub struct Options {
     /// Where `llm.proxy`'s API is bound, which an `llm_proxy` provider calls; the running
     /// config's address without it.
     pub proxy_addr: Option<ProxyAddr>,
+    /// The Admin API, in process, which the read tools read; without it they say so.
+    pub api: Option<Arc<dyn Api>>,
 }
 
 impl std::fmt::Debug for Options {
@@ -138,6 +174,18 @@ struct Inner {
     client: Option<model::Client>,
     /// The provider tests under way.
     tests: AtomicUsize,
+    /// The tools the model may call.
+    registry: registry::Registry,
+    /// The users' conversations.
+    chats: Mutex<conv::Chats>,
+    /// The chats under way, by user and conversation.
+    running: Mutex<HashMap<(String, String), Arc<chat::Chat>>>,
+    /// The chats under way, against `max_concurrent_chats`.
+    slots: AtomicUsize,
+    /// Where the tools run.
+    tools_pool: Arc<Pool>,
+    /// When the assistant started.
+    started: Instant,
 }
 
 impl Assistant {
@@ -192,12 +240,22 @@ impl Assistant {
             lim.max_stream_bytes = state.settings.limits.stream_bytes();
             model::Client::new(Arc::clone(e), lim, o.roots.clone())
         });
+        let mut tc = PoolConfig::default();
+        tc.min_threads = 0;
+        tc.max_threads = TOOL_THREADS;
+        tc.queue_capacity = TOOL_QUEUE;
         Assistant(Arc::new(Inner {
             o,
             state: Mutex::new(state),
             pool: Pool::new(cfg),
             client,
             tests: AtomicUsize::new(0),
+            registry: registry::Registry::new(tools::read_tools()),
+            chats: Mutex::new(conv::Chats::default()),
+            running: Mutex::new(HashMap::new()),
+            slots: AtomicUsize::new(0),
+            tools_pool: Pool::new(tc),
+            started: Instant::now(),
         }))
     }
 
@@ -205,6 +263,190 @@ impl Assistant {
     #[must_use]
     pub fn client(&self) -> Option<&model::Client> {
         self.0.client.as_ref()
+    }
+
+    /// The tools the model may call.
+    #[must_use]
+    pub fn registry(&self) -> &registry::Registry {
+        &self.0.registry
+    }
+
+    /// The redactor of what the tools hand a model under `s`: the providers' keys, from the
+    /// store and the environment, and `data.redact`'s patterns.
+    #[must_use]
+    pub fn redactor(&self, s: &Settings) -> redact::Redactor {
+        let mut literals: Vec<String> = self
+            .state()
+            .keys
+            .values()
+            .map(|k| k.expose().to_owned())
+            .collect();
+        for p in &s.providers {
+            if !p.api_key_env.is_empty() {
+                if let Ok(k) = std::env::var(&p.api_key_env) {
+                    literals.push(k);
+                }
+            }
+        }
+        redact::Redactor::new(literals, &s.data.redact)
+    }
+
+    /// The Admin API's answer to `method` on `target`, in process: the body of a 2xx, or the
+    /// error it gave. On the tools' pool.
+    ///
+    /// # Errors
+    ///
+    /// The API is not reachable here, or answered otherwise than 2xx.
+    pub fn api_json(&self, method: &str, target: &str, body: Vec<u8>) -> Result<String, String> {
+        let Some(api) = &self.0.o.api else {
+            return Err("the Admin API is not reachable from the assistant here".to_owned());
+        };
+        let a = api.call(method, target, body);
+        let text = String::from_utf8_lossy(&a.body).into_owned();
+        if (200..300).contains(&a.status) {
+            return Ok(text);
+        }
+        let msg = akit_config::value::parse(&text)
+            .ok()
+            .map(|v| json::str_of(&v, "error").to_owned())
+            .filter(|m| !m.is_empty())
+            .unwrap_or_else(|| prompt::clip(&text, 512));
+        Err(format!("the Admin API answered {}: {msg}", a.status))
+    }
+
+    fn chats(&self) -> MutexGuard<'_, conv::Chats> {
+        self.0.chats.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// `user`'s conversations, read from the store the first time.
+    fn user_chats<'c>(&self, chats: &'c mut conv::Chats, user: &str) -> &'c mut conv::UserChats {
+        let u = chats.users.entry(user.to_owned()).or_default();
+        if !u.loaded {
+            u.loaded = true;
+            if let Some(data) = self
+                .0
+                .o
+                .store
+                .as_ref()
+                .and_then(|s| s.section(&conv::section_of(user)))
+            {
+                match conv::UserChats::read(&data) {
+                    Some(k) => *u = k,
+                    None => (self.0.o.log)(format!(
+                        "assistant: the conversations kept for {user:?} do not load, and are \
+                         started again"
+                    )),
+                }
+            }
+        }
+        u
+    }
+
+    /// Has `user`'s conversations written to the store, on the pool, after what waits.
+    fn save_chats(&self, user: &str) {
+        if self.0.o.store.is_none() {
+            return;
+        }
+        {
+            let mut chats = self.chats();
+            chats.dirty.insert(user.to_owned());
+            if chats.saving {
+                return;
+            }
+            chats.saving = true;
+        }
+        let me = self.clone();
+        let job = Box::new(move || me.save_dirty());
+        if self.0.pool.try_execute(job).is_err() {
+            // The pool is full: the next chat that ends writes it.
+            self.chats().saving = false;
+        }
+    }
+
+    fn save_dirty(&self) {
+        loop {
+            let (user, data) = {
+                let mut chats = self.chats();
+                let Some(user) = chats.dirty.pop_first() else {
+                    chats.saving = false;
+                    return;
+                };
+                let data = chats.users.get(&user).map(conv::UserChats::section);
+                (user, data)
+            };
+            let (Some(data), Some(store)) = (data, &self.0.o.store) else {
+                continue;
+            };
+            if let Err(e) = store.set_section(&conv::section_of(&user), data.as_bytes()) {
+                (self.0.o.log)(format!(
+                    "assistant: the conversations of {user:?} are kept in memory only: {e}"
+                ));
+            }
+        }
+    }
+
+    fn take_slot(&self, max: u64) -> bool {
+        let max = usize::try_from(max).unwrap_or(usize::MAX);
+        let mut n = self.0.slots.load(Ordering::SeqCst);
+        loop {
+            if n >= max {
+                return false;
+            }
+            match self.0.slots.compare_exchange_weak(
+                n,
+                n.saturating_add(1),
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+            ) {
+                Ok(_) => return true,
+                Err(now) => n = now,
+            }
+        }
+    }
+
+    fn give_slot(&self) {
+        let mut n = self.0.slots.load(Ordering::SeqCst);
+        while n > 0 {
+            match self.0.slots.compare_exchange_weak(
+                n,
+                n.saturating_sub(1),
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+            ) {
+                Ok(_) => return,
+                Err(now) => n = now,
+            }
+        }
+    }
+
+    fn start_chat(&self, user: &str, conv: &str, c: &Arc<chat::Chat>) {
+        self.0
+            .running
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert((user.to_owned(), conv.to_owned()), Arc::clone(c));
+    }
+
+    /// A chat ended: its slot given back.
+    fn end_chat(&self, user: &str, conv: &str) {
+        let gone = self
+            .0
+            .running
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .remove(&(user.to_owned(), conv.to_owned()));
+        if gone.is_some() {
+            self.give_slot();
+        }
+    }
+
+    fn running(&self, user: &str, conv: &str) -> Option<Arc<chat::Chat>> {
+        self.0
+            .running
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(&(user.to_owned(), conv.to_owned()))
+            .cloned()
     }
 
     /// Closes the model client: calls after it fail.
@@ -360,6 +602,15 @@ impl Module for Assistant {
             ("/api/settings", Method::Put) => self.put(ctx, user),
             ("/api/settings", _) => ctx.respond(not_allowed("GET, PUT")),
             ("/api/providers/test", Method::Post) => self.test(ctx),
+            ("/api/chat", Method::Post) => self.chat(ctx, user),
+            ("/api/chat/stop", Method::Post) => self.stop_chat(ctx, user),
+            ("/api/tools", Method::Get) => ctx.respond(pages::json(200, self.tools_view(user))),
+            ("/api/conversations", Method::Get) => self.conversations(ctx, user),
+            (p, Method::Get | Method::Delete) if p.starts_with("/api/conversations/") => {
+                let id = p.trim_start_matches("/api/conversations/").to_owned();
+                let delete = method == Method::Delete;
+                self.conversation(ctx, user, &id, delete);
+            }
             ("/api/providers/test", _) => ctx.respond(not_allowed("POST")),
             _ => ctx.respond(pages::no_endpoint()),
         }

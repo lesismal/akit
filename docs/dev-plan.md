@@ -291,7 +291,8 @@ Tunnel and LLM track; I110–I114 are the WebRTC track, and I115–I119 are rese
 | **After 1.0: AI assistant** | | | |
 | I160 | The assistant I: `admin.assistant` in the config, its settings and keys in the store, the module `ai` | I93c, I91 | done |
 | I161 | The assistant II: the model client and the provider test | I160, I107 | done |
-| I162 | The assistant III: the chat and the read tools | I161 | todo |
+| I162 | The assistant III: the chat and the read tools | I161 | done |
+| I162b | The assistant III b: `log_tail` on a ring of akit's own log, `access_log_sample`, `adapt_convert` | I162 | todo |
 | I163 | The assistant IV: proposals, levels and the audit log | I162 | todo |
 | I164 | The assistant V: skills | I162 | todo |
 | I165 | The assistant VI: Ask AI, migration and review | I163, I164, I74 | todo |
@@ -2746,6 +2747,19 @@ of the model APIs on port 0, never to a real API or with a real key.
   the panel works in a browser.
 - **Touches**: `akit-assistant`, `akit-admin`, `akit-observe` (the log's ring), `docs`.
 - **fit**: `assistant/{chat,prompt,registry,tools_read,redact,conversations,admincall}.go`; I125.
+- **Status**: done (2026-11-28), but for `log_tail`, `access_log_sample` and `adapt_convert`,
+  split into I162b. See the progress log.
+
+### I162b The assistant III b: the logs' tools and the converter
+
+- **Do**: fit's `log_tail` on a bounded ring of akit's own log (1000 messages of 2 KiB, by
+  logger, level and text, behind `data.send_logs`), `access_log_sample` from the end of the access
+  log's file (512 KiB, behind `data.send_access_log`), and `adapt_convert` through `akit adapt`'s
+  converters.
+- **Done when**: fit's tests of the three pass ported; nothing of the logs reaches a model with
+  their settings off.
+- **Touches**: `akit-assistant`, `akit-observe` (the ring), `akit-admin`, `docs`.
+- **fit**: `assistant/tools_read.go`, `logs/recent.go`; I125.
 - **Status**: todo.
 
 ### I163 The assistant IV: proposals, levels and the audit log

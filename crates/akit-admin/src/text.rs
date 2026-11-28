@@ -192,32 +192,42 @@ fn utf8(data: Vec<u8>) -> Result<String, Response> {
 
 /// `POST /config/render`.
 pub(crate) fn render(shared: &Arc<Shared>, ctx: &mut Context) {
-    let Some(f) = format_of(ctx.req().query_param("format")) else {
+    let format = ctx.req().query_param("format").map(str::to_owned);
+    if format_of(format.as_deref()).is_none() {
         return ctx.respond(bad_format(false));
-    };
+    }
     read_body(shared, ctx, &["application/json"], move |ctx, data| {
-        let r = utf8(data).and_then(|text| {
-            let std = standardize(&text)
-                .map_err(|e| error(400, &format!("the body is not a config: {e}")))?;
-            if !matches!(akit_config::value::parse(&std), Ok(Value::Object(_))) {
-                return Err(error(400, "a config is a JSON object"));
-            }
-            let out = document(&[Source {
-                name: None,
-                format: Format::Json,
-                src: &std,
-            }])
-            .map_err(|e| error(400, &format!("rendering the config: {e}")))?
-            .write(f.target)
-            .map_err(|e| error(400, &format!("rendering the config: {e}")))?;
-            Ok(Response::with_body(
-                200,
-                "text/plain; charset=utf-8",
-                out.into_bytes(),
-            ))
-        });
-        ctx.respond(r.unwrap_or_else(|e| e));
+        ctx.respond(render_body(format.as_deref(), data));
     });
+}
+
+/// `POST /config/render?format=` of `data`, the body: the config in that format, or why not
+/// (also the assistant's in-process call, I162).
+pub(crate) fn render_body(format: Option<&str>, data: Vec<u8>) -> Response {
+    let Some(f) = format_of(format) else {
+        return bad_format(false);
+    };
+    let r = utf8(data).and_then(|text| {
+        let std = standardize(&text)
+            .map_err(|e| error(400, &format!("the body is not a config: {e}")))?;
+        if !matches!(akit_config::value::parse(&std), Ok(Value::Object(_))) {
+            return Err(error(400, "a config is a JSON object"));
+        }
+        let out = document(&[Source {
+            name: None,
+            format: Format::Json,
+            src: &std,
+        }])
+        .map_err(|e| error(400, &format!("rendering the config: {e}")))?
+        .write(f.target)
+        .map_err(|e| error(400, &format!("rendering the config: {e}")))?;
+        Ok(Response::with_body(
+            200,
+            "text/plain; charset=utf-8",
+            out.into_bytes(),
+        ))
+    });
+    r.unwrap_or_else(|e| e)
 }
 
 /// `POST /config/parse`.

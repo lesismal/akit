@@ -425,8 +425,10 @@ dependencies = [
  "akio",
  "akio-crypto",
  "akio-http",
+ "akio-regex",
  "akit-config",
  "akit-roles",
+ "akit-router",
 ]
 
 [[package]]

@@ -605,3 +605,84 @@ fn check(kind: &str, body: &Value) -> Result<u8, &'static str> {
     }
     Ok(2)
 }
+
+/// A turn of a scripted model: a text answer, or tool calls (name, arguments JSON), each answer
+/// as Chat Completions streams it.
+#[derive(Debug, Clone)]
+pub enum Turn {
+    /// An answer of text, streamed in pieces of at most 16 bytes.
+    Text(String),
+    /// Tool calls, by name and arguments.
+    Tools(Vec<(String, String)>),
+    /// An answer of `n` bytes of text, in pieces of 64 KiB, for the bounds and backpressure.
+    Big(usize),
+}
+
+/// A model speaking Chat Completions (an `openai_compatible` provider at its `/v1`) that answers
+/// each call with the next of `turns`, the last again once they are spent; its requests are
+/// kept, for tests to look for secrets in.
+#[must_use]
+pub fn scripted(turns: Vec<Turn>) -> Server {
+    let next = Arc::new(Mutex::new(0usize));
+    Server::start(move |r, c| {
+        if r.method == "GET" {
+            return c.whole(
+                200,
+                "application/json",
+                br#"{"object":"list","data":[{"id":"m"}]}"#,
+            );
+        }
+        let i = {
+            let mut n = next.lock().unwrap();
+            let i = (*n).min(turns.len().saturating_sub(1));
+            *n += 1;
+            i
+        };
+        let Some(turn) = turns.get(i) else {
+            return fail(c, 500, "no turn scripted");
+        };
+        c.head(200, &[("Content-Type", "text/event-stream")]);
+        let usage = r#"{"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":5}}"#;
+        match turn {
+            Turn::Text(t) => {
+                let chars: Vec<char> = t.chars().collect();
+                for piece in chars.chunks(16) {
+                    let s: String = piece.iter().collect();
+                    let mut b = String::from("{\"choices\":[{\"delta\":{\"content\":");
+                    akit_config::value::write_string(&mut b, &s);
+                    b.push_str("}}]}");
+                    if !c.chunk(format!("data: {b}\n\n").as_bytes()) {
+                        return;
+                    }
+                }
+            }
+            Turn::Tools(calls) => {
+                for (k, (name, args)) in calls.iter().enumerate() {
+                    let mut a = String::new();
+                    akit_config::value::write_string(&mut a, args);
+                    let ev = format!(
+                        "{{\"choices\":[{{\"delta\":{{\"tool_calls\":[{{\"index\":{k},\"id\":\"call_{i}_{k}\",\"function\":{{\"name\":\"{name}\",\"arguments\":{a}}}}}]}}}}]}}"
+                    );
+                    c.chunk(format!("data: {ev}\n\n").as_bytes());
+                }
+            }
+            Turn::Big(n) => {
+                let piece = format!(
+                    "data: {{\"choices\":[{{\"delta\":{{\"content\":\"{}\"}}}}]}}\n\n",
+                    "z".repeat(64 << 10)
+                );
+                for _ in 0..n.div_ceil(64 << 10) {
+                    if !c.chunk(piece.as_bytes()) {
+                        return;
+                    }
+                }
+            }
+        }
+        c.chunk(
+            format!(
+                "data: {{\"choices\":[{{\"delta\":{{}},\"finish_reason\":\"stop\"}}]}}\n\ndata: {usage}\n\ndata: [DONE]\n\n"
+            )
+            .as_bytes(),
+        );
+    })
+}
