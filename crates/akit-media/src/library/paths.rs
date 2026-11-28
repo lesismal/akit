@@ -48,6 +48,14 @@ pub enum FileError {
     Changed(String),
     /// No such item in the catalog.
     NoItem,
+    /// The library has no such root.
+    NoRoot(String),
+    /// A rename or move to where the item is.
+    NoChange,
+    /// A sidecar the library would not read, as it says.
+    BadSidecar(String),
+    /// A new name the library would read as something else, as it says.
+    BadName(String),
     /// The disk said no.
     Io(String),
 }
@@ -76,6 +84,15 @@ impl std::fmt::Display for FileError {
             FileError::Outside => f.write_str("the file leads out of its root"),
             FileError::Changed(m) => write!(f, "the file changed since it was scanned: {m}"),
             FileError::NoItem => f.write_str("no such item in the catalog"),
+            FileError::NoRoot(r) => {
+                write!(
+                    f,
+                    "no such item in the catalog: the library has no root {r:?}"
+                )
+            }
+            FileError::NoChange => f.write_str("the item is there already"),
+            FileError::BadSidecar(m) => write!(f, "not a sidecar the library reads: {m}"),
+            FileError::BadName(m) => write!(f, "not a path the library writes: {m}"),
             FileError::Io(m) => f.write_str(m),
         }
     }
@@ -88,10 +105,17 @@ impl FileError {
     #[must_use]
     pub fn status(&self) -> u16 {
         match self {
-            FileError::NoItem | FileError::NoUpload | FileError::NoUploads | FileError::Removed => {
-                404
-            }
-            FileError::BadPath | FileError::NotMedia | FileError::UploadSize => 400,
+            FileError::NoItem
+            | FileError::NoRoot(_)
+            | FileError::NoUpload
+            | FileError::NoUploads
+            | FileError::Removed => 404,
+            FileError::BadPath
+            | FileError::BadName(_)
+            | FileError::NotMedia
+            | FileError::UploadSize
+            | FileError::NoChange
+            | FileError::BadSidecar(_) => 400,
             FileError::Outside => 403,
             FileError::Exists(_)
             | FileError::Changed(_)

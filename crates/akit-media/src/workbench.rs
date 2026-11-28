@@ -276,6 +276,64 @@ impl View {
     }
 }
 
+/// What uses the item `id` of `library` (fit's `usage`): the channels of the running config whose
+/// list or schedule names it, those playing it now or reading it to play next, and the playback
+/// sessions playing it, known where a `vod` route of the library signs URLs. Its value, and
+/// whether anything uses it.
+#[must_use]
+pub fn usage(key: usize, view: &View, library: &str, id: &str) -> (Value, bool) {
+    let mut channels = Vec::new();
+    if let Some(st) = view.config.as_ref().and_then(|c| c.streaming.as_ref()) {
+        for ch in st.channels.iter().filter(|c| c.library == library) {
+            if ch.items.iter().any(|i| i == id) || ch.schedule.iter().any(|sl| sl.item == id) {
+                channels.push(ch.name.clone());
+            }
+        }
+    }
+    let mut playing = Vec::new();
+    if let Some(m) = crate::channels::lookup(key) {
+        for ch in m.channels() {
+            let plays =
+                |x: &Option<crate::channels::ItemStatus>| x.as_ref().is_some_and(|i| i.item == id);
+            if ch.library == library && (plays(&ch.now) || plays(&ch.next)) {
+                playing.push(ch.name);
+            }
+        }
+    }
+    let (mut sessions, mut counted) = (0u64, false);
+    for rt in view
+        .routes
+        .iter()
+        .filter(|r| !r.hls && r.library == library)
+    {
+        let Some(p) = crate::auth::registry::lookup(key, &rt.auth) else {
+            continue;
+        };
+        if !p.url_signing() {
+            continue;
+        }
+        counted = true;
+        let res = format!("{}{id}/", rt.prefix);
+        sessions = sessions.saturating_add(
+            p.sessions()
+                .iter()
+                .filter(|ss| !ss.ended && ss.resource == res)
+                .count() as u64,
+        );
+    }
+    let in_use = !channels.is_empty() || !playing.is_empty() || sessions > 0;
+    let v = obj(vec![
+        ("library", s(library)),
+        ("item", s(id)),
+        ("channels", strings(&channels)),
+        ("playing", strings(&playing)),
+        ("sessions", n(sessions)),
+        ("sessions_counted", Value::Bool(counted)),
+        ("in_use", Value::Bool(in_use)),
+    ]);
+    (v, in_use)
+}
+
 /// The host and port of a listener's address, `:8080` or `[::1]:80`; port 0 when it has none.
 fn split_host_port(a: &str) -> (String, u16) {
     let (h, p) = match a.rsplit_once(':') {

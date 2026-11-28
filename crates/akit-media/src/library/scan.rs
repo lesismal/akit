@@ -47,7 +47,7 @@ pub(crate) fn kind_of_name(name: &str) -> Option<Kind> {
     }
 }
 
-fn kind_name(k: Kind) -> &'static str {
+pub(crate) fn kind_name(k: Kind) -> &'static str {
     match k {
         Kind::Media => "media file",
         Kind::Subtitle => "subtitle",
@@ -155,7 +155,7 @@ fn subtitle_language(part: &str) -> bool {
 }
 
 /// A media file's stem split into the item's base and the rendition's label.
-fn split_label(stem: &str) -> (&str, &str) {
+pub(crate) fn split_label(stem: &str) -> (&str, &str) {
     if let Some(i) = stem.rfind('.') {
         if i > 0 {
             let label = stem.get(i.saturating_add(1)..).unwrap_or("");
@@ -179,7 +179,7 @@ fn label_language(label: &str) -> String {
 
 /// The path under its root of `file`, a sidecar's slash path relative to its directory `dir`;
 /// `None` when it leads out of `dir` or is not a plain relative path.
-fn under_dir(dir: &str, file: &str) -> Option<String> {
+pub(crate) fn under_dir(dir: &str, file: &str) -> Option<String> {
     if file.is_empty() || file.starts_with('/') || file.contains(['\\', '\0']) {
         return None;
     }

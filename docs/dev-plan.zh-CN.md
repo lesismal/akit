@@ -251,7 +251,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I146 | 推送目标：`streaming.push` 和频道的 `push` | I145 | done |
 | I147 | 加密分片：`vod` 和频道 HLS 上的 `encrypt` | I144, I145 | done |
 | I148 | 视频网站：`media_pages` 的 `libraries`、`vod` 和 `channels`，示例，指南 | I144, I145 | done |
-| I149 | 控制台的媒体库页面及其文件管理（fit 的 I138、I139） | I148 | todo |
+| I149 | 控制台的媒体库页面及其文件管理（fit 的 I138、I139） | I148 | done |
 | I150 | BitTorrent I：配置中的 `bittorrent.client` 和 `bittorrent.tracker`，fit 的字段、检查和冲突；后续迭代才运行的内容以"尚不支持"拒绝 | I98 | done |
 | I151 | BitTorrent II：基于 akio-bittorrent 的 `TrackerServer` 的 tracker 角色和 `bt_tracker`：HTTP 和 UDP、允许列表、访问控制、上限、统计、其控制台 | I150, I100 | done |
 | I152 | BitTorrent III：基于 akio-bittorrent 的 `Client` 的客户端角色：`data_dir` 中的状态、不经校验恢复、原地或以新客户端重载、其 API 和控制台 | I150, I151 | done |
@@ -1928,7 +1928,7 @@ SAMPLE-AES（fib 的 A69）；它缺少的部分作为 akio A295–A300 请求�
 - **完成标准**：移植后的 fit 的 `medialib` 上传和管理测试通过；页面在浏览器中对运行中的 akit 正常工作。
 - **涉及**：`akit-media`（`library`）、`akit-admin`。
 - **fit**：`medialib/upload.go`、`medialib/manage.go`、工作台的 `gw.medialib`；I138、I139。
-- **状态**：进行中（2026-11-28）：页面的只读部分及其端点、以及上传已完成；重命名、移动、删除和补充说明文件随后到来。见进度日志。
+- **状态**：已完成（2026-11-28）：页面的只读部分及其端点、上传，以及文件的重命名、移动、删除和补充说明文件的编辑。见进度日志。
 
 ### BitTorrent
 

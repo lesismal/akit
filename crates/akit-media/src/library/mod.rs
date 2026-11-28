@@ -18,6 +18,7 @@ pub mod admin;
 pub mod catalog;
 pub mod files;
 pub mod keys;
+mod manage;
 pub mod notice;
 mod paths;
 pub mod pool;
@@ -40,6 +41,7 @@ use akit_roles::host::{Host, Info, MetricsFn, Role};
 
 pub use catalog::{Catalog, File, Item, Problem, Rendition, Subtitle, Track};
 pub use files::{Handle, to_webvtt};
+pub use manage::{Change, MAX_DIRS, MAX_SIDECAR_FILES, SidecarView};
 pub use paths::FileError;
 pub use pool::{Pool, PoolStats};
 pub use scan::MAX_DEPTH;

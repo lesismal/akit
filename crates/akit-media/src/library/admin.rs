@@ -13,7 +13,18 @@
 //! GET    /media/library/{name}/uploads/{id}  one, its offset also in Upload-Offset (HEAD too)
 //! PATCH  /media/library/{name}/uploads/{id}  write the body at Upload-Offset
 //! DELETE /media/library/{name}/uploads/{id}  give it up
+//! GET    /media/library/{name}/dirs?root=       the directories of a root
+//! GET    /media/library/{name}/usage?item=      what plays an item: channels and sessions
+//! POST   /media/library/{name}/rename           {"item", "name", "force"}
+//! POST   /media/library/{name}/move             {"item", "dir", "force"}
+//! POST   /media/library/{name}/delete           {"item", "force"}
+//! GET    /media/library/{name}/sidecar?item=    an item's sidecar, or a draft
+//! PUT    /media/library/{name}/sidecar          {"item", "sidecar", "modified", "force"}
 //! ```
+//!
+//! A rename, move or delete of an item a channel names or plays, or a playback session plays,
+//! and a sidecar that changes such an item's ID, is refused 409 with what uses it, unless
+//! `force` is set (fit's `admin/mediafiles.go`).
 //!
 //! They read the libraries' state and answer on the API's thread; none touches the disk there.
 //! The uploads' (fit's `admin/mediafiles.go`) make, write and remove files on the library's
@@ -207,6 +218,11 @@ fn summarize(it: &Item) -> ItemSummary {
 
 /// Answers a request of the endpoints, `path` its path; false for a path that is not theirs.
 pub fn serve(key: usize, ctx: &mut Context) -> bool {
+    serve_with(key, None, ctx)
+}
+
+/// [`serve`], what uses an item read from `view`, the running config's (the Admin API's).
+pub fn serve_with(key: usize, view: Option<&crate::workbench::ViewFn>, ctx: &mut Context) -> bool {
     let path = ctx.path().to_owned();
     let Some(rest) = path.strip_prefix(PREFIX) else {
         return false;
@@ -217,6 +233,19 @@ pub fn serve(key: usize, ctx: &mut Context) -> bool {
     let method = ctx.method().clone();
     if let Some((name, id)) = uploads_path(rest) {
         uploads(key, ctx, &name, id.as_deref());
+        return true;
+    }
+    if let Some((name, op)) = rest
+        .strip_prefix('/')
+        .and_then(|r| r.split_once('/'))
+        .filter(|(_, op)| {
+            matches!(
+                *op,
+                "dirs" | "usage" | "rename" | "move" | "delete" | "sidecar"
+            )
+        })
+    {
+        files(key, view.cloned(), ctx, name, op);
         return true;
     }
     let read = matches!(method, Method::Get | Method::Head);
@@ -385,6 +414,251 @@ fn uploads(key: usize, ctx: &mut Context, name: &str, id: Option<&str>) {
         }
         (Some(id), Method::Patch) => patch(&l, ctx, id),
         (Some(_), _) => ctx.respond(not_allowed("GET, HEAD, PATCH, DELETE")),
+    }
+}
+
+/// A query parameter, decoded; "" when it is not there.
+fn query_of(ctx: &Context, k: &str) -> String {
+    crate::http::query_param(ctx.req().query().unwrap_or(""), k).unwrap_or_default()
+}
+
+/// A JSON member: a boolean, or false when it is not there.
+fn member_bool(m: &[(String, Value)], k: &str) -> Result<bool, Box<Response>> {
+    match m.iter().find(|(x, _)| x == k).map(|(_, v)| v) {
+        None | Some(Value::Null) => Ok(false),
+        Some(Value::Bool(b)) => Ok(*b),
+        Some(_) => Err(Box::new(error(
+            400,
+            &format!("the body: {k} is not a boolean"),
+        ))),
+    }
+}
+
+/// What a change answers: the change, or its error (with what a delete stopped part way did).
+fn change_answer(
+    r: Result<super::Change, (super::FileError, Option<Box<super::Change>>)>,
+) -> Response {
+    match r {
+        Ok(c) => json(200, &c.to_value()),
+        Err((e, Some(c))) => json(
+            e.status(),
+            &obj(vec![
+                ("error", Value::String(e.to_string())),
+                ("change", c.to_value()),
+            ]),
+        ),
+        Err((e, None)) => file_error(&e),
+    }
+}
+
+/// What uses the item, read on the crate's pool: `None` when nothing does or `force` is set;
+/// otherwise the 409 to answer.
+fn in_use(
+    key: usize,
+    view: Option<&crate::workbench::ViewFn>,
+    library: &str,
+    id: &str,
+    force: bool,
+) -> Option<Response> {
+    if force {
+        return None;
+    }
+    let v = view?;
+    let (u, used) = crate::workbench::usage(key, &v(), library, id);
+    used.then(|| {
+        json(
+            409,
+            &obj(vec![
+                (
+                    "error",
+                    Value::String(
+                        "the item is in use: a channel names or plays it, or a viewer plays it; send force to change it all the same"
+                            .to_owned(),
+                    ),
+                ),
+                ("usage", u),
+            ]),
+        )
+    })
+}
+
+/// The files' endpoints: `op` of the library `name`.
+fn files(
+    key: usize,
+    view: Option<crate::workbench::ViewFn>,
+    ctx: &mut Context,
+    name: &str,
+    op: &str,
+) {
+    let Some(l) = lookup(key, name) else {
+        return ctx.respond(error(
+            404,
+            &format!("no media library named {name:?} runs here"),
+        ));
+    };
+    let method = ctx.method().clone();
+    let get = matches!(method, Method::Get | Method::Head);
+    match op {
+        "dirs" if get => {
+            let mut root = query_of(ctx, "root");
+            if root.is_empty() {
+                root = l.roots().first().cloned().unwrap_or_default();
+            }
+            let Some(det) = ctx.detach() else { return };
+            let roots = l.roots();
+            l.dirs(&root.clone(), move |r| {
+                det.respond(match r {
+                    Ok(dirs) => json(
+                        200,
+                        &obj(vec![
+                            ("root", Value::String(root)),
+                            (
+                                "roots",
+                                Value::Array(roots.into_iter().map(Value::String).collect()),
+                            ),
+                            (
+                                "dirs",
+                                Value::Array(dirs.into_iter().map(Value::String).collect()),
+                            ),
+                            ("max", n(super::MAX_DIRS as u64)),
+                        ]),
+                    ),
+                    Err(e) => file_error(&e),
+                });
+            });
+        }
+        "usage" if get => {
+            let id = query_of(ctx, "item");
+            if l.item(&id).is_none() {
+                return ctx.respond(file_error(&super::FileError::NoItem));
+            }
+            let Some(det) = ctx.detach() else { return };
+            let library = l.name().to_owned();
+            crate::pool::submit(Box::new(move |late| {
+                det.respond(match (&view, late) {
+                    (_, true) => file_error(&super::FileError::Busy),
+                    (Some(v), false) => {
+                        json(200, &crate::workbench::usage(key, &v(), &library, &id).0)
+                    }
+                    (None, false) => json(
+                        200,
+                        &crate::workbench::usage(
+                            key,
+                            &crate::workbench::View::new(None, &[]),
+                            &library,
+                            &id,
+                        )
+                        .0,
+                    ),
+                });
+            }));
+        }
+        "sidecar" if get => {
+            let id = query_of(ctx, "item");
+            let Some(det) = ctx.detach() else { return };
+            l.read_sidecar(&id, move |r| {
+                det.respond(match r {
+                    Ok(v) => json(200, &v.to_value()),
+                    Err(e) => file_error(&e),
+                });
+            });
+        }
+        "rename" | "move" | "delete" if method == Method::Post => {
+            let op = op.to_owned();
+            read_json(ctx, move |ctx, m| {
+                let m = match m {
+                    Ok(m) => m,
+                    Err(r) => return ctx.respond(*r),
+                };
+                let fields = (|| {
+                    Ok::<_, Box<Response>>((
+                        member_str(&m, "item")?,
+                        member_str(&m, "name")?,
+                        member_str(&m, "dir")?,
+                        member_bool(&m, "force")?,
+                    ))
+                })();
+                let (item, new_name, dir, force) = match fields {
+                    Ok(f) => f,
+                    Err(r) => return ctx.respond(*r),
+                };
+                if l.item(&item).is_none() {
+                    return ctx.respond(file_error(&super::FileError::NoItem));
+                }
+                let Some(det) = ctx.detach() else { return };
+                crate::pool::submit(Box::new(move |late| {
+                    if late {
+                        return det.respond(file_error(&super::FileError::Busy));
+                    }
+                    if let Some(r) = in_use(key, view.as_ref(), l.name(), &item, force) {
+                        return det.respond(r);
+                    }
+                    let done = move |r| det.respond(change_answer(r));
+                    match op.as_str() {
+                        "rename" => l.rename_item(&item, &new_name, done),
+                        "move" => l.move_item(&item, &dir, done),
+                        _ => l.delete_item(&item, done),
+                    }
+                }));
+            });
+        }
+        "sidecar" if method == Method::Put => {
+            read_json(ctx, move |ctx, m| {
+                let m = match m {
+                    Ok(m) => m,
+                    Err(r) => return ctx.respond(*r),
+                };
+                let (item, force) = match (member_str(&m, "item"), member_bool(&m, "force")) {
+                    (Ok(i), Ok(f)) => (i, f),
+                    (Err(r), _) | (_, Err(r)) => return ctx.respond(*r),
+                };
+                let Some(it) = l.item(&item) else {
+                    return ctx.respond(file_error(&super::FileError::NoItem));
+                };
+                let sd = match m.iter().find(|(k, _)| k == "sidecar").map(|(_, v)| v) {
+                    None | Some(Value::Null) => {
+                        return ctx.respond(error(
+                            400,
+                            "the body names the item and its sidecar: {\"item\", \"sidecar\"}",
+                        ));
+                    }
+                    Some(v) => match super::manage::sidecar_from(v) {
+                        Ok(sd) => sd,
+                        Err(e) => return ctx.respond(file_error(&e)),
+                    },
+                };
+                // Go's zero time is no time; another time must parse.
+                let modified = match member_str(&m, "modified") {
+                    Ok(t) if t.is_empty() || t.starts_with("0001-01-01T00:00:00") => None,
+                    Ok(t) => match super::upload::parse_time(&t) {
+                        Some(t) => Some(t),
+                        None => return ctx.respond(error(400, "the body: modified is not a time")),
+                    },
+                    Err(r) => return ctx.respond(*r),
+                };
+                // A new ID is a new item to what names the old one.
+                let new_id = if sd.id.is_empty() {
+                    super::catalog::path_id(&it.path)
+                } else {
+                    sd.id.clone()
+                };
+                let Some(det) = ctx.detach() else { return };
+                crate::pool::submit(Box::new(move |late| {
+                    if late {
+                        return det.respond(file_error(&super::FileError::Busy));
+                    }
+                    if new_id != it.id {
+                        if let Some(r) = in_use(key, view.as_ref(), l.name(), &item, force) {
+                            return det.respond(r);
+                        }
+                    }
+                    l.write_sidecar(&item, &sd, modified, move |r| det.respond(change_answer(r)));
+                }));
+            });
+        }
+        "dirs" | "usage" => ctx.respond(not_allowed("GET, HEAD")),
+        "sidecar" => ctx.respond(not_allowed("GET, HEAD, PUT")),
+        _ => ctx.respond(not_allowed("POST")),
     }
 }
 

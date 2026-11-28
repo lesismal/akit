@@ -263,7 +263,7 @@ Tunnel and LLM track; I110–I114 are the WebRTC track, and I115–I119 are rese
 | I146 | Push targets: `streaming.push` and a channel's `push` | I145 | done |
 | I147 | Encrypted segments: `encrypt` on `vod` and on channels' HLS | I144, I145 | done |
 | I148 | A video site: `media_pages`' `libraries`, `vod` and `channels`, the example, the guide | I144, I145 | done |
-| I149 | The console's media library pages, and its files managed (fit's I138, I139) | I148 | todo |
+| I149 | The console's media library pages, and its files managed (fit's I138, I139) | I148 | done |
 | I150 | BitTorrent I: `bittorrent.client` and `bittorrent.tracker` in the config, fit's fields, checks and clashes; what later iterations run refused as not supported yet | I98 | done |
 | I151 | BitTorrent II: the tracker role and `bt_tracker` on akio-bittorrent's `TrackerServer`: HTTP and UDP, the allow-list, access, bounds, statistics, its console | I150, I100 | done |
 | I152 | BitTorrent III: the client role on akio-bittorrent's `Client`: the state in `data_dir`, restore without a check, reloads in place or by a new client, its API and console | I150, I151 | done |
@@ -2320,8 +2320,8 @@ is asked as akio A295–A300. Names akit shows are akit's (decision 037), format
   against a running akit.
 - **Touches**: `akit-media` (`library`), `akit-admin`.
 - **fit**: `medialib/upload.go`, `medialib/manage.go`, the workbench's `gw.medialib`; I138, I139.
-- **Status**: in progress (2026-11-28): the pages' read side and its endpoints, and the uploads,
-  done; rename, move, delete and sidecars to come. See the progress log.
+- **Status**: done (2026-11-28): the pages' read side and its endpoints, the uploads, and the
+  files renamed, moved and deleted and their sidecars edited. See the progress log.
 
 ### BitTorrent
 

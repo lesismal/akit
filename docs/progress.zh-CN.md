@@ -17,7 +17,7 @@
 | 下一步 | 外部安全审查（[范围](security/review-scope.zh-CN.md)），其发现完成 I80b；fit 对决定 035 所提议字段（CRL 文件、WASM 摘要）的答复；1.0 之后的各条线（[开发计划](dev-plan.zh-CN.md#10-之后)）：控制台与加密的 store 已完成（I89–I94、I93b、I93c）；fit 的 Admin API 对没有令牌的连接的规则，基于控制台的 slots（akio 的 A232）（日志已完成：I81–I83；访问控制列表已完成：I85–I87）；Gateway API 一致性测试的运行（tests/conformance，由维护者运行） |
 | akio 需求 | A1–A24、A29、A30、A32、A33、A35–A38、A45、A48、A49、A51–A54、A57、A58、A63–A66、A75、A78、A79、A90–A94、A105、A108、A109、A111–A113、A117、A132–A135、A148、A165–A172、A180、A200、A214、A215、A220、A230–A238、A245 和 A247–A249 已进入 akio 的 main 并锁定；A225（外部审查，L15）已提出（[akio API 请求](akio-api-requests.zh-CN.md)） |
 | 流媒体与媒体认证 | [I120–I126](dev-plan.zh-CN.md#流媒体与媒体认证)，fit 的 I115–I117（决定 040）：I120（配置中的 `media_auth` 和 `streaming`）、I121（策略、检查、`akit media-token`）I122（角色的媒体中心、RTMP、RTSP 和 SRT）、I123（`httpflv`、`hls`）、I124（WebRTC 端口、`stream_whip`、`stream_whep`）、I125（`media_pages`）和 I126（`whip`、`whep` 和 `webrtc_proxy` 上的 `auth`）已完成；媒体库的 `libraries`、`vod` 和 `channels` 等待其那条线；akio 请求 A263–A268 |
-| 媒体库与频道 | [I140–I149](dev-plan.zh-CN.md#媒体库与频道)，fit 的 I131–I139 和 I119（决定 043）：I140（配置中的 `media_library`）、I141（目录、角色 `media_library`、`/media/library`）、I142（`vod`）、I143（`keys`、`media_tokens`）、I144（`url_signing`）、I145（频道）、I146（推送目标）、I147（加密分片）和 I148（视频网站）已完成；akio 需求 A295–A298 |
+| 媒体库与频道 | [I140–I149](dev-plan.zh-CN.md#媒体库与频道)，fit 的 I131–I139 和 I119（决定 043）：I140（配置中的 `media_library`）、I141（目录、角色 `media_library`、`/media/library`）、I142（`vod`）、I143（`keys`、`media_tokens`）、I144（`url_signing`）、I145（频道）、I146（推送目标）、I147（加密分片）、I148（视频网站）和 I149（控制台的媒体页面、文件管理）已完成：这条线已完成；akio 需求 A295–A298 |
 
 ## 日志
 
@@ -195,6 +195,23 @@
     它对吞吐的影响留给基准任务测量（规则 30）。
   - 在 io_uring 上，`Engine::remove_listener` 在监听器的 accept 取消完成后才返回，重载移除的监听器此后不再接受连接；`H3Upload::finish`
     不再被其自身的响应拒绝；池压力监视器每 500 ms 采样一次（原为 100 ms）。
+### 2026-11-28：I149，媒体库文件的重命名、移动、删除及其补充说明文件
+
+- **构建**：fit 的 `medialib/manage.go` 和 `admin/mediafiles.go` 的其余部分（`akit_media::library::manage`）。条目在其目录中重命名
+  （以其命名的文件随之改名，补充说明文件在引用它们的地方重写；会被读作标签、海报或文件的新名字被拒绝），移动到其根目录下的某个目录
+  （每个文件保持其相对条目目录的路径），或删除其全部文件；每个文件都按目录中的状态检查（已变化为 409），只写入其根目录之内，符号
+  链接解析之后也是如此；重命名或移动中途失败时撤回已移动的文件；在媒体库的池上运行，一次一个变更。条目立即离开目录，并且不会出现在
+  变更之前开始的扫描中；随后请求的扫描按其现状列出它。条目的补充说明文件被读取，或按其文件名起草，并以要么全写要么不写的方式写入，
+  按扫描的方式检查（其文件存在、位于根目录内且类型正确；ID 不被其他条目占用；自其所基于的版本之后被写过则为 409）。列出根目录下的
+  目录，最多 2000 个。Admin API 的 `/media/library/{name}/dirs`、`/usage`（列表或节目表中提到条目的频道、正在播放它的频道，以及在
+  `vod` 路由签名地址时其播放会话）、`/rename`、`/move`、`/delete` 和 `/sidecar`（`GET`、`PUT`）：对正在使用的条目的变更，或改变其
+  ID 的补充说明文件，除非设置 `force`，否则以 409 拒绝并说明使用者。I149 完成。
+- **验证**：`tests/uploads.rs` 的 `files` 移植 fit 的 `TestMediaFiles`：目录；条目的使用情况；对正在使用的条目的变更被拒绝，然后
+  强制执行；移动和重命名、它们的 ID，以及目录的即时状态和扫描后的状态；各种拒绝；补充说明文件被读取、按读取内容写入、随后作为过期
+  版本被拒绝；补充说明文件的拒绝，包括正在使用的条目的新 ID；草稿；删除六个文件。在浏览器中对 `akit run`：条目页面起草并写入其
+  补充说明文件，并重命名条目，提示有频道提到并正在播放它，补充说明文件以新名字重写。
+- **下一步**：媒体库这条线已完成；计划中的下一项。
+
 ### 2026-11-28：I149，媒体库的上传
 
 - **构建**：fit 的上传（`medialib/upload.go`，`admin/mediafiles.go` 的上传端点）。akit-config 读取 `media_library` 的

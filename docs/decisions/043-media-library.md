@@ -248,3 +248,6 @@ not supported yet for this track.
   read are kept. A body cut short ends the write with what was written, as fit's read error does.
 - **The errors of the files say what fit's say without fit's `medialib:` prefix**, as akit's other
   library errors do; their statuses are fit's.
+- **What uses an item is read from the running config, on the crate's pool**: the media library's
+  endpoints take the Admin API's view of it (`library::admin::serve_with`), as the console's media
+  endpoints do; a change waits for that read before it is queued on the library's pool.

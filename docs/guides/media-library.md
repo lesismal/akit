@@ -39,10 +39,12 @@ With `admin.console`, the console's **Media library** pages browse each library'
 preview through a URL signed for the user logged in, edit the channels on a timeline, issue test
 URLs, list and end playback sessions, rotate keys kept in files, chart what is served, and upload files into a library's `upload_dir`,
 resumable after a cut connection (bounded by `max_upload_bytes`, `max_uploads`, `min_free_bytes`
-and `upload_expiry`). Behind
+and `upload_expiry`), and rename, move and delete items and edit their sidecars. Behind
 them, the Admin API's `POST /media/preview`, `GET /media/auth` (with `/sessions`,
 `/sessions/end`, `/rotate` and `/urls` of a policy), `GET /media/stats`, and a library's
-`/media/library/<name>/uploads`, whose `PATCH` writes a piece at `Upload-Offset`, as tus does.
+`/media/library/<name>/uploads`, whose `PATCH` writes a piece at `Upload-Offset`, as tus does,
+and its `/rename`, `/move`, `/delete` and `/sidecar`: an item that a channel names or plays, or a
+viewer plays, is changed only with `force`, as the pages ask before they send it.
 
 ## Video on demand
 

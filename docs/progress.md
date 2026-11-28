@@ -18,7 +18,7 @@ done and where the work differs from the plan.
 | Next | the external security review ([scope](security/review-scope.md)), whose findings finish I80b; fit's answer to the fields decision 035 proposes (CRL files, a WASM digest); the tracks after 1.0 ([the plan](dev-plan.md#after-10)): Console and encrypted store done (I89–I94, I93b, I93c); fit's Admin API rules for connections without the token, on the console's slots (akio's A232) (Logging done: I81–I83; Access lists done: I85–I87); the Gateway API's conformance run (tests/conformance, the maintainer's) |
 | akio requests | A1–A24, A29, A30, A32, A33, A35–A38, A45, A48, A49, A51–A54, A57, A58, A63–A66, A75, A78, A79, A90–A94, A105, A108, A109, A111–A113, A117, A132–A135, A148, A165–A172, A180, A200, A214, A215, A220, A230–A238, A245 and A247–A249 on akio's main and pinned; A225 (an external review, L15) requested ([akio API requests](akio-api-requests.md)) |
 | Streaming and media auth | [I120–I126](dev-plan.md#streaming-and-media-auth), fit's I115–I117 (decision 040): I120 (`media_auth` and `streaming` in the config), I121 (the policies, the checks, `akit media-token`), I122 (the role's hub, RTMP, RTSP and SRT), I123 (`httpflv`, `hls`), I124 (the WebRTC port, `stream_whip`, `stream_whep`), I125 (`media_pages`) and I126 (`auth` on `whip`, `whep` and `webrtc_proxy`) done; the media library's `libraries`, `vod` and `channels` wait for its track; akio requests A263–A268 |
-| Media library and channels | [I140–I149](dev-plan.md#media-library-and-channels), fit's I131–I139 and I119 (decision 043): I140 (`media_library` in the config) I141 (the catalog, the role `media_library`, `/media/library`) I142 (`vod`), I143 (`keys`, `media_tokens`), I144 (`url_signing`), I145 (channels), I146 (push targets), I147 (encrypted segments) and I148 (the video site) done; akio requests A295–A298 |
+| Media library and channels | [I140–I149](dev-plan.md#media-library-and-channels), fit's I131–I139 and I119 (decision 043): I140 (`media_library` in the config) I141 (the catalog, the role `media_library`, `/media/library`) I142 (`vod`), I143 (`keys`, `media_tokens`), I144 (`url_signing`), I145 (channels), I146 (push targets), I147 (encrypted segments), I148 (the video site) and I149 (the console's media pages, the files managed) done: the track is done; akio requests A295–A298 |
 
 ## Log
 
@@ -267,6 +267,33 @@ done and where the work differs from the plan.
   - On io_uring, `Engine::remove_listener` returns once the listener's accepts are cancelled, so a
     listener a reload removes takes no connection after it; `H3Upload::finish` is no longer
     refused by its own response; the pool pressure watcher samples every 500 ms (was 100 ms).
+### 2026-11-28: I149, a library's files renamed, moved, deleted, and their sidecars
+
+- **Built**: fit's `medialib/manage.go` and the rest of `admin/mediafiles.go`
+  (`akit_media::library::manage`). An item renamed in its directory (its files named after it,
+  its sidecar written again where it names one; a new name that reads as a label, a poster or a
+  file refused), moved to a directory of its root (each file keeping its path under the item's
+  directory), or deleted, every file of it; each file checked as the catalog has it (409 when it
+  changed), written only inside its root, links resolved; a rename or move that fails part way
+  moves back what it moved; on the library's pool, one change at a time. The item leaves the
+  catalog at once and stays out of a scan begun before; the scan asked for lists it as it is. An
+  item's sidecar read, or drafted from what its files are named, and written whole or not at all,
+  checked as a scan reads it (its files there, inside the root and of their kinds; an ID no other
+  item has; refused 409 when written since the version it was made from). A root's directories
+  listed, at most 2,000. The Admin API's `/media/library/{name}/dirs`, `/usage` (the channels whose
+  list or schedule names an item, those playing it, its playback sessions where a `vod` route
+  signs URLs), `/rename`, `/move`, `/delete` and `/sidecar` (`GET`, `PUT`): a change of an item in
+  use, or a sidecar that changes its ID, refused 409 with what uses it unless `force`. I149 is
+  done.
+- **Checked**: `tests/uploads.rs`'s `files` ports fit's `TestMediaFiles`: the directories; what
+  uses an item; a change of one in use refused, then forced; a move and a rename, their IDs and
+  the catalog at once and after the scan; the refusals; a sidecar read, written from what was
+  read, then refused as stale; the sidecars' refusals, a new ID of an item in use among them; a
+  draft; a delete of six files. In a browser against `akit run`: an item's page drafts and writes
+  its sidecar, and renames the item, warning that a channel names and plays it, its sidecar written
+  again with the new names.
+- **Next**: the media library track is done; what the plan has next.
+
 ### 2026-11-28: I149, the media libraries' uploads
 
 - **Built**: fit's uploads (`medialib/upload.go`, the upload endpoints of `admin/mediafiles.go`).

@@ -742,7 +742,7 @@ fn read_meta(p: &Path, id: &str) -> Option<MetaFile> {
 }
 
 /// An RFC 3339 time, as Go writes a `time.Time` (`2026-11-28T13:45:00.5+08:00`).
-fn parse_time(t: &str) -> Option<SystemTime> {
+pub(crate) fn parse_time(t: &str) -> Option<SystemTime> {
     let num = |a: usize, b: usize| t.get(a..b)?.parse::<i64>().ok();
     if t.len() < 20 || t.as_bytes().get(10) != Some(&b'T') {
         return None;

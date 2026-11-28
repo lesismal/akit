@@ -1624,14 +1624,22 @@ fn run(args: &[String]) -> ExitCode {
                     }
                 }
             }
-            // The media libraries' endpoints, at /media/library (I141).
+            // The media libraries' endpoints, at /media/library (I141), what uses an item read
+            // from the running config (I149).
             let key = akit_media::library::key(&engine);
-            api_opts.endpoints.push((
-                akit_media::library::admin::PREFIX,
-                Arc::new(move |ctx: &mut akio_http::Context| {
-                    akit_media::library::admin::serve(key, ctx)
-                }),
-            ));
+            let view: akit_media::workbench::ViewFn = {
+                let (configs, cell, engine) = (configs.clone(), cell.clone(), Arc::clone(&engine));
+                Arc::new(move || media_view(&configs, &cell, &engine))
+            };
+            {
+                let view = Arc::clone(&view);
+                api_opts.endpoints.push((
+                    akit_media::library::admin::PREFIX,
+                    Arc::new(move |ctx: &mut akio_http::Context| {
+                        akit_media::library::admin::serve_with(key, Some(&view), ctx)
+                    }),
+                ));
+            }
             // The streaming role's channels, at /streaming/channels (I145).
             api_opts.endpoints.push((
                 akit_media::channels::PREFIX,
@@ -1646,10 +1654,6 @@ fn run(args: &[String]) -> ExitCode {
             ));
             // The console's media pages' endpoints, at /media/preview, /media/auth and
             // /media/stats (I149): they read the running config and the listeners' ports.
-            let view: akit_media::workbench::ViewFn = {
-                let (configs, cell, engine) = (configs.clone(), cell.clone(), Arc::clone(&engine));
-                Arc::new(move || media_view(&configs, &cell, &engine))
-            };
             // The console may load media from their listeners: the origins are read again once
             // the running config's version changes.
             api_opts.media_origins = Some({

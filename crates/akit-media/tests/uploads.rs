@@ -1,4 +1,4 @@
-//! A media library's uploads (I149), fit's `admin/mediafiles_test.go` (`TestMediaUploads`,
+//! A media library's files managed (I149), fit's `admin/mediafiles_test.go` (`TestMediaFiles`, `TestMediaUploads`,
 //! `TestMediaUploadLarge`) and `medialib/upload_test.go` (`TestUploadRestart`) ported, through
 //! the Admin API's endpoints on a server that streams their bodies in, as the Admin API does: an
 //! upload begun, cut short and resumed, put in place and probed; the bounds; given up; a large
@@ -26,7 +26,7 @@ use akit_media::library::{self, Library};
 
 const T: Duration = Duration::from_secs(30);
 
-struct Svc(usize);
+struct Svc(usize, akit_media::workbench::ViewFn);
 
 impl akio_http::Service for Svc {
     fn body_mode(&self, req: &Request) -> BodyMode {
@@ -38,7 +38,7 @@ impl akio_http::Service for Svc {
     }
 
     fn call(&self, ctx: &mut Context) {
-        if !library::admin::serve(self.0, ctx) {
+        if !library::admin::serve_with(self.0, Some(&self.1), ctx) {
             ctx.respond(akio_http::Response::text(404, "no such endpoint"));
         }
     }
@@ -192,8 +192,21 @@ fn rig(max_upload: u64) -> Rig {
     library::apply(key, std::slice::from_ref(&conf)).unwrap();
     let lib = library::lookup(key, "films").unwrap();
     scanned(&lib, 0);
+    // What uses an item: the channel the running config names, as the Admin API reads it.
+    let doc = format!(
+        r#"{{"listeners": [{{"name": "web", "address": "127.0.0.1:0"}}],
+          "media_library": [{{"name": "films", "roots": ["{}"]}}],
+          "streaming": {{"channels": [{{"name": "tv/late", "library": "films", "items": ["clips/late", "broken"], "schedule": [{{"at": "20:00", "item": "films/x"}}]}}]}},
+          "routes": [{{"handler": {{"module": "respond", "params": {{"body": "x"}}}}}}]}}"#,
+        root.0.display()
+    );
+    let cfg = Arc::new(akit_config::from_json(&doc, None).unwrap());
+    let view: akit_media::workbench::ViewFn =
+        Arc::new(move || akit_media::workbench::View::new(Some(Arc::clone(&cfg)), &[]));
     let engine = Engine::builder()
-        .listen(Listener::tcp("127.0.0.1:0".parse().unwrap()).serve(akio_http::serve(Svc(key))))
+        .listen(
+            Listener::tcp("127.0.0.1:0".parse().unwrap()).serve(akio_http::serve(Svc(key, view))),
+        )
         .build()
         .unwrap();
     engine.start().unwrap();
@@ -402,4 +415,167 @@ fn upload_restart() {
     assert_eq!((got.len(), got[39], got[40]), (100, 7, 8));
     library::remove(r.key);
     l.join(T);
+}
+fn post(r: &Rig, path: &str, body: &str) -> Resp {
+    http(
+        r.api,
+        "POST",
+        path,
+        &[("Content-Type", "application/json")],
+        body.as_bytes(),
+    )
+}
+
+/// fit's `TestMediaFiles`: a root's directories, what uses an item, an item renamed, moved and
+/// deleted, its sidecar read and written.
+#[test]
+fn files() {
+    let r = rig(1 << 20);
+    let get = |p: &str| http(r.api, "GET", p, &[], b"");
+    let v = get("/media/library/films/dirs").json();
+    let dirs = format!("{:?}", v.get("dirs"));
+    assert!(dirs.contains("films/subs"), "{v:?}");
+    assert_eq!(s(&v, "root"), r.root.0.display().to_string());
+    assert_eq!(get("/media/library/films/dirs?root=/none").status, 404);
+
+    // What uses an item: a channel's list, or its schedule.
+    let u = get("/media/library/films/usage?item=clips/late");
+    let v = u.json();
+    assert_eq!(u.status, 200);
+    assert_eq!(v.get("in_use"), Some(&Value::Bool(true)));
+    assert_eq!(v.get("sessions_counted"), Some(&Value::Bool(false)));
+    assert!(format!("{:?}", v.get("channels")).contains("tv/late"));
+    let v = get("/media/library/films/usage?item=films/bbb").json();
+    assert_eq!(v.get("in_use"), Some(&Value::Bool(false)));
+    assert_eq!(get("/media/library/films/usage?item=none").status, 404);
+    // An item in use is not deleted, moved or renamed without force.
+    for op in ["delete", "move", "rename"] {
+        let resp = post(
+            &r,
+            &format!("/media/library/films/{op}"),
+            r#"{"item": "clips/late", "dir": "x", "name": "y"}"#,
+        );
+        assert_eq!(resp.status, 409, "{op}");
+        assert!(resp.json().get("usage").is_some(), "{op}");
+    }
+    let scans = r.lib.status().scans;
+    let resp = post(
+        &r,
+        "/media/library/films/move",
+        r#"{"item": "clips/late", "dir": "old", "force": true}"#,
+    );
+    assert_eq!(resp.status, 200, "{:?}", resp.json());
+    assert_eq!(s(&resp.json(), "id"), "old/late");
+    // Out of the catalog at once; the scan lists it as it is.
+    assert!(r.lib.item("clips/late").is_none());
+    scanned(&r.lib, scans);
+    assert!(r.lib.item("old/late").is_some());
+
+    // Rename: an item without a sidecar takes the ID of its new path.
+    let scans = r.lib.status().scans;
+    let resp = post(
+        &r,
+        "/media/library/films/rename",
+        r#"{"item": "films/bbb", "name": "bigbuck"}"#,
+    );
+    let v = resp.json();
+    assert_eq!(resp.status, 200, "{v:?}");
+    assert_eq!(
+        (s(&v, "id"), s(&v, "op")),
+        ("films/bigbuck".into(), "rename".into())
+    );
+    assert_eq!(get("/media/library/films/items/films/bbb").status, 404);
+    scanned(&r.lib, scans);
+    assert!(r.lib.item("films/bigbuck").is_some());
+    for (body, want) in [
+        (r#"{"item": "films/bigbuck", "name": "../x"}"#, 400),
+        (r#"{"item": "films/bigbuck", "name": "bigbuck"}"#, 400),
+        (r#"{"item": "films/bigbuck", "name": "big.720p"}"#, 400),
+        (r#"{"item": "none", "name": "x"}"#, 404),
+        ("{", 400),
+    ] {
+        assert_eq!(
+            post(&r, "/media/library/films/rename", body).status,
+            want,
+            "{body}"
+        );
+    }
+    assert_eq!(post(&r, "/media/library/none/rename", "{}").status, 404);
+
+    // The sidecar: read, written from what was read, and refused when it changed since.
+    let resp = get("/media/library/films/sidecar?item=sintel");
+    let v = resp.json();
+    assert_eq!(resp.status, 200);
+    assert_eq!(v.get("exists"), Some(&Value::Bool(true)));
+    assert_eq!(s(&v, "path"), "films/sintel.json");
+    let Some(Value::Object(mut sd)) = v.get("sidecar").cloned() else {
+        panic!("{v:?}")
+    };
+    sd.retain(|(k, _)| k != "title");
+    sd.push(("title".into(), Value::String("Sintel, the film".into())));
+    let body = Value::Object(vec![
+        ("item".into(), Value::String("sintel".into())),
+        ("sidecar".into(), Value::Object(sd)),
+        ("modified".into(), v.get("modified").cloned().unwrap()),
+    ])
+    .to_json();
+    let scans = r.lib.status().scans;
+    let resp = http(
+        r.api,
+        "PUT",
+        "/media/library/films/sidecar",
+        &[],
+        body.as_bytes(),
+    );
+    assert_eq!(resp.status, 200, "{:?}", resp.json());
+    assert_eq!(s(&resp.json(), "op"), "sidecar");
+    scanned(&r.lib, scans);
+    assert_eq!(r.lib.item("sintel").unwrap().title, "Sintel, the film");
+    let resp = http(
+        r.api,
+        "PUT",
+        "/media/library/films/sidecar",
+        &[],
+        body.as_bytes(),
+    );
+    assert_eq!(resp.status, 409, "a stale sidecar");
+    for (body, want) in [
+        (r#"{"item": "sintel"}"#, 400),
+        (r#"{"item": "none", "sidecar": {}}"#, 404),
+        (
+            r#"{"item": "sintel", "sidecar": {"poster": "../x.jpg"}}"#,
+            400,
+        ),
+        // A new ID of an item in use.
+        (r#"{"item": "broken", "sidecar": {"id": "broken2"}}"#, 409),
+    ] {
+        let resp = http(
+            r.api,
+            "PUT",
+            "/media/library/films/sidecar",
+            &[],
+            body.as_bytes(),
+        );
+        assert_eq!(resp.status, want, "{body}: {:?}", resp.json());
+    }
+    assert_eq!(get("/media/library/films/sidecar?item=none").status, 404);
+    // A draft for an item without a sidecar.
+    let v = get("/media/library/films/sidecar?item=films/bigbuck").json();
+    assert_eq!(v.get("exists"), Some(&Value::Bool(false)));
+    assert_eq!(s(&v, "path"), "films/bigbuck.json");
+
+    // Delete: out of the catalog at once.
+    let resp = post(
+        &r,
+        "/media/library/films/delete",
+        r#"{"item": "films/bigbuck"}"#,
+    );
+    let v = resp.json();
+    assert_eq!(resp.status, 200, "{v:?}");
+    assert!(
+        matches!(v.get("files"), Some(Value::Array(f)) if f.len() == 6),
+        "{v:?}"
+    );
+    assert_eq!(get("/media/library/films/items/films/bigbuck").status, 404);
+    assert!(!r.root.0.join("films/bigbuck.mp4").exists());
 }
