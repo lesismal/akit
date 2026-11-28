@@ -1,6 +1,8 @@
 //! The streaming role's channels (I145, fit's `config/channels.go`): items of a media library
-//! played into the hub as live streams, in order, shuffled, looped or on a schedule. Their push
-//! targets (I146) and their HLS encryption (I147) are refused as not supported yet.
+//! played into the hub as live streams, in order, shuffled, looped or on a schedule; and its push
+//! targets (I146), streams of the hub relayed to outside RTMP and SRT servers. A channel's HLS
+//! encryption (I147) is refused as not supported yet, as is a push to `rtmps://` (akio API
+//! request A297).
 //!
 //! A schedule's times are read here (`at`), and the time zone's name checked for its form; the
 //! zone itself is loaded, from the system's zoneinfo files, when the role applies the config,
@@ -11,7 +13,7 @@ use std::time::Duration;
 use crate::decode::{Decoder, Obj};
 use crate::error::{join_field, join_index};
 use crate::json::Node;
-use crate::roles::{bool_opt, list, required, text, text_at};
+use crate::roles::{bool_opt, duration, list, required, text, text_at};
 
 /// fit's `DefaultChannelReadAhead`.
 pub const DEFAULT_CHANNEL_READ_AHEAD: Duration = Duration::from_secs(3);
@@ -54,6 +56,8 @@ pub struct StreamChannel {
     pub read_ahead: Duration,
     /// `max_buffer_bytes`: [`DEFAULT_CHANNEL_MAX_BUFFER_BYTES`] when 0.
     pub max_buffer_bytes: u64,
+    /// `push` (I146): outside servers the channel is relayed to.
+    pub push: Vec<StreamPush>,
 }
 
 impl StreamChannel {
@@ -298,9 +302,11 @@ const CHANNEL_FIELDS: &[&str] = &[
     "rendition",
     "read_ahead",
     "max_buffer_bytes",
+    // I146.
+    "push",
 ];
-// push: I146; encrypt and key_rotation: I147.
-const CHANNEL_FIT_ONLY: &[&str] = &["push", "encrypt", "key_rotation"];
+// I147.
+const CHANNEL_FIT_ONLY: &[&str] = &["encrypt", "key_rotation"];
 const SLOT_FIELDS: &[&str] = &["at", "item"];
 
 /// A channel's library, for the check once every file is read: its name, where it is written,
@@ -455,6 +461,19 @@ fn channel(
             c.max_buffer_bytes = b;
         }
     }
+    let name = c.name.clone();
+    for (mut p, off, path) in list(d, &mut o, "push", push) {
+        if !p.stream.is_empty() && p.stream != name {
+            d.error(
+                off,
+                &join_field(&path, "stream"),
+                "a channel's push relays the channel: leave stream out",
+            );
+        }
+        p.stream.clone_from(&name);
+        p.at = Some((off, path));
+        c.push.push(p);
+    }
     if c.items.is_empty() && c.schedule.is_empty() {
         d.error(
             n.off,
@@ -484,6 +503,394 @@ fn slot(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<ChannelSlot> {
     }
     o.finish(d, SLOT_FIELDS, &[]);
     Some(ChannelSlot { at_text, at, item })
+}
+
+// ---- push targets (I146) ----
+
+/// fit's `MaxStreamPushTargets`.
+pub const MAX_STREAM_PUSH_TARGETS: usize = 256;
+/// fit's `DefaultPushRetryMin`.
+pub const DEFAULT_PUSH_RETRY_MIN: Duration = Duration::from_secs(1);
+/// fit's `DefaultPushRetryMax`.
+pub const DEFAULT_PUSH_RETRY_MAX: Duration = Duration::from_secs(30);
+/// fit's `DefaultPushConnectTimeout`.
+pub const DEFAULT_PUSH_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+/// fit's `DefaultPushSRTLatency`.
+pub const DEFAULT_PUSH_SRT_LATENCY: Duration = Duration::from_millis(120);
+
+/// An outside server a stream of the hub is relayed to (fit's `config.StreamPush`).
+#[derive(Clone, Eq, Default)]
+pub struct StreamPush {
+    /// `name`: unique among the push targets; the stream's name and its place among the
+    /// stream's targets when empty ([`push_targets`] fills it in).
+    pub name: String,
+    /// `stream`: the stream relayed; a channel's push relays the channel.
+    pub stream: String,
+    /// `url`: a secret, its stream key with it.
+    pub url: String,
+    /// `retry_min`: [`DEFAULT_PUSH_RETRY_MIN`] when zero.
+    pub retry_min: Duration,
+    /// `retry_max`: [`DEFAULT_PUSH_RETRY_MAX`] when zero.
+    pub retry_max: Duration,
+    /// `connect_timeout`: [`DEFAULT_PUSH_CONNECT_TIMEOUT`] when zero.
+    pub connect_timeout: Duration,
+    /// Where it is written, for the checks of the targets together.
+    #[doc(hidden)]
+    pub at: Option<(usize, String)>,
+}
+
+impl std::fmt::Debug for StreamPush {
+    /// Without the URL, a secret: its scheme and host alone.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let url = parse_push_url(&self.url).map_or_else(|_| "…".to_owned(), |u| u.redacted());
+        f.debug_struct("StreamPush")
+            .field("name", &self.name)
+            .field("stream", &self.stream)
+            .field("url", &url)
+            .finish_non_exhaustive()
+    }
+}
+
+impl PartialEq for StreamPush {
+    /// The same target, wherever it is written.
+    fn eq(&self, o: &StreamPush) -> bool {
+        self.name == o.name
+            && self.stream == o.stream
+            && self.url == o.url
+            && self.retry_min == o.retry_min
+            && self.retry_max == o.retry_max
+            && self.connect_timeout == o.connect_timeout
+    }
+}
+
+impl StreamPush {
+    /// `retry_min`, or its default.
+    #[must_use]
+    pub fn retry_min_or(&self) -> Duration {
+        if self.retry_min.is_zero() {
+            DEFAULT_PUSH_RETRY_MIN
+        } else {
+            self.retry_min
+        }
+    }
+
+    /// `retry_max`, or its default; never less than `retry_min`.
+    #[must_use]
+    pub fn retry_max_or(&self) -> Duration {
+        let m = if self.retry_max.is_zero() {
+            DEFAULT_PUSH_RETRY_MAX
+        } else {
+            self.retry_max
+        };
+        m.max(self.retry_min_or())
+    }
+
+    /// `connect_timeout`, or its default.
+    #[must_use]
+    pub fn connect(&self) -> Duration {
+        if self.connect_timeout.is_zero() {
+            DEFAULT_PUSH_CONNECT_TIMEOUT
+        } else {
+            self.connect_timeout
+        }
+    }
+}
+
+/// A push target as the role runs it (fit's `config.PushTarget`): from `streaming.push` or a
+/// channel's, its name and stream filled in.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct PushTarget {
+    /// The target.
+    pub push: StreamPush,
+    /// The channel whose push it is; empty for `streaming.push`'s.
+    pub channel: String,
+}
+
+/// Every push target of `push` (`streaming.push`) and `channels`, `push`'s first, then each
+/// channel's, with its name and stream filled in: a target without a name is named after its
+/// stream and its place among the stream's targets, from 1, as `tv/films#1` (fit's
+/// `PushTargets`).
+#[must_use]
+pub fn push_targets(push: &[StreamPush], channels: &[StreamChannel]) -> Vec<PushTarget> {
+    let mut out = Vec::new();
+    let mut n: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    let mut add = |mut p: StreamPush, channel: &str| {
+        if !channel.is_empty() {
+            channel.clone_into(&mut p.stream);
+        }
+        let k = n.entry(p.stream.clone()).or_insert(0);
+        *k = k.saturating_add(1);
+        if p.name.is_empty() {
+            p.name = format!("{}#{k}", p.stream);
+        }
+        out.push(PushTarget {
+            push: p,
+            channel: channel.to_owned(),
+        });
+    };
+    for p in push {
+        add(p.clone(), "");
+    }
+    for c in channels {
+        for p in &c.push {
+            add(p.clone(), &c.name);
+        }
+    }
+    out
+}
+
+/// A push target's URL taken apart (fit's `config.PushURL`).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct PushUrl {
+    /// `rtmp` or `srt`.
+    pub protocol: String,
+    /// `host:port`, the default port filled in for RTMP.
+    pub host: String,
+    /// An RTMP URL's first path element.
+    pub app: String,
+    /// SRT's stream ID.
+    pub stream_id: String,
+    /// SRT's passphrase.
+    pub passphrase: String,
+    /// SRT's key length: 0, 16, 24 or 32.
+    pub pbkeylen: u32,
+    /// SRT's latency.
+    pub latency: Duration,
+}
+
+impl PushUrl {
+    /// The URL as the Admin API and the logs show it: its scheme, host and, for RTMP, app;
+    /// never the stream key, nor SRT's stream ID and passphrase.
+    #[must_use]
+    pub fn redacted(&self) -> String {
+        if self.app.is_empty() {
+            format!("{}://{}", self.protocol, self.host)
+        } else {
+            format!("{}://{}/{}/…", self.protocol, self.host, self.app)
+        }
+    }
+}
+
+/// `s` with its %XX escapes decoded; `None` for a bad escape.
+fn unescape(s: &str) -> Option<String> {
+    let b = s.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0usize;
+    while let Some(&c) = b.get(i) {
+        if c == b'%' {
+            let hex = s.get(i.saturating_add(1)..i.saturating_add(3))?;
+            out.push(u8::from_str_radix(hex, 16).ok()?);
+            i = i.saturating_add(3);
+        } else {
+            out.push(if c == b'+' { b' ' } else { c });
+            i = i.saturating_add(1);
+        }
+    }
+    String::from_utf8(out).ok()
+}
+
+/// Takes a push target's `url` apart, or says what is wrong with it (fit's `ParsePushURL`); the
+/// error never holds the URL, which is a secret.
+///
+/// # Errors
+///
+/// What is wrong with it.
+pub fn parse_push_url(raw: &str) -> Result<PushUrl, String> {
+    let bad = || "the url does not parse".to_owned();
+    if raw.bytes().any(|b| b <= b' ' || b == 0x7f) || (raw.contains('%') && unescape(raw).is_none())
+    {
+        return Err(bad());
+    }
+    let Some((scheme, rest)) = raw.split_once("://") else {
+        return Err("a push url is rtmp://, rtmps:// or srt://".into());
+    };
+    let protocol = scheme.to_ascii_lowercase();
+    let (authority, rest) = match rest.find(['/', '?', '#']) {
+        Some(i) => rest.split_at(i),
+        None => (rest, ""),
+    };
+    let authority = authority.rsplit_once('@').map_or(authority, |(_, h)| h);
+    let rest = rest.split('#').next().unwrap_or("");
+    let (path, query) = rest.split_once('?').unwrap_or((rest, ""));
+    let (host, port) = if let Some(r) = authority.strip_prefix('[') {
+        let (h, p) = r.split_once(']').ok_or_else(bad)?;
+        (h, p.strip_prefix(':').unwrap_or(""))
+    } else {
+        authority.rsplit_once(':').unwrap_or((authority, ""))
+    };
+    if !port.is_empty() && port.parse::<u16>().is_err() {
+        return Err(bad());
+    }
+    let hostport = |p: &str| {
+        if host.contains(':') {
+            format!("[{host}]:{p}")
+        } else {
+            format!("{host}:{p}")
+        }
+    };
+    let mut u = PushUrl {
+        protocol: protocol.clone(),
+        ..PushUrl::default()
+    };
+    match protocol.as_str() {
+        "rtmp" | "rtmps" => {
+            if host.is_empty() {
+                return Err(format!("an {protocol} url needs a host"));
+            }
+            let p = path.trim_start_matches('/');
+            let (app, stream) = p.split_once('/').unwrap_or((p, ""));
+            if app.is_empty() || stream.is_empty() {
+                return Err(format!(
+                    "an {protocol} url names an app and a stream: {protocol}://host/app/stream"
+                ));
+            }
+            if protocol == "rtmps" {
+                return Err("rtmps:// is not supported yet: akio's RTMP client dials without TLS (akio API request A297)".into());
+            }
+            u.host = hostport(if port.is_empty() { "1935" } else { port });
+            app.clone_into(&mut u.app);
+        }
+        "srt" => {
+            if host.is_empty() || port.is_empty() {
+                return Err("an srt url needs a host and a port, as srt://host:9000".into());
+            }
+            if !path.is_empty() && path != "/" {
+                return Err("an srt url has no path: the stream goes in streamid".into());
+            }
+            u.host = hostport(port);
+            u.latency = DEFAULT_PUSH_SRT_LATENCY;
+            for kv in query.split('&').filter(|kv| !kv.is_empty()) {
+                let (k, v) = kv.split_once('=').unwrap_or((kv, ""));
+                let k = unescape(k).ok_or_else(bad)?;
+                let v = unescape(v).ok_or_else(bad)?;
+                match k.as_str() {
+                    "streamid" => u.stream_id = v,
+                    "passphrase" => u.passphrase = v,
+                    "pbkeylen" => match v.parse::<u32>() {
+                        Ok(n @ (16 | 24 | 32)) => u.pbkeylen = n,
+                        _ => return Err("pbkeylen is 16, 24 or 32".into()),
+                    },
+                    "latency" => match v.parse::<u64>() {
+                        Ok(ms) if (20..=10_000).contains(&ms) => {
+                            u.latency = Duration::from_millis(ms);
+                        }
+                        _ => return Err("latency is in milliseconds, 20 to 10000".into()),
+                    },
+                    "mode" => {
+                        if !v.is_empty() && v != "caller" {
+                            return Err(
+                                "an srt push calls its target: mode may only be caller".into()
+                            );
+                        }
+                    }
+                    other => {
+                        return Err(format!(
+                            "an srt url takes streamid, passphrase, pbkeylen, latency and mode=caller, not {other:?}"
+                        ));
+                    }
+                }
+            }
+            let n = u.passphrase.chars().count();
+            if n != 0 && !(10..=79).contains(&n) {
+                return Err(format!(
+                    "the passphrase is {n} characters: SRT takes 10 to 79"
+                ));
+            }
+        }
+        _ => return Err("a push url is rtmp://, rtmps:// or srt://".into()),
+    }
+    Ok(u)
+}
+
+const PUSH_FIELDS: &[&str] = &[
+    "name",
+    "stream",
+    "url",
+    "retry_min",
+    "retry_max",
+    "connect_timeout",
+];
+
+fn push(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<StreamPush> {
+    let mut o = d.object(n, path)?;
+    let p = StreamPush {
+        name: text(d, &mut o, "name"),
+        stream: text(d, &mut o, "stream"),
+        url: required(d, &mut o, "url").0,
+        retry_min: duration(d, &mut o, "retry_min"),
+        retry_max: duration(d, &mut o, "retry_max"),
+        connect_timeout: duration(d, &mut o, "connect_timeout"),
+        at: None,
+    };
+    o.finish(d, PUSH_FIELDS, &[]);
+    Some(p)
+}
+
+/// Decodes `streaming.push`.
+pub(crate) fn pushes(d: &mut Decoder<'_>, o: &mut Obj<'_>) -> Vec<StreamPush> {
+    list(d, o, "push", push)
+        .into_iter()
+        .map(|(mut p, off, path)| {
+            p.at = Some((off, path));
+            p
+        })
+        .collect()
+}
+
+/// fit's checks of the push targets together: their number, streams, names, URLs and retries.
+pub(crate) fn check_pushes(
+    d: &mut Decoder<'_>,
+    at: (usize, &str),
+    push: &[StreamPush],
+    channels: &[StreamChannel],
+) {
+    let targets = push_targets(push, channels);
+    if targets.len() > MAX_STREAM_PUSH_TARGETS {
+        d.error(
+            at.0,
+            &join_field(at.1, "push"),
+            format!(
+                "{} push targets: at most {MAX_STREAM_PUSH_TARGETS}",
+                targets.len()
+            ),
+        );
+    }
+    for (i, t) in targets.iter().enumerate() {
+        let p = &t.push;
+        let (off, path) = p.at.clone().unwrap_or((at.0, at.1.to_owned()));
+        if t.channel.is_empty() {
+            if p.stream.is_empty() {
+                d.error(off, &path, "a push target names the stream it relays");
+            } else if !valid_stream_path(&p.stream) {
+                d.error(
+                    off,
+                    &join_field(&path, "stream"),
+                    format!("{:?} is not a stream's name", p.stream),
+                );
+            }
+        }
+        if targets.iter().take(i).any(|o| o.push.name == p.name) {
+            d.error(
+                off,
+                &join_field(&path, "name"),
+                format!("another push target is already named {:?}", p.name),
+            );
+        }
+        if let Err(e) = parse_push_url(&p.url) {
+            d.error(off, &join_field(&path, "url"), e);
+        }
+        if !p.retry_min.is_zero() && !p.retry_max.is_zero() && p.retry_min > p.retry_max {
+            d.error(
+                off,
+                &join_field(&path, "retry_min"),
+                format!(
+                    "retry_min is {}, more than retry_max's {}",
+                    crate::duration::format(p.retry_min),
+                    crate::duration::format(p.retry_max)
+                ),
+            );
+        }
+    }
 }
 
 #[cfg(test)]

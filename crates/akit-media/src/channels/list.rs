@@ -121,7 +121,8 @@ impl Rng {
     pub(crate) fn shuffle(&mut self, v: &mut [usize]) {
         for i in (1..v.len()).rev() {
             let n = u64::try_from(i).unwrap_or(u64::MAX).saturating_add(1);
-            let j = usize::try_from(u64::from(self.next()).checked_rem(n).unwrap_or(0)).unwrap_or(0);
+            let j =
+                usize::try_from(u64::from(self.next()).checked_rem(n).unwrap_or(0)).unwrap_or(0);
             v.swap(i, j);
         }
     }

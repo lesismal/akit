@@ -260,7 +260,7 @@ Tunnel and LLM track; I110–I114 are the WebRTC track, and I115–I119 are rese
 | I143 | Media tokens: `media_auth`'s `keys` and `media_tokens` (fit's I119) | I121 | done |
 | I144 | Playback URLs that expire: `url_signing`, sessions, `media_tokens`' `/urls` | I142, I143 | done |
 | I145 | Channels: library items played as live streams, `streaming.channels` | I141, I123 | done |
-| I146 | Push targets: `streaming.push` and a channel's `push` | I145 | todo |
+| I146 | Push targets: `streaming.push` and a channel's `push` | I145 | done |
 | I147 | Encrypted segments: `encrypt` on `vod` and on channels' HLS | I144, I145 | todo |
 | I148 | A video site: `media_pages`' `libraries`, `vod` and `channels`, the example, the guide | I144, I145 | todo |
 | I149 | The console's media library pages, and its files managed (fit's I138, I139) | I148 | todo |
@@ -2282,7 +2282,8 @@ is asked as akio A295–A300. Names akit shows are akit's (decision 037), format
   stream and gets it back after it restarts.
 - **Touches**: `akit-config`, `akit-media` (`channels`).
 - **fit**: `streaming/channels/push.go`; I134.
-- **Status**: todo.
+- **Status**: done (2026-11-28); `rtmps://` waits for akio's A297, an RTMP push's callbacks for
+  A298. See the progress log.
 
 ### I147 Encrypted segments
 

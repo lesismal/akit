@@ -1811,6 +1811,52 @@ fn channels(out: &mut Vec<(String, String, Read)>) {
             f("max_buffer_bytes", "1048576", "2097152"),
         ],
     );
+    // I146: push targets.
+    let push_fields = |stream: Option<F>| {
+        let mut v = vec![
+            f("name", q("a"), q("b")),
+            f("url", q("rtmp://h/a/k"), q("rtmp://h/a/l")),
+            f("retry_min", q("1s"), q("2s")),
+            f("retry_max", q("30s"), q("40s")),
+            f("connect_timeout", q("1s"), q("2s")),
+        ];
+        v.extend(stream);
+        v
+    };
+    out.push((
+        "streaming.channels[].push".into(),
+        w(r#"{"name": "a", "library": "l", "items": ["x"]}"#),
+        Read::Differs(w(
+            r#"{"name": "a", "library": "l", "items": ["x"], "push": [{"url": "rtmp://h/a/k"}]}"#,
+        )),
+    ));
+    let cp = |m: &str| {
+        w(&format!(
+            r#"{{"name": "a", "library": "l", "items": ["x"], "push": [{m}]}}"#
+        ))
+    };
+    emit(
+        out,
+        "streaming.channels[].push[]",
+        &cp,
+        &[("url", q("rtmp://h/a/k"))],
+        push_fields(Some(refused("stream", q("b"), "leave stream out"))),
+    );
+    let sp =
+        |p: &str| format!(r#"{{"streaming": {{"rtmp": {{"listen": ":1935"}}, "push": {p}}}}}"#);
+    out.push((
+        "streaming.push".into(),
+        sp(r#"[{"stream": "x/a", "url": "rtmp://h/a/k"}]"#),
+        Read::Differs(sp(r#"[{"stream": "x/b", "url": "rtmp://h/a/k"}]"#)),
+    ));
+    let pw = |m: &str| sp(&format!("[{m}]"));
+    emit(
+        out,
+        "streaming.push[]",
+        &pw,
+        &[("stream", q("x/a")), ("url", q("rtmp://h/a/k"))],
+        push_fields(Some(f("stream", q("x/a"), q("x/b")))),
+    );
     let sl = |m: &str| {
         w(&format!(
             r#"{{"name": "a", "library": "l", "schedule": [{m}]}}"#

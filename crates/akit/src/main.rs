@@ -1634,6 +1634,13 @@ fn run(args: &[String]) -> ExitCode {
                 akit_media::channels::PREFIX,
                 Arc::new(move |ctx: &mut akio_http::Context| akit_media::channels::serve(key, ctx)),
             ));
+            // Its push targets, at /streaming/push (I146).
+            api_opts.endpoints.push((
+                akit_media::channels::PUSH_PREFIX,
+                Arc::new(move |ctx: &mut akio_http::Context| {
+                    akit_media::channels::serve_push(key, ctx)
+                }),
+            ));
             match akit_admin::Server::start(a, configs.clone(), submit, &api_opts) {
                 Ok(s) => {
                     println!("akit: admin API on {}", s.address());

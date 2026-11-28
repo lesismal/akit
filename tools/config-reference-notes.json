@@ -313,6 +313,14 @@
     "streaming.channels[].name": {
       "en": "Run by `akit run` (I145): each channel paced on akit-media's timer thread until akio gives a handler a timer of its engine (A296), its samples read on its library's file pool. `/metrics` has fit's channel families named `akit_streaming_channel*`; the Admin API serves `/streaming/channels`.",
       "zh": "由 `akit run` 运行（I145）：在 akio 给处理器提供其引擎的计时器（A296）之前，每个频道在 akit-media 的计时线程上控制节奏，其样本在其媒体库的文件池上读取。`/metrics` 有 fit 的频道指标族，名为 `akit_streaming_channel*`；Admin API 提供 `/streaming/channels`。"
+    },
+    "streaming.push[].url": {
+      "en": "`rtmps://` is refused as not supported yet until akio's RTMP client dials over TLS (akio API request A297). An RTMP push's retries are its client's own (akio-media's `Reconnect`), with `retry_min` and `retry_max`, until akio tells its owner a session ended (A298); a refusal for credentials ends it until its stream is published again or the Admin API restarts it.",
+      "zh": "在 akio 的 RTMP 客户端能通过 TLS 拨号之前（akio API 请求 A297），`rtmps://` 作为尚不支持而拒绝。在 akio 告诉其所有者会话结束之前（A298），RTMP 推流的重试由其客户端自己完成（akio-media 的 `Reconnect`），使用 `retry_min` 和 `retry_max`；因凭据被拒会结束它，直到其流再次发布或 Admin API 重启它。"
+    },
+    "streaming.channels[].push[].url": {
+      "en": "`rtmps://` is refused as not supported yet until akio's RTMP client dials over TLS (akio API request A297). An RTMP push's retries are its client's own (akio-media's `Reconnect`), with `retry_min` and `retry_max`, until akio tells its owner a session ended (A298); a refusal for credentials ends it until its stream is published again or the Admin API restarts it.",
+      "zh": "在 akio 的 RTMP 客户端能通过 TLS 拨号之前（akio API 请求 A297），`rtmps://` 作为尚不支持而拒绝。在 akio 告诉其所有者会话结束之前（A298），RTMP 推流的重试由其客户端自己完成（akio-media 的 `Reconnect`），使用 `retry_min` 和 `retry_max`；因凭据被拒会结束它，直到其流再次发布或 Admin API 重启它。"
     }
   }
 }

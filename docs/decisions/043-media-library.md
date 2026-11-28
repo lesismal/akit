@@ -151,3 +151,22 @@ not supported yet for this track.
   tested on the test's time, waiting for the library's pool to be idle, never for wall time.
 - **The media libraries apply before the streaming role**, so that a channel finds its library at
   its first item.
+
+## I146: push targets
+
+- **An SRT push is akit's own on akio-media's SRT session**: `srt::dial` with a handler of the
+  push's, which hears the handshake and the close, its stream muxed into MPEG-TS as `srt::push`
+  muxes it. akio-media's `srt::push` has no reconnect and tells its owner nothing; the push retries
+  on the manager's clock, fit's backoff, which the config states.
+- **An RTMP push is akio-media's**, which tells its owner nothing either (akio API request A298):
+  its retries are the client's `Reconnect`, with `retry_min` and `retry_max`, and a watch of its
+  stream (a subscription that waits) starts a client again when a publisher comes back, which the
+  client does not survive. No timer polls a client. Its state is read from the client; its failures
+  and bytes are not counted, and a target refusing it for its credentials ends it, until A298.
+- **Dials run on akit-media's pool**: they resolve host names, which blocks, and `srt::dial` waits
+  briefly for its socket; the session's callbacks hand their work there too, off the session's
+  lock, which closing it takes.
+- **`rtmps://` is refused as not supported yet** until akio-media's RTMP client dials over TLS
+  (A297), rather than accepted and never connected.
+- **A push URL is a secret**: the errors and the config's `Debug` show its scheme and host, and the
+  Admin API its scheme, host and app.

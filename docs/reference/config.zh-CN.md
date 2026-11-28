@@ -14,7 +14,7 @@ akit 配置的每个字段：配置的每一部分是做什么的、一个示例
 akit 与 fit 不同之处，在表格中以 **akit：** 标出。
 
 <!-- BEGIN GENERATED: summary -->
-fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **1287** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 193 个对象，下文各有一张表。
+fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **1301** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 195 个对象，下文各有一张表。
 <!-- END GENERATED -->
 
 字段说明来自 fit 代码中的 `doc` 标签，是英文的，所以每个字段的完整说明在[英文版](config.md)的同一张表中；本页的表格给出每个字段的
@@ -2921,7 +2921,7 @@ fit 签发的 URL 能在 akit 上播放，反之亦然。
 
 `streaming` 是 fit 的流媒体角色（[fit 的指南](https://github.com/lesismal/fit/blob/main/docs/streaming.zh-CN.md)）：
 一个基于 akio-media 的媒体中心，一路流按其路径通过 RTMP、RTSP、SRT 或 WHIP 推送一次，即可通过其中任一协议以及 HTTP-FLV、
-HLS 和 WHEP 播放。akit 像 fit 一样读取并检查该角色（I120），`akit run` 运行它（I122；其 `webrtc` 端口从 I124 起；其 `channels` 从 I145 起）。尚不读取：`push`（I146）、
+HLS 和 WHEP 播放。akit 像 fit 一样读取并检查该角色（I120），`akit run` 运行它（I122；其 `webrtc` 端口从 I124 起；其 `channels` 从 I145 起，其 `push` 从 I146 起）。尚不读取：
 Multipath TCP、RTMP 的 `max_message_bytes`（akio API 请求 A263），以及 RTSP 的 `auth_methods` 和
 `realm`（即 Digest 和 Basic）及其 `idle_timeout`（A264）：在此之前 RTSP 从 URL 的查询参数中取凭据。
 
@@ -2948,7 +2948,7 @@ streaming {
 | `gop_cache_bytes` | 整数，≥ 0 | `8388608` |  |
 | `max_players` | 整数，≥ 0 | `256` |  |
 | `max_streams` | 整数，≥ 0 | `64` |  |
-| `push` | 对象的列表 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `push` | [对象](#cfg-streaming-push)的列表 |  |  |
 | `rtmp` | [对象](#cfg-streaming-rtmp) |  |  |
 | `rtsp` | [对象](#cfg-streaming-rtsp) |  |  |
 | `srt` | [对象](#cfg-streaming-srt) |  |  |
@@ -3063,7 +3063,7 @@ streaming {
 
 频道（I145）：把媒体库的条目作为直播流播放到媒体中心，按顺序、随机、循环或按某个时区的节目表播放，按其时间戳控制节奏，时间戳从一个条目
 延续到下一个；每种出口都在其 auth 下播放它们。重载就地修改频道，从其下一个条目生效；Admin API 在 `/streaming/channels` 列出它们，
-并启动、停止和跳过它们。频道的 `push`（I146）以及 `encrypt` 和 `key_rotation`（I147）尚不读取。
+并启动、停止和跳过它们。频道的 `encrypt` 和 `key_rotation`（I147）尚不读取。
 
 ```fit
 media_library films { roots /srv/films }
@@ -3094,7 +3094,7 @@ streaming {
 | `loop` | 布尔值 | `true` |  |
 | `max_buffer_bytes` | 整数，≥ 0 | `16777216` |  |
 | `order` | 字符串：`sequence`、`shuffle` | `"sequence"` |  |
-| `push` | 对象的列表 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `push` | [对象](#cfg-streaming-channels-push)的列表 |  |  |
 | `read_ahead` | 时长 | `"3s"` |  |
 | `rendition` | 字符串 |  |  |
 | `schedule` | [对象](#cfg-streaming-channels-schedule)的列表 |  |  |
@@ -3116,7 +3116,54 @@ streaming {
 
 ## 媒体库
 
-`media_library` 列出 fit 的命名媒体库（[fit 的指南](https://github.com/lesismal/fit/blob/main/docs/media-library.zh-CN.md)）：
+`
+### `streaming.channels[].push[]`
+
+频道的推送目标（I146），同 `streaming.push` 的，其流为该频道。
+
+<!-- BEGIN GENERATED: streaming.channels[].push[] -->
+<a id="cfg-streaming-channels-push"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-streaming-channels-push)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `url` | 字符串 | 必填 | **akit：**在 akio 的 RTMP 客户端能通过 TLS 拨号之前（akio API 请求 A297），`rtmps://` 作为尚不支持而拒绝。在 akio 告诉其所有者会话结束之前（A298），RTMP 推流的重试由其客户端自己完成（akio-media 的 `Reconnect`），使用 `retry_min` 和 `retry_max`；因凭据被拒会结束它，直到其流再次发布或 Admin API 重启它。 |
+| `connect_timeout` | 时长 | `"10s"` |  |
+| `name` | 字符串 |  |  |
+| `retry_max` | 时长 | `"30s"` |  |
+| `retry_min` | 时长 | `"1s"` |  |
+| `stream` | 字符串 |  |  |
+<!-- END GENERATED -->
+
+### `streaming.push[]`
+
+推送目标（I146）：把媒体中心的流转推到外部的 RTMP 或 SRT 服务器（如 CDN 的接入点），断开时按退避重新连接；其状态在 Admin API 的
+`/streaming/push`。SRT 目标在角色的引擎上拨号，其流封装为 MPEG-TS；RTMP 目标是 akio-media 的 RTMP 推流，在 akio 告诉其所有者会话
+结束之前（akio API 请求 A298），由客户端自己重试。`rtmps://` 等待 akio 的基于 TLS 的 RTMP 客户端（A297）。
+
+```fit
+streaming {
+	rtmp { listen :1935 }
+	push { stream live/cam; url rtmp://ingest.example.com/live/stream-key; retry_max 1m }
+}
+```
+
+<!-- BEGIN GENERATED: streaming.push[] -->
+<a id="cfg-streaming-push"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-streaming-push)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `url` | 字符串 | 必填 | **akit：**在 akio 的 RTMP 客户端能通过 TLS 拨号之前（akio API 请求 A297），`rtmps://` 作为尚不支持而拒绝。在 akio 告诉其所有者会话结束之前（A298），RTMP 推流的重试由其客户端自己完成（akio-media 的 `Reconnect`），使用 `retry_min` 和 `retry_max`；因凭据被拒会结束它，直到其流再次发布或 Admin API 重启它。 |
+| `connect_timeout` | 时长 | `"10s"` |  |
+| `name` | 字符串 |  |  |
+| `retry_max` | 时长 | `"30s"` |  |
+| `retry_min` | 时长 | `"1s"` |  |
+| `stream` | 字符串 |  |  |
+<!-- END GENERATED -->
+media_library` 列出 fit 的命名媒体库（[fit 的指南](https://github.com/lesismal/fit/blob/main/docs/media-library.zh-CN.md)）：
 扫描成条目目录的若干 MP4 文件（`.mp4`、`.m4v`、`.m4a`、`.mov`）所在目录，每个条目是一个标题及其版本、音频、字幕和海报，由
 `vod` 点播、由频道直播。akit 按 fit 的方式读取并检查媒体库（I140），并用 akio-media 的 MP4 读取器读取文件；`akit run` 扫描
 它们（I141），Admin API 在 `/media/library` 列出它们。尚未读取：上传的 `upload_dir`、`max_upload_bytes`、`max_uploads`、`min_free_bytes` 和 `upload_expiry`

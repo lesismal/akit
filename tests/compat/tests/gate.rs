@@ -3368,7 +3368,7 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 192] = [
+    let objects: [(&str, &str, Option<&str>); 194] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         (
             "providers[].kubernetes",
@@ -3760,6 +3760,8 @@ fn akit_config_lists_match_the_inventory() {
             Some("CHANNEL_FIT_ONLY"),
         ),
         ("streaming.channels[].schedule[]", "SLOT_FIELDS", None),
+        ("streaming.channels[].push[]", "PUSH_FIELDS", None),
+        ("streaming.push[]", "PUSH_FIELDS", None),
         (
             "streaming.rtmp",
             "STREAM_RTMP_FIELDS",

@@ -1739,6 +1739,11 @@ fn v1_surface_is_frozen() {
         akit_media::channels::PREFIX,
         Arc::new(|ctx: &mut akio_http::Context| akit_media::channels::serve(usize::MAX, ctx)),
     ));
+    // I146: the push targets'.
+    opts.endpoints.push((
+        akit_media::channels::PUSH_PREFIX,
+        Arc::new(|ctx: &mut akio_http::Context| akit_media::channels::serve_push(usize::MAX, ctx)),
+    ));
     let f = start_with(&doc("v1"), admin(|_| {}), opts);
 
     // Endpoints: every method on every path frozen, each path's numbers and pointers filled in.

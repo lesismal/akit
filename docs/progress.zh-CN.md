@@ -17,7 +17,7 @@
 | 下一步 | 外部安全审查（[范围](security/review-scope.zh-CN.md)），其发现完成 I80b；fit 对决定 035 所提议字段（CRL 文件、WASM 摘要）的答复；1.0 之后的各条线（[开发计划](dev-plan.zh-CN.md#10-之后)）：控制台与加密的 store 已完成（I89–I94、I93b、I93c）；fit 的 Admin API 对没有令牌的连接的规则，基于控制台的 slots（akio 的 A232）（日志已完成：I81–I83；访问控制列表已完成：I85–I87）；Gateway API 一致性测试的运行（tests/conformance，由维护者运行） |
 | akio 需求 | A1–A24、A29、A30、A32、A33、A35–A38、A45、A48、A49、A51–A54、A57、A58、A63–A66、A75、A78、A79、A90–A94、A105、A108、A109、A111–A113、A117、A132–A135、A148、A165–A172、A180、A200、A214、A215、A220、A230–A238、A245 和 A247–A249 已进入 akio 的 main 并锁定；A225（外部审查，L15）已提出（[akio API 请求](akio-api-requests.zh-CN.md)） |
 | 流媒体与媒体认证 | [I120–I126](dev-plan.zh-CN.md#流媒体与媒体认证)，fit 的 I115–I117（决定 040）：I120（配置中的 `media_auth` 和 `streaming`）、I121（策略、检查、`akit media-token`）I122（角色的媒体中心、RTMP、RTSP 和 SRT）、I123（`httpflv`、`hls`）、I124（WebRTC 端口、`stream_whip`、`stream_whep`）、I125（`media_pages`）和 I126（`whip`、`whep` 和 `webrtc_proxy` 上的 `auth`）已完成；媒体库的 `libraries`、`vod` 和 `channels` 等待其那条线；akio 请求 A263–A268 |
-| 媒体库与频道 | [I140–I149](dev-plan.zh-CN.md#媒体库与频道)，fit 的 I131–I139 和 I119（决定 043）：I140（配置中的 `media_library`）、I141（目录、角色 `media_library`、`/media/library`）、I142（`vod`）、I143（`keys`、`media_tokens`）、I144（`url_signing`）和 I145（频道）已完成；akio 需求 A295、A296 |
+| 媒体库与频道 | [I140–I149](dev-plan.zh-CN.md#媒体库与频道)，fit 的 I131–I139 和 I119（决定 043）：I140（配置中的 `media_library`）、I141（目录、角色 `media_library`、`/media/library`）、I142（`vod`）、I143（`keys`、`media_tokens`）、I144（`url_signing`）、I145（频道）和 I146（推送目标）已完成；akio 需求 A295–A298 |
 
 ## 日志
 
@@ -56,6 +56,25 @@
     它对吞吐的影响留给基准任务测量（规则 30）。
   - 在 io_uring 上，`Engine::remove_listener` 在监听器的 accept 取消完成后才返回，重载移除的监听器此后不再接受连接；`H3Upload::finish`
     不再被其自身的响应拒绝；池压力监视器每 500 ms 采样一次（原为 100 ms）。
+### 2026-11-28：I146，推送目标
+
+- **构建**：fit 的 I134 的推送目标。akit-config 读取 `streaming.push` 和频道的 `push`（`name`、`stream`、`url`、`retry_min`、
+  `retry_max`、`connect_timeout`），带 fit 对所有目标一起的检查（数量、名称、流、URL、重试；URL 从不出现在错误中，也不出现在配置的
+  `Debug` 中）；只有推送目标的角色不接收任何流，同 fit；`rtmps://` 作为尚不支持而拒绝（akio A297）。`akit_media::channels::Push`：SRT
+  目标在角色的引擎上用 akit 自己的会话处理器拨号，处理器听到握手和关闭，其流像 akio-media 的 SRT 推流那样封装为 MPEG-TS，在管理器的
+  时钟上重试，`retry_min` 加倍直到 `retry_max`，保持连接达 `retry_max` 的目标从 `retry_min` 重新开始；RTMP 目标是 akio-media 的 RTMP
+  推流，由客户端自己的 `Reconnect` 以相同的上下限重试，并在发布者回来时由对其流的监视重新启动（akio A298）。重载保留流、url 和超时都
+  相同的目标；Admin API 的 `/streaming/push`（列表、`start`、`stop`、`restart`），频道的状态列出其目标；`/metrics` 的
+  `akit_streaming_push_*`。
+- **与 fit 的不同**：在 akio 的 A298 之前，RTMP 推流的失败次数和字节数不统计，其状态从客户端读取，因凭据拒绝它的目标会结束它，直到其流
+  再次发布或 Admin API 重启它；`rtmps://` 等待 A297（决定 043）。
+- **验证**：配置用 fit 的 `TestChannels` 和 `TestPushURL`；在管理器的时钟上移植 fit 的 `TestPushFailures`（没有可拨号的引擎、退避加倍到
+  `retry_max`、未发布的流、重载保留和替换目标、指标）以及 Admin API 的推送端点；`tests/handlers.rs` 通过 RTMP 和 SRT 把一路流推送到
+  akit 自己的角色，角色两路都接收，角色重新启动后两路都回来（每次等待都在目标的媒体中心上，带期限）。互通：`akit run` 运行一个通过 RTMP
+  和 SRT 推送到 fit 二进制的频道：fit 两路都发布（ffprobe 从 fit 读到 25 fps 的视频和音频），fit 重新启动后两路都回来，从 Admin API
+  停止并启动频道后也都回来。
+- **下一步**：I147，加密分片。
+
 ### 2026-11-28：I145，频道
 
 - **构建**：fit 的 I134 的频道。akit-config 读取 `streaming.channels`（`name`、`library`、`items`、`order`、`loop`、带 `at` 的

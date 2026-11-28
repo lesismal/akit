@@ -1,5 +1,5 @@
 //! fit's `config/channels_test.go`, ported for the channels (I145): what is read, its defaults,
-//! and fit's refusals; push targets (I146) and encryption (I147) are not supported yet.
+//! and fit's refusals; push targets (I146); encryption (I147) is not supported yet.
 
 use super::*;
 use crate::from_json;
@@ -117,14 +117,6 @@ fn channels_refused() {
             r#"{"channels": [{"name": "x", "library": "films", "items": ["a"], "encrypt": true}]}"#,
             "not supported yet",
         ),
-        (
-            r#"{"channels": [{"name": "x", "library": "films", "items": ["a"], "push": [{"url": "rtmp://h/a/b"}]}]}"#,
-            "not supported yet",
-        ),
-        (
-            r#"{"rtmp": {"listen": ":1935"}, "push": [{"stream": "a", "url": "rtmp://h/a/b"}]}"#,
-            "not supported yet",
-        ),
         ("{}", "nothing takes streams in"),
     ] {
         match load(doc) {
@@ -169,4 +161,163 @@ fn channel_at() {
     }
     assert!(zone_name_form("America/Argentina/Buenos_Aires") && zone_name_form("Etc/GMT+8"));
     assert!(!zone_name_form("/etc") && !zone_name_form("a b"));
+}
+
+/// fit's `TestChannels`, the push targets' part, and `TestPushURL`.
+#[test]
+fn push_targets_read() {
+    let c = load(
+        r#"{"channels": [
+	  {"name": "tv/films", "library": "films", "items": ["films/bbb"],
+	   "push": [{"url": "rtmp://cdn.example.com/live/key"}, {"name": "srt-out", "url": "srt://203.0.113.5:9000?streamid=%23!::r=live/tv,m=publish&passphrase=0123456789&pbkeylen=32&latency=200&mode=caller"}]}],
+	  "push": [{"stream": "live/cam", "url": "rtmp://ingest.example.com/app/key", "retry_min": "2s", "retry_max": "1m", "connect_timeout": "5s"},
+	           {"stream": "tv/films", "url": "rtmp://a.example.com:1936/app/k2"}]}"#,
+    )
+    .unwrap();
+    let s = c.streaming.unwrap();
+    let names: Vec<String> = s
+        .push_targets()
+        .iter()
+        .map(|t| format!("{}@{}@{}", t.push.name, t.push.stream, t.channel))
+        .collect();
+    assert_eq!(
+        names.join(" "),
+        "live/cam#1@live/cam@ tv/films#1@tv/films@ tv/films#2@tv/films@tv/films srt-out@tv/films@tv/films"
+    );
+    let t = s.push_targets();
+    let p = &t[0].push;
+    assert_eq!(
+        (p.retry_min_or(), p.retry_max_or(), p.connect()),
+        (
+            Duration::from_secs(2),
+            Duration::from_secs(60),
+            Duration::from_secs(5)
+        )
+    );
+    let q = &t[1].push;
+    assert_eq!(
+        (q.retry_min_or(), q.retry_max_or(), q.connect()),
+        (
+            DEFAULT_PUSH_RETRY_MIN,
+            DEFAULT_PUSH_RETRY_MAX,
+            DEFAULT_PUSH_CONNECT_TIMEOUT
+        )
+    );
+    let low = StreamPush {
+        retry_min: Duration::from_secs(60),
+        retry_max: Duration::from_secs(1),
+        ..StreamPush::default()
+    };
+    assert_eq!(low.retry_max_or(), Duration::from_secs(60));
+    // The URL is a secret: Debug shows its scheme and host alone.
+    assert!(!format!("{p:?}").contains("key"), "{p:?}");
+    for (raw, want) in [
+        ("rtmp://h/app/key?x=1", "rtmp://h:1935/app/…"),
+        ("RTMP://h:1936/app/a/b", "rtmp://h:1936/app/…"),
+        ("srt://h:9000?streamid=x", "srt://h:9000"),
+    ] {
+        assert_eq!(parse_push_url(raw).unwrap().redacted(), want, "{raw}");
+    }
+    let u = parse_push_url("srt://h:9000?streamid=s&passphrase=0123456789&pbkeylen=16&latency=300")
+        .unwrap();
+    assert_eq!(
+        (
+            u.stream_id.as_str(),
+            u.passphrase.as_str(),
+            u.pbkeylen,
+            u.latency
+        ),
+        ("s", "0123456789", 16, Duration::from_millis(300))
+    );
+    assert_eq!(
+        parse_push_url("srt://h:9000").unwrap().latency,
+        DEFAULT_PUSH_SRT_LATENCY
+    );
+}
+
+/// fit's refusals of push targets; none says the URL.
+#[test]
+fn push_targets_refused() {
+    for (doc, want) in [
+        (
+            r#"{"channels": [{"name": "x", "library": "films", "items": ["a"], "push": [{"stream": "y", "url": "rtmp://h/a/b"}]}]}"#,
+            "leave stream out",
+        ),
+        (
+            r#"{"rtmp": {"listen": ":1935"}, "push": [{"url": "rtmp://h/a/b"}]}"#,
+            "names the stream",
+        ),
+        (
+            r#"{"rtmp": {"listen": ":1935"}, "push": [{"stream": "a b", "url": "rtmp://h/a/b"}]}"#,
+            "not a stream's name",
+        ),
+        (
+            r#"{"rtmp": {"listen": ":1935"}, "push": [{"name": "p", "stream": "a", "url": "rtmp://h/a/b"}, {"name": "p", "stream": "b", "url": "rtmp://h/a/b"}]}"#,
+            "already named",
+        ),
+        (
+            r#"{"rtmp": {"listen": ":1935"}, "push": [{"stream": "a", "url": "http://h/a/b"}]}"#,
+            "rtmp://, rtmps:// or srt://",
+        ),
+        (
+            r#"{"rtmp": {"listen": ":1935"}, "push": [{"stream": "a", "url": "rtmp:///a/b"}]}"#,
+            "needs a host",
+        ),
+        (
+            r#"{"rtmp": {"listen": ":1935"}, "push": [{"stream": "a", "url": "rtmp://h/a"}]}"#,
+            "names an app and a stream",
+        ),
+        (
+            r#"{"rtmp": {"listen": ":1935"}, "push": [{"stream": "a", "url": "rtmps://h/a/key"}]}"#,
+            "not supported yet",
+        ),
+        (
+            r#"{"rtmp": {"listen": ":1935"}, "push": [{"stream": "a", "url": "srt://h"}]}"#,
+            "a host and a port",
+        ),
+        (
+            r#"{"rtmp": {"listen": ":1935"}, "push": [{"stream": "a", "url": "srt://h:1/x"}]}"#,
+            "has no path",
+        ),
+        (
+            r#"{"rtmp": {"listen": ":1935"}, "push": [{"stream": "a", "url": "srt://h:1?foo=1"}]}"#,
+            r#"not "foo""#,
+        ),
+        (
+            r#"{"rtmp": {"listen": ":1935"}, "push": [{"stream": "a", "url": "srt://h:1?mode=listener"}]}"#,
+            "mode may only be caller",
+        ),
+        (
+            r#"{"rtmp": {"listen": ":1935"}, "push": [{"stream": "a", "url": "srt://h:1?passphrase=short"}]}"#,
+            "10 to 79",
+        ),
+        (
+            r#"{"rtmp": {"listen": ":1935"}, "push": [{"stream": "a", "url": "srt://h:1?pbkeylen=20"}]}"#,
+            "16, 24 or 32",
+        ),
+        (
+            r#"{"rtmp": {"listen": ":1935"}, "push": [{"stream": "a", "url": "srt://h:1?latency=5"}]}"#,
+            "20 to 10000",
+        ),
+        (
+            r#"{"rtmp": {"listen": ":1935"}, "push": [{"stream": "a", "url": "rtmp://h/a/b", "retry_min": "1m", "retry_max": "1s"}]}"#,
+            "more than retry_max",
+        ),
+        (
+            r#"{"rtmp": {"listen": ":1935"}, "push": [{"stream": "a", "url": "%%"}]}"#,
+            "does not parse",
+        ),
+        (
+            r#"{"push": [{"stream": "a", "url": "rtmp://h/a/b"}]}"#,
+            "nothing takes streams in",
+        ),
+    ] {
+        match load(doc) {
+            Ok(_) => panic!("{doc}: loaded, want {want:?}"),
+            Err(e) => {
+                assert!(e.contains(want), "{doc}: {e}, want {want:?}");
+                assert!(!e.contains("/key"), "an error holds the url: {e}");
+            }
+        }
+    }
 }

@@ -131,6 +131,10 @@ first; its status here records the branch, then the akio commit akit pins.
 | A287 | A reader of a torrent's bytes that waits for their pieces and asks for them first, and file priorities | requested | 1 | I155 |
 | A288 | A torrent's trackers with their announces, its peer sources and web seeds' state, and a recheck in place (fib's A87, A88); a builder of chosen files that stops | requested | — | I157, I156 |
 | A277 | A client response's peer certificate chain, and a client TLS verifier that keeps a certificate it refused for the caller to see | requested by I132; a recorded stopgap (a probe of the member's certificate) | 1, 15 | I132–I139c |
+| A295 | akio-media's MP4 reader: a probe that skips the sample tables, and a table's size before it is built | requested; nothing waits for it: a probe parses the whole `moov`, bounded by the library's bounds | 4 | I141 |
+| A296 | A timer a handler can set on its engine | requested; stopgap: akit-media's deadline thread (`vod`'s timeouts, channels' pace, push retries) | 1, 4 | I142, I145, I146 |
+| A297 | akio-media's RTMP client over TLS (`rtmps://`) | requested; `rtmps://` push targets refused as not supported yet | — | I146 |
+| A298 | akio-media's RTMP and SRT clients tell their owner when a session goes live and ends, with what it sent | requested; stopgap: an RTMP push retried by its client's `Reconnect` and restarted by a watch of its stream; an SRT push dialed with a session handler of akit's own | 1 | I146 |
 | A301 | `H2Client` ends its connection at the engine's graceful shutdown (`GOAWAY`; closed now with no stream open, else after its last), as the HTTP/1 client closes its idle ones | on akio's main and pinned (since `db34bfd7`): `H2Acceptor::on_shutdown`; akit's stopgap (`EngineSlot::shutdown`) removed | 4, 10 | I18, I18b |
 | A302 | `Conn::close` on io_uring resets a TCP connection whose received data it did not deliver, as on epoll (or a `Conn::abort` that closes with a reset): today a receive in flight takes the data after the shutdown, so the peer, facing a zero window, is never reset | requested; no stopgap (fastcgi.rs `cut_connections` fails on io_uring meanwhile) | — | I75 |
 | A303 | Linked backpressure that holds under work stealing (ADR-104): a held upstream read (akio-http's `ResponseBody::hold_reads`, under akit's `Download::hold_reads`) and a full downstream write (`BodyStream::queued_bytes`, `on_drain`) bound what a streamed relay holds, as on event loops | requested; stopgap: akit's TCP listeners choose `Scheduling::EventLoops` (`akit_runtime::scheduled`, decision 91) unless `AKIO_DEFAULT_SCHEDULING` is set | 8, 11 | I16, I17, I18b |
@@ -3097,6 +3101,50 @@ timer cancelled first.
 **How akit would use it.** `vod` sets the timeout on the suspended request and drops its own
 deadline thread.
 
+
+## A297 akio-media's RTMP client over TLS
+
+**Status.** Requested by I146 (2026-11-28). akit refuses a push target's `rtmps://` URL as not
+supported yet; fit pushes to RTMPS ingests (fib's client dials TLS).
+
+**Problem.** CDNs' ingests take RTMPS more and more (some take nothing else). akio-media's
+`rtmp::client::RtmpUrl::parse` refuses `rtmps://`, and `push` dials plain TCP.
+
+**Evidence.** At akio `d8d51f61`, `akio-media/src/rtmp/client.rs`: `ClientError::BadUrl`'s doc
+("`rtmps://` is not supported"), `dial` on `Engine::dial`.
+
+**Suggested API.** `RtmpUrl::parse` takes `rtmps://` (port 443 by default) and `push` and `pull`
+dial it with akio-tls's client (`RtmpClientConfig::tls: Option<ClientConfig>`, the system's roots
+by default), the SNI the URL's host.
+
+**How akit would use it.** A push target's `rtmps://` is read and pushed as `rtmp://` is.
+
+## A298 RTMP and SRT clients that tell their owner a session's start and end
+
+**Status.** Requested by I146 (2026-11-28). Stopgap in akit: an RTMP push hands its retries to the
+client's `Reconnect` and watches its stream in the hub (a subscription that waits), starting a
+client again when a publisher comes back; its status is read from `RtmpClient::state`, without its
+failures and bytes. An SRT push dials with `srt::dial` and a session handler of akit's own, which
+hears the handshake and the close, and muxes the stream into MPEG-TS itself, as `srt::push` does.
+
+**Problem.** A gateway relaying streams (fit's push targets) reconnects a target on its own
+schedule, counts its connections and failures, and reports its state as it changes, without
+polling. akio-media's `rtmp::push` and `srt::push` say nothing to their owner: an RTMP client ends
+for good on a refusal it thinks no retry cures or when its publisher leaves, and the SRT push has
+no reconnect and no callback at all.
+
+**Evidence.** At akio `d8d51f61`, `akio-media/src/rtmp/client.rs`: `RtmpClient::state`, `error`
+and `reconnects` are read only; `retryable` ends the client on `ClientError::Hub` and on
+credential refusals. `akio-media/src/srt/server.rs`: `push` returns an `SrtSession` with
+`is_connected` and no hook.
+
+**Suggested API.** `RtmpClientConfig::on_state(Fn(ClientState, Option<&ClientError>))` and
+`SrtPushConfig { on_connect, on_close, reconnect }` (or `srt::push` taking a handler), and the
+bytes a client sent (`RtmpClient::stats`).
+
+**How akit would use it.** The push drops its watch, reads its state from the callbacks, counts
+failures and bytes for both protocols, and retries an RTMP target refused for its credentials on
+its own backoff, as fit does.
 
 ## A301 `H2Client` ended by the engine's graceful shutdown
 

@@ -11,14 +11,19 @@
 //! players see no gap and no jump; its tracks are set anew when they differ
 //! (`Publisher::set_tracks`), which HLS marks with a discontinuity.
 //!
-//! The role makes a [`Manager`] for its hub and moves it to every config applied: channels are
-//! changed in place, a new list or schedule taking effect from the next item. The Admin API
-//! finds it by the engine ([`lookup`]): `/streaming/channels`.
+//! A push target ([`Push`], I146) relays a stream of the hub, a channel or any other, to an
+//! outside RTMP or SRT server, connected again with backoff.
+//!
+//! The role makes a [`Manager`] for its hub and moves it to every config applied: channels and
+//! push targets are changed in place, a new list or schedule taking effect from the next item, a
+//! target whose stream, url and timeout are the same kept connected. The Admin API finds it by
+//! the engine ([`lookup`]): `/streaming/channels` and `/streaming/push`.
 
 pub(crate) mod at;
 mod channel;
 pub mod clock;
 mod list;
+mod push;
 mod source;
 
 #[cfg(test)]
@@ -35,12 +40,16 @@ use akit_config::channels::{ChannelAt, StreamChannel};
 use akit_config::value::Value;
 use akit_observe::{MetricWriter, Zone};
 
+use akit_config::channels::PushTarget;
 pub use channel::{
     ActionError, Channel, ChannelStatus, ItemStatus, STATE_IDLE, STATE_LOADING, STATE_PLAYING,
     STATE_STOPPED, STATE_WAITING,
 };
 use clock::{Clock, WallClock};
 use list::Rng;
+pub use push::{
+    PUSH_CONNECTED, PUSH_CONNECTING, PUSH_RETRYING, PUSH_STOPPED, PUSH_WAITING, Push, PushStatus,
+};
 
 /// A slot of a channel's schedule.
 #[derive(Debug, Clone)]
@@ -104,6 +113,8 @@ pub struct Options {
     pub clock: Option<Arc<dyn Clock>>,
     /// Seeds shuffle's order; a random seed when 0.
     pub seed: u64,
+    /// The engine push targets dial from; none dial without it.
+    pub dial: Option<Arc<akio::Engine>>,
 }
 
 /// What a manager's channels share.
@@ -147,12 +158,14 @@ impl std::error::Error for ApplyError {}
 #[derive(Default)]
 struct Inner {
     channels: HashMap<String, Arc<Channel>>,
+    pushes: HashMap<String, Arc<Push>>,
     stopped: bool,
 }
 
 /// Runs the channels of a hub.
 pub struct Manager {
     ctx: Arc<Ctx>,
+    dial: Option<Arc<akio::Engine>>,
     inner: Mutex<Inner>,
 }
 
@@ -180,6 +193,7 @@ impl Manager {
                 clock: o.clock.unwrap_or_else(|| Arc::new(WallClock)),
                 rng: Mutex::new(Rng::new(seed)),
             }),
+            dial: o.dial,
             inner: Mutex::new(Inner::default()),
         }
     }
@@ -188,14 +202,15 @@ impl Manager {
         self.inner.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// Moves the manager to `chs`: a channel of the same name is changed in place, and those
-    /// left out end. A channel's new list, schedule, library or rendition takes effect from its
-    /// next item.
+    /// Moves the manager to `chs` and `targets`: a channel or push target of the same name is
+    /// changed in place, and those left out end. A channel's new list, schedule, library or
+    /// rendition takes effect from its next item; a push target whose stream, url or timeout
+    /// changes connects again.
     ///
     /// # Errors
     ///
-    /// A channel that does not compile, which changes nothing; a manager stopped.
-    pub fn apply(&self, chs: &[StreamChannel]) -> Result<(), ApplyError> {
+    /// A channel or target that does not compile, which changes nothing; a manager stopped.
+    pub fn apply(&self, chs: &[StreamChannel], targets: &[PushTarget]) -> Result<(), ApplyError> {
         let mut sets = Vec::with_capacity(chs.len());
         let mut errs = Vec::new();
         for c in chs {
@@ -204,15 +219,23 @@ impl Manager {
                 Err(e) => errs.push(e),
             }
         }
+        let mut urls = Vec::with_capacity(targets.len());
+        for t in targets {
+            match akit_config::channels::parse_push_url(&t.push.url) {
+                Ok(u) => urls.push(u),
+                Err(e) => errs.push(format!("push {}: {e}", t.push.name)),
+            }
+        }
         if !errs.is_empty() {
             return Err(ApplyError::Invalid(errs.join("; ")));
         }
-        let (start, end) = {
+        type Start = (Arc<Channel>, Option<Arc<Settings>>);
+        let (start, end, push_start, push_end) = {
             let mut g = self.lock();
             if g.stopped {
                 return Err(ApplyError::Closed);
             }
-            let mut start: Vec<(Arc<Channel>, Option<Arc<Settings>>)> = Vec::new();
+            let mut start: Vec<Start> = Vec::new();
             let mut keep = Vec::new();
             for s in sets {
                 keep.push(s.name.clone());
@@ -231,11 +254,37 @@ impl Manager {
                 .cloned()
                 .collect();
             let end: Vec<Arc<Channel>> = gone.iter().filter_map(|k| g.channels.remove(k)).collect();
-            (start, end)
+            let mut push_start = Vec::new();
+            let mut push_end = Vec::new();
+            let mut keep = Vec::new();
+            for (t, u) in targets.iter().zip(urls) {
+                keep.push(t.push.name.clone());
+                if let Some(p) = g.pushes.get(&t.push.name) {
+                    if p.same(t) {
+                        p.retarget(t.clone());
+                        continue;
+                    }
+                    push_end.push(Arc::clone(p));
+                }
+                let p = Push::new(Arc::clone(&self.ctx), self.dial.clone(), t.clone(), u);
+                g.pushes.insert(t.push.name.clone(), Arc::clone(&p));
+                push_start.push(p);
+            }
+            let gone: Vec<String> = g
+                .pushes
+                .keys()
+                .filter(|k| !keep.contains(k))
+                .cloned()
+                .collect();
+            push_end.extend(gone.iter().filter_map(|k| g.pushes.remove(k)));
+            (start, end, push_start, push_end)
         };
         // Ended first, so that a channel renamed frees its stream.
         for c in end {
             c.remove();
+        }
+        for p in push_end {
+            p.remove();
         }
         for (c, s) in start {
             match s {
@@ -243,19 +292,62 @@ impl Manager {
                 None => c.start(),
             }
         }
+        for p in push_start {
+            p.start();
+        }
         Ok(())
     }
 
     /// Ends every channel; the manager runs nothing more.
     pub fn stop(&self) {
-        let chs: Vec<Arc<Channel>> = {
+        let (chs, ps): (Vec<Arc<Channel>>, Vec<Arc<Push>>) = {
             let mut g = self.lock();
             g.stopped = true;
-            g.channels.drain().map(|(_, c)| c).collect()
+            (
+                g.channels.drain().map(|(_, c)| c).collect(),
+                g.pushes.drain().map(|(_, p)| p).collect(),
+            )
         };
         for c in chs {
             c.remove();
         }
+        for p in ps {
+            p.remove();
+        }
+    }
+
+    /// The push target named `name`.
+    #[must_use]
+    pub fn push(&self, name: &str) -> Option<Arc<Push>> {
+        self.lock().pushes.get(name).cloned()
+    }
+
+    /// The push targets, sorted by name.
+    #[must_use]
+    pub fn push_list(&self) -> Vec<Arc<Push>> {
+        let mut v: Vec<Arc<Push>> = self.lock().pushes.values().cloned().collect();
+        v.sort_by(|a, b| a.name().cmp(b.name()));
+        v
+    }
+
+    /// The status of every push target, sorted by name.
+    #[must_use]
+    pub fn pushes(&self) -> Vec<PushStatus> {
+        self.push_list().iter().map(|p| p.status()).collect()
+    }
+
+    /// The status of the push targets of `stream`, as a channel's status shows them.
+    fn pushes_of(&self, stream: &str) -> Vec<Value> {
+        self.push_list()
+            .iter()
+            .filter(|p| p.stream() == stream)
+            .map(|p| p.status().to_value())
+            .collect()
+    }
+
+    /// The status of channel `c`, with its push targets, as the Admin API writes it.
+    fn channel_value(&self, c: &Channel) -> Value {
+        c.status().to_value(self.pushes_of(c.name()))
     }
 
     /// The channel named `name`.
@@ -339,6 +431,52 @@ impl Manager {
                 "akit_streaming_channel_underruns_total",
                 c.underruns.load(Relaxed) as f64,
                 &[("channel", c.name())],
+            );
+        }
+        let ps = self.push_list();
+        let pst: Vec<PushStatus> = ps.iter().map(|p| p.status()).collect();
+        w.family(
+            "akit_streaming_push_targets",
+            "gauge",
+            "Push targets, by state: connected, connecting, retrying after a failure, waiting for their stream, or stopped.",
+        );
+        for st in [
+            PUSH_CONNECTED,
+            PUSH_CONNECTING,
+            PUSH_RETRYING,
+            PUSH_WAITING,
+            PUSH_STOPPED,
+        ] {
+            let n = pst.iter().filter(|s| s.state == st).count();
+            w.sample_u64("akit_streaming_push_targets", n as u64, &[("state", st)]);
+        }
+        w.family(
+            "akit_streaming_push_connects_total",
+            "counter",
+            "Connections of a push target, by whether the target took the stream (ok) or not (failed).",
+        );
+        for s in &pst {
+            w.sample_u64(
+                "akit_streaming_push_connects_total",
+                s.connects,
+                &[("target", &s.name), ("result", "ok")],
+            );
+            w.sample_u64(
+                "akit_streaming_push_connects_total",
+                s.failures,
+                &[("target", &s.name), ("result", "failed")],
+            );
+        }
+        w.family(
+            "akit_streaming_push_bytes_total",
+            "counter",
+            "Bytes a push target sent: the payload SRT sent (an RTMP push's wait for akio A298).",
+        );
+        for s in &pst {
+            w.sample_u64(
+                "akit_streaming_push_bytes_total",
+                s.bytes,
+                &[("target", &s.name)],
             );
         }
     }
@@ -432,11 +570,7 @@ fn route(key: usize, rest: &str, method: &Method, body: &[u8]) -> Response {
         return error(404, "the streaming role does not run here");
     };
     if name.is_empty() {
-        let list = m
-            .channels()
-            .iter()
-            .map(|s| s.to_value(Vec::new()))
-            .collect();
+        let list = m.list().iter().map(|c| m.channel_value(c)).collect();
         return json(
             200,
             &Value::Object(vec![("channels".to_owned(), Value::Array(list))]),
@@ -446,7 +580,7 @@ fn route(key: usize, rest: &str, method: &Method, body: &[u8]) -> Response {
         return error(404, &format!("no channel named {name:?}"));
     };
     if read {
-        return json(200, &c.status().to_value(Vec::new()));
+        return json(200, &m.channel_value(&c));
     }
     let Some((action, item)) = action_of(body) else {
         return error(400, "the body must be JSON: {\"action\": \"start\"}");
@@ -464,7 +598,7 @@ fn route(key: usize, rest: &str, method: &Method, body: &[u8]) -> Response {
         _ => Err(None),
     };
     match r {
-        Ok(()) => json(200, &c.status().to_value(Vec::new())),
+        Ok(()) => json(200, &m.channel_value(&c)),
         Err(Some(e @ ActionError::Stopped)) => error(409, &e.to_string()),
         Err(Some(e @ ActionError::NoItem)) => error(404, &e.to_string()),
         Err(None) => error(
@@ -486,4 +620,66 @@ fn action_of(body: &[u8]) -> Option<(String, String)> {
         Some(_) => None,
     };
     Some((field("action")?, field("item")?))
+}
+
+/// Where the Admin API serves the push targets.
+pub const PUSH_PREFIX: &str = "/streaming/push";
+
+/// Answers a request of `/streaming/push` (fit's `admin/channels.go`): the list, and an action
+/// on one (`{"action": "start"}`, `"stop"` or `"restart"`); false for a path that is not theirs.
+///
+///   GET  /streaming/push          every push target
+///   POST /streaming/push/{name}   an action
+pub fn serve_push(key: usize, ctx: &mut Context) -> bool {
+    let path = ctx.path().to_owned();
+    let Some(rest) = path.strip_prefix(PUSH_PREFIX) else {
+        return false;
+    };
+    if !(rest.is_empty() || rest.starts_with('/')) {
+        return false;
+    }
+    let method = ctx.method().clone();
+    let body = ctx.body().to_vec();
+    let resp = route_push(key, rest, &method, &body);
+    ctx.respond(resp);
+    true
+}
+
+fn route_push(key: usize, rest: &str, method: &Method, body: &[u8]) -> Response {
+    let read = matches!(method, Method::Get | Method::Head);
+    let name = rest.trim_start_matches('/');
+    if name.is_empty() && !read {
+        return error(405, "method not allowed").header("Allow", "GET, HEAD");
+    }
+    if !name.is_empty() && *method != Method::Post {
+        return error(405, "method not allowed").header("Allow", "POST");
+    }
+    let Some(m) = lookup(key) else {
+        return error(404, "the streaming role does not run here");
+    };
+    if name.is_empty() {
+        let list = m.pushes().iter().map(PushStatus::to_value).collect();
+        return json(
+            200,
+            &Value::Object(vec![("push".to_owned(), Value::Array(list))]),
+        );
+    }
+    let Some(p) = m.push(name) else {
+        return error(404, &format!("no push target named {name:?}"));
+    };
+    let Some((action, _)) = action_of(body) else {
+        return error(400, "the body must be JSON: {\"action\": \"restart\"}");
+    };
+    match action.as_str() {
+        "start" => p.start(),
+        "stop" => p.stop(),
+        "restart" => p.restart(),
+        _ => {
+            return error(
+                400,
+                "channels: the action is start, stop or skip; a push target's start, stop or restart",
+            );
+        }
+    }
+    json(200, &p.status().to_value())
 }

@@ -439,3 +439,120 @@ fn signed_url_stream_cookie() {
         assert_eq!(get(a, &format!("/hls/live/cam/{seg}"), &[], 0).status, 401);
     });
 }
+
+/// A sink that tells a test each time a stream's tracks come.
+struct Told(std::sync::mpsc::Sender<()>);
+
+impl akio_media::hub::Sink for Told {
+    fn on_tracks(&mut self, _tracks: &Tracks) {
+        let _ = self.0.send(());
+    }
+    fn on_packet(&mut self, _pkt: &Arc<Packet>) {}
+}
+
+/// The role's hub of `akit`.
+fn hub_of(akit: &Akit) -> Hub {
+    akit_media::streaming::lookup(akit_media::auth::registry::key(&akit.engine))
+        .with(|c| c.map(|c| c.hub.clone()))
+        .unwrap()
+}
+
+/// A wait for `path` to be published in `akit`'s hub: the receiver hears it.
+fn told(akit: &Akit, path: &str) -> (std::sync::mpsc::Receiver<()>, akio_media::hub::Subscription) {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let sub = hub_of(akit)
+        .subscribe(
+            path,
+            Told(tx),
+            akio_media::hub::SubscribeOptions::new(PeerInfo::default())
+                .wait(Duration::from_secs(3600)),
+        )
+        .unwrap();
+    (rx, sub)
+}
+
+fn target_config(rtmp: u16, srt: u16) -> String {
+    format!(
+        r#"{{"listeners": [{{"name": "web", "address": "127.0.0.1:0"}}],
+          "media_auth": [{{"name": "live", "tokens": [{{"token": "{TOKEN}", "publish": ["live/*"], "play": ["live/*"]}}]}}],
+          "streaming": {{"rtmp": {{"listen": "127.0.0.1:{rtmp}", "auth": "live"}}, "srt": {{"listen": "127.0.0.1:{srt}", "auth": "live"}}}}}}"#
+    )
+}
+
+/// fit's push tests (I146): a stream relayed to an outside RTMP and SRT server, akit's own role,
+/// which receives it, and gets it back after the server starts again.
+#[test]
+fn push_targets() {
+    let (rp, sp) = (free_port(), free_port());
+    let target = start(&target_config(rp, sp), true);
+    let src = Hub::default();
+    let stop = Arc::new(AtomicBool::new(false));
+    let feeder = paced(&src, "live/cam", Arc::clone(&stop));
+    let dial = Arc::new(
+        Engine::builder()
+            .client_threads(1)
+            .udp_client_threads(1)
+            .build()
+            .unwrap(),
+    );
+    dial.start().unwrap();
+    let m = akit_media::channels::Manager::new(akit_media::channels::Options {
+        hub: src.clone(),
+        libraries: usize::MAX,
+        clock: None,
+        seed: 0,
+        dial: Some(Arc::clone(&dial)),
+    });
+    let push = |name: &str, url: String| akit_config::channels::PushTarget {
+        push: akit_config::channels::StreamPush {
+            name: name.into(),
+            stream: "live/cam".into(),
+            url,
+            retry_min: Duration::from_millis(100),
+            retry_max: Duration::from_millis(500),
+            ..akit_config::channels::StreamPush::default()
+        },
+        channel: String::new(),
+    };
+    let targets = vec![
+        push(
+            "rtmp",
+            format!("rtmp://127.0.0.1:{rp}/live/a?token={TOKEN}"),
+        ),
+        push(
+            "srt",
+            format!("srt://127.0.0.1:{sp}?streamid=%23!::r=live/b,m=publish,s={TOKEN}"),
+        ),
+    ];
+    let (a, _sa) = told(&target, "live/a");
+    let (b, _sb) = told(&target, "live/b");
+    m.apply(&[], &targets).unwrap();
+    a.recv_timeout(Duration::from_secs(30))
+        .expect("the RTMP push");
+    if b.recv_timeout(Duration::from_secs(30)).is_err() {
+        panic!("the SRT push: {:?}", m.push("srt").unwrap().status());
+    }
+    for name in ["rtmp", "srt"] {
+        let st = m.push(name).unwrap().status();
+        assert_eq!(st.state, akit_media::channels::PUSH_CONNECTED, "{st:?}");
+        assert!(st.connects >= 1, "{st:?}");
+        assert!(!format!("{st:?}").contains(TOKEN), "{st:?}");
+    }
+    assert!(m.push("srt").unwrap().status().bytes > 0);
+    // The server starts again: each push gets the stream back to it.
+    drop((_sa, _sb));
+    drop(target);
+    let target = start(&target_config(rp, sp), true);
+    let (a, _sa) = told(&target, "live/a");
+    let (b, _sb) = told(&target, "live/b");
+    a.recv_timeout(Duration::from_secs(30))
+        .expect("the RTMP push again");
+    if b.recv_timeout(Duration::from_secs(30)).is_err() {
+        panic!("the SRT push again: {:?}", m.push("srt").unwrap().status());
+    }
+    assert!(m.push("srt").unwrap().status().failures >= 1);
+    m.stop();
+    stop.store(true, Ordering::SeqCst);
+    feeder.join().unwrap();
+    dial.shutdown();
+}

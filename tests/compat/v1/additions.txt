@@ -951,3 +951,21 @@ config	added	supported	streaming.channels[].schedule
 config	added	supported	streaming.channels[].schedule[].at
 config	added	supported	streaming.channels[].schedule[].item
 config	added	supported	streaming.channels[].time_zone
+# I146: the streaming role's push targets (fit's admin/channels.go).
+admin	added	endpoint	GET	/streaming/push
+admin	added	endpoint	HEAD	/streaming/push
+admin	added	endpoint	POST	/streaming/push/{name...}
+config	added	supported	streaming.channels[].push
+config	added	supported	streaming.channels[].push[].connect_timeout
+config	added	supported	streaming.channels[].push[].name
+config	added	supported	streaming.channels[].push[].retry_max
+config	added	supported	streaming.channels[].push[].retry_min
+config	added	supported	streaming.channels[].push[].stream
+config	added	supported	streaming.channels[].push[].url
+config	added	supported	streaming.push
+config	added	supported	streaming.push[].connect_timeout
+config	added	supported	streaming.push[].name
+config	added	supported	streaming.push[].retry_max
+config	added	supported	streaming.push[].retry_min
+config	added	supported	streaming.push[].stream
+config	added	supported	streaming.push[].url

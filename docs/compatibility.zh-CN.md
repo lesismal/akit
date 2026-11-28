@@ -120,6 +120,7 @@ API 的下一个版本中才会去掉，并在其改动清单中写明。
 | `GET`、`HEAD` `/media/library`、`/media/library/{name}`、`/media/library/{name}/items/{id...}`、`POST /media/library/{name}/rescan` | 媒体库：其扫描的状态、分页和筛选的媒体库条目、完整的单个条目，以及立即请求一次扫描，同 fit 的 `admin/medialib.go`（冻结之后新增，I141） |
 | `/bittorrent/torrents`、`/bittorrent/torrents/{id}` 及其 `files`、`peers`、`trackers`、`/bittorrent/alt_speed`、`/bittorrent/publish/...`、`/bittorrent/events`、`/bittorrent/tracker/...` | BitTorrent 角色的种子、修改、事件和统计，同 fit 的 `admin/bittorrent.go` 和 `admin/btevents.go`；akio 尚不能做的事按名称以 501 应答（冻结之后新增，I157） |
 | `GET`、`HEAD` `/streaming/channels`、`/streaming/channels/{name...}`、`POST /streaming/channels/{name...}` | 流媒体角色的频道：每个频道在播放什么、接下来播放什么、其计数器，以及一个操作（`start`、`stop`、`skip`，跳到下一个条目或指定的条目），同 fit 的 `admin/channels.go`（冻结之后新增，I145） |
+| `GET`、`HEAD` `/streaming/push`、`POST /streaming/push/{name...}` | 流媒体角色的推送目标：每个目标的状态、连接和失败次数，以及一个操作（`start`、`stop`、`restart`），同 fit 的 `admin/channels.go`（冻结之后新增，I146） |
 | `GET /dashboard/` | 仪表盘，给人看（不覆盖） |
 
 配置中的路径是 JSON pointer 的各个 token。变更的应答给出所应用的版本，在内容中（`version`）和 `Akit-Config-Version` 中，并给出配置的
@@ -134,7 +135,7 @@ API 的下一个版本中才会去掉，并在其改动清单中写明。
 按写入时的样子返回配置；这一改动关闭威胁模型的 L2，属于 1.x 版本为修补安全漏洞可以做的改动。
 
 fit 的 v1 还有更多端点，用于 akit 尚未运行的部分：tunnel 和 LLM 角色的链接令牌（`/tokens`）、媒体库和工作台的媒体页面的其余部分
-（`/media/...`），以及流媒体角色（`/streaming/...`）。akit 在运行这些部分之前对它们答 404，届时按 fit 的样子加入，属于兼容的增加。
+（`/media/...`），以及流媒体角色的其余部分（`/streaming/...`；其频道和推送目标自 I145 和 I146 起）。akit 在运行这些部分之前对它们答 404，届时按 fit 的样子加入，属于兼容的增加。
 
 自 I90 起，控制台（`admin.console`）在 `/api/m/admin/` 下提供同样的端点，用它的登录代替令牌，另有 fit 控制台自己的端点（`/api/login`、`/api/logout`、`/api/session`、`/api/workbench`），cookie 和 CSRF 请求头用 akit 的名字 `akit_console_<端口>` 和 `X-Akit-Csrf`（fit 的 `fit_console_<端口>` 和 `X-Fit-Csrf`，决定 037；[控制台指南](guides/console.zh-CN.md)）。
 
@@ -327,7 +328,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 1287 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 1301 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
@@ -384,7 +385,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`routes`](#fields-routes) | 24 | 24 | 0 |
 | [`schema_version`](#fields-schema-version) | 1 | 1 | 0 |
 | [`services`](#fields-services) | 13 | 13 | 0 |
-| [`streaming`](#fields-streaming) | 76 | 54 | 22 |
+| [`streaming`](#fields-streaming) | 76 | 68 | 8 |
 | [`sync`](#fields-sync) | 42 | 0 | 42 |
 | [`sync.codecs/canal_json`](#fields-sync-codecs-canal-json) | 87 | 0 | 87 |
 | [`sync.codecs/csv`](#fields-sync-codecs-csv) | 116 | 0 | 116 |
@@ -452,7 +453,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`tunnel`](#fields-tunnel) | 164 | 161 | 3 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 76 | 0 |
-| **合计** | 3821 | 1287 | 2534 |
+| **合计** | 3821 | 1301 | 2520 |
 
 <a id="fields-access"></a>
 
@@ -1954,13 +1955,13 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | `streaming.channels[].max_buffer_bytes` | `integer` | 已支持 |
 | `streaming.channels[].name` | `string, required` | 已支持 |
 | `streaming.channels[].order` | `enum(sequence\|shuffle)` | 已支持 |
-| `streaming.channels[].push` | `array<object>` | 尚不支持（not supported yet） |
-| `streaming.channels[].push[].connect_timeout` | `duration` | 尚不支持（not supported yet） |
-| `streaming.channels[].push[].name` | `string` | 尚不支持（not supported yet） |
-| `streaming.channels[].push[].retry_max` | `duration` | 尚不支持（not supported yet） |
-| `streaming.channels[].push[].retry_min` | `duration` | 尚不支持（not supported yet） |
-| `streaming.channels[].push[].stream` | `string` | 尚不支持（not supported yet） |
-| `streaming.channels[].push[].url` | `string, required` | 尚不支持（not supported yet） |
+| `streaming.channels[].push` | `array<object>` | 已支持 |
+| `streaming.channels[].push[].connect_timeout` | `duration` | 已支持 |
+| `streaming.channels[].push[].name` | `string` | 已支持 |
+| `streaming.channels[].push[].retry_max` | `duration` | 已支持 |
+| `streaming.channels[].push[].retry_min` | `duration` | 已支持 |
+| `streaming.channels[].push[].stream` | `string` | 已支持 |
+| `streaming.channels[].push[].url` | `string, required` | 已支持 |
 | `streaming.channels[].read_ahead` | `duration` | 已支持 |
 | `streaming.channels[].rendition` | `string` | 已支持 |
 | `streaming.channels[].schedule` | `array<object>` | 已支持 |
@@ -1970,13 +1971,13 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | `streaming.gop_cache_bytes` | `integer` | 已支持 |
 | `streaming.max_players` | `integer` | 已支持 |
 | `streaming.max_streams` | `integer` | 已支持 |
-| `streaming.push` | `array<object>` | 尚不支持（not supported yet） |
-| `streaming.push[].connect_timeout` | `duration` | 尚不支持（not supported yet） |
-| `streaming.push[].name` | `string` | 尚不支持（not supported yet） |
-| `streaming.push[].retry_max` | `duration` | 尚不支持（not supported yet） |
-| `streaming.push[].retry_min` | `duration` | 尚不支持（not supported yet） |
-| `streaming.push[].stream` | `string` | 尚不支持（not supported yet） |
-| `streaming.push[].url` | `string, required` | 尚不支持（not supported yet） |
+| `streaming.push` | `array<object>` | 已支持 |
+| `streaming.push[].connect_timeout` | `duration` | 已支持 |
+| `streaming.push[].name` | `string` | 已支持 |
+| `streaming.push[].retry_max` | `duration` | 已支持 |
+| `streaming.push[].retry_min` | `duration` | 已支持 |
+| `streaming.push[].stream` | `string` | 已支持 |
+| `streaming.push[].url` | `string, required` | 已支持 |
 | `streaming.rtmp` | `object` | 已支持 |
 | `streaming.rtmp.auth` | `string` | 已支持 |
 | `streaming.rtmp.handshake_timeout` | `duration` | 已支持 |

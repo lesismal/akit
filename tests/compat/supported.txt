@@ -1370,8 +1370,8 @@ routes[].handler<vod>.params.cache_control
 routes[].handler<vod>.params.cors
 routes[].handler<vod>.params.timeout
 # I120: fit's media auth policies and streaming role (akit-config's media module); a policy's keys
-# (I143) and url_signing (I144); the role's channels (I145), but for their push (I146) and encrypt and
-# key_rotation (I147). The role's push (I146) is refused as not supported yet, as are RTMP's and RTSP's mptcp, RTMP's max_message_bytes (akio A263)
+# (I143) and url_signing (I144); the role's channels (I145) and push targets (I146), but for the
+# channels' encrypt and key_rotation (I147). Refused as not supported yet, as are RTMP's and RTSP's mptcp, RTMP's max_message_bytes (akio A263)
 # and RTSP's auth_methods, realm and idle_timeout (Digest and Basic, a sessionless idle bound: akio A264). akit run runs the role from I122.
 media_auth
 media_auth[].keys
@@ -1420,6 +1420,13 @@ streaming.channels[].loop
 streaming.channels[].max_buffer_bytes
 streaming.channels[].name
 streaming.channels[].order
+streaming.channels[].push
+streaming.channels[].push[].connect_timeout
+streaming.channels[].push[].name
+streaming.channels[].push[].retry_max
+streaming.channels[].push[].retry_min
+streaming.channels[].push[].stream
+streaming.channels[].push[].url
 streaming.channels[].read_ahead
 streaming.channels[].rendition
 streaming.channels[].schedule
@@ -1429,6 +1436,13 @@ streaming.channels[].schedule[].item
 streaming.gop_cache_bytes
 streaming.max_players
 streaming.max_streams
+streaming.push
+streaming.push[].connect_timeout
+streaming.push[].name
+streaming.push[].retry_max
+streaming.push[].retry_min
+streaming.push[].stream
+streaming.push[].url
 streaming.rtmp
 streaming.rtmp.auth
 streaming.rtmp.handshake_timeout

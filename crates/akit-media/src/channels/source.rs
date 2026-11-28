@@ -625,7 +625,9 @@ impl Source {
                         break;
                     }
                     if let Some(p) = picks.get_mut(i) {
-                        p.pos = pos.saturating_add(usize::try_from(end.saturating_sub(start)).unwrap_or(0));
+                        p.pos = pos.saturating_add(
+                            usize::try_from(end.saturating_sub(start)).unwrap_or(0),
+                        );
                     }
                     end = end.saturating_add(u64::from(size));
                     n_run = n_run.saturating_add(1);
@@ -636,10 +638,7 @@ impl Source {
                     return Err(SourceError::Sample);
                 };
                 read_full(&h, buf, start).map_err(|e| {
-                    SourceError::Library(library::Error::Io(format!(
-                        "reading {}: {e}",
-                        file.path
-                    )))
+                    SourceError::Library(library::Error::Io(format!("reading {}: {e}", file.path)))
                 })?;
                 pos = pos.saturating_add(n);
             }

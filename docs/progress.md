@@ -18,7 +18,7 @@ done and where the work differs from the plan.
 | Next | the external security review ([scope](security/review-scope.md)), whose findings finish I80b; fit's answer to the fields decision 035 proposes (CRL files, a WASM digest); the tracks after 1.0 ([the plan](dev-plan.md#after-10)): Console and encrypted store done (I89–I94, I93b, I93c); fit's Admin API rules for connections without the token, on the console's slots (akio's A232) (Logging done: I81–I83; Access lists done: I85–I87); the Gateway API's conformance run (tests/conformance, the maintainer's) |
 | akio requests | A1–A24, A29, A30, A32, A33, A35–A38, A45, A48, A49, A51–A54, A57, A58, A63–A66, A75, A78, A79, A90–A94, A105, A108, A109, A111–A113, A117, A132–A135, A148, A165–A172, A180, A200, A214, A215, A220, A230–A238, A245 and A247–A249 on akio's main and pinned; A225 (an external review, L15) requested ([akio API requests](akio-api-requests.md)) |
 | Streaming and media auth | [I120–I126](dev-plan.md#streaming-and-media-auth), fit's I115–I117 (decision 040): I120 (`media_auth` and `streaming` in the config), I121 (the policies, the checks, `akit media-token`), I122 (the role's hub, RTMP, RTSP and SRT), I123 (`httpflv`, `hls`), I124 (the WebRTC port, `stream_whip`, `stream_whep`), I125 (`media_pages`) and I126 (`auth` on `whip`, `whep` and `webrtc_proxy`) done; the media library's `libraries`, `vod` and `channels` wait for its track; akio requests A263–A268 |
-| Media library and channels | [I140–I149](dev-plan.md#media-library-and-channels), fit's I131–I139 and I119 (decision 043): I140 (`media_library` in the config) I141 (the catalog, the role `media_library`, `/media/library`) I142 (`vod`), I143 (`keys`, `media_tokens`), I144 (`url_signing`) and I145 (channels) done; akio requests A295, A296 |
+| Media library and channels | [I140–I149](dev-plan.md#media-library-and-channels), fit's I131–I139 and I119 (decision 043): I140 (`media_library` in the config) I141 (the catalog, the role `media_library`, `/media/library`) I142 (`vod`), I143 (`keys`, `media_tokens`), I144 (`url_signing`), I145 (channels) and I146 (push targets) done; akio requests A295–A298 |
 
 ## Log
 
@@ -73,6 +73,34 @@ done and where the work differs from the plan.
   - On io_uring, `Engine::remove_listener` returns once the listener's accepts are cancelled, so a
     listener a reload removes takes no connection after it; `H3Upload::finish` is no longer
     refused by its own response; the pool pressure watcher samples every 500 ms (was 100 ms).
+### 2026-11-28: I146, push targets
+
+- **Built**: fit's I134's push targets. akit-config reads `streaming.push` and a channel's `push`
+  (`name`, `stream`, `url`, `retry_min`, `retry_max`, `connect_timeout`) with fit's checks of the
+  targets together (their number, names, streams, URLs, retries; a URL never in an error, nor in
+  the config's `Debug`); a role of push targets alone takes no stream in, as fit's; `rtmps://` is
+  refused as not supported yet (akio A297). `akit_media::channels::Push`: an SRT target dialed on
+  the role's engine with a session handler of akit's own, which hears the handshake and the close,
+  its stream muxed into MPEG-TS as akio-media's SRT push does, retried on the manager's clock,
+  `retry_min` doubling up to `retry_max`, a target that stayed up `retry_max` starting again from
+  `retry_min`; an RTMP target is akio-media's RTMP push, retried by the client's own `Reconnect`
+  with the same bounds and started again by a watch of its stream when a publisher comes back
+  (akio A298). A reload keeps a target whose stream, url and timeout are the same; the Admin API's
+  `/streaming/push` (list, `start`, `stop`, `restart`) and a channel's status list its targets;
+  `/metrics`' `akit_streaming_push_*`.
+- **Differs from fit**: until akio's A298, an RTMP push's failures and bytes are not counted, its
+  state is read from the client, and a target that refuses it for its credentials ends it until its
+  stream is published again or the Admin API restarts it; `rtmps://` waits for A297 (decision 043).
+- **Checked**: fit's `TestChannels` and `TestPushURL` for the config; fit's `TestPushFailures`
+  on the manager's clock (no engine to dial from, the backoff doubling to `retry_max`, a stream
+  not published, a reload keeping and replacing targets, the metrics) and the Admin API's push
+  endpoints; `tests/handlers.rs` pushes a stream over RTMP and SRT to akit's own role, which takes
+  both, and gets both back after the role starts again (each wait on the target's hub, with a
+  deadline). Interop: `akit run` with a channel pushing to fit's binary over RTMP and SRT: fit
+  publishes both (ffprobe reads 25 fps video and the audio from fit), both come back after fit
+  starts again, and after the channel is stopped and started from the Admin API.
+- **Next**: I147, encrypted segments.
+
 ### 2026-11-28: I145, channels
 
 - **Built**: fit's I134's channels. akit-config reads `streaming.channels` (`name`, `library`,

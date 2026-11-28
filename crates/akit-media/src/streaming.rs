@@ -905,6 +905,7 @@ impl Role for Server {
                     libraries: key,
                     clock: None,
                     seed: 0,
+                    dial: Some(Arc::clone(&self.engine)),
                 }));
                 crate::channels::register(key, &m);
                 self.channels = Some(m);
@@ -969,7 +970,7 @@ impl Role for Server {
         self.webrtc = webrtc;
         errs.extend(e.map(|e| format!("webrtc: {e}")));
         if let Some(m) = &self.channels {
-            if let Err(e) = m.apply(&cfg.channels) {
+            if let Err(e) = m.apply(&cfg.channels, &cfg.push_targets()) {
                 errs.push(format!("channels: {e}"));
             }
         }

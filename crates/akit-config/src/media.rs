@@ -6,15 +6,15 @@
 //! The members are read as strictly as the rest of the config. What is left out is kept empty
 //! (a string), zero (a number, a duration) or `None`; the methods give fit's defaults for it.
 //! A policy's `keys` and `url_signing` are read since I143 and I144, the role's `channels` since
-//! I145 ([`crate::channels`]). What fit reads here and akit does not run yet is refused as not
-//! supported yet: the role's `push` (I146), Multipath TCP, RTMP's `max_message_bytes` and RTSP's
+//! I145 and its `push` since I146 ([`crate::channels`]). What fit reads here and akit does not run
+//! yet is refused as not supported yet: Multipath TCP, RTMP's `max_message_bytes` and RTSP's
 //! `auth_methods`, `realm` and `idle_timeout` (akio requests A263 and A264).
 
 use std::time::Duration;
 
 use crate::decode::{Decoder, Obj};
 use crate::error::{join_field, join_index};
-use crate::json::{Kind, Node};
+use crate::json::Node;
 use crate::model::Access;
 use crate::roles::{
     access_of, bool_opt, boolean, check_listen, count, duration, list, required, text, text_at,
@@ -461,6 +461,16 @@ pub struct Streaming {
     pub access: Option<Access>,
     /// `channels` (I145): library items played into the hub as live streams.
     pub channels: Vec<crate::channels::StreamChannel>,
+    /// `push` (I146): outside servers streams of the hub are relayed to.
+    pub push: Vec<crate::channels::StreamPush>,
+}
+
+impl Streaming {
+    /// Every push target, `push`'s and the channels', named (fit's `PushTargets`).
+    #[must_use]
+    pub fn push_targets(&self) -> Vec<crate::channels::PushTarget> {
+        crate::channels::push_targets(&self.push, &self.channels)
+    }
 }
 
 impl Streaming {
@@ -677,11 +687,11 @@ const STREAMING_FIELDS: &[&str] = &[
     "srt",
     "webrtc",
     "access",
-    // I145.
+    // I145, I146.
     "channels",
+    "push",
 ];
-// Push targets: I146.
-const STREAMING_FIT_ONLY: &[&str] = &["push"];
+const STREAMING_FIT_ONLY: &[&str] = &[];
 const STREAM_RTMP_FIELDS: &[&str] = &[
     "listen",
     "auth",
@@ -1102,6 +1112,8 @@ pub(crate) fn streaming(
     s.access = access_of(d, &mut o);
     let mut libs = Vec::new();
     s.channels = crate::channels::channels(d, &mut o, &mut libs);
+    s.push = crate::channels::pushes(d, &mut o);
+    crate::channels::check_pushes(d, (o.off, path), &s.push, &s.channels);
     refs.extend(libs.into_iter().map(|l| AuthRef {
         name: l.name,
         off: l.off,
@@ -1115,15 +1127,11 @@ pub(crate) fn streaming(
         && s.webrtc.is_none()
         && s.channels.is_empty()
     {
-        let fit_only = matches!(&n.kind, Kind::Object(ms) if ms.iter().any(|m| STREAMING_FIT_ONLY.contains(&m.key.as_str())));
-        // A role of push targets alone is I146's: refused as not supported yet.
-        if !fit_only {
-            d.error(
-                n.off,
-                path,
-                "nothing takes streams in: set rtmp, rtsp, srt, webrtc or channels",
-            );
-        }
+        d.error(
+            n.off,
+            path,
+            "nothing takes streams in: set rtmp, rtsp, srt, webrtc or channels",
+        );
     }
     Some((s, refs))
 }

@@ -130,6 +130,10 @@
 | A287 | 等待分片并优先请求它们的种子字节读取器，以及文件优先级 | 已提出 | 1 | I155 |
 | A288 | 种子的 tracker 及其 announce、peer 来源和 web seed 的状态，以及原地重新校验（fib 的 A87、A88）；构建选定文件、可停止的构建器 | 已提出 | — | I157, I156 |
 | A277 | 客户端响应所在连接的对端证书链，以及能把被拒绝的证书留给调用方查看的客户端 TLS 校验 | I132 提出；有记录在案的权宜做法（探测成员的证书） | 1, 15 | I132–I139c |
+| A295 | akio-media 的 MP4 读取器：跳过样本表的探测，以及构建之前就知道表的大小 | 已提出；没有什么等待它：探测解析整个 `moov`，受媒体库的上限约束 | 4 | I141 |
+| A296 | 处理器可在其引擎上设置的定时器 | 已提出；权宜做法：akit-media 的计时线程（`vod` 的超时、频道的节奏、推送的重试） | 1, 4 | I142, I145, I146 |
+| A297 | akio-media 的基于 TLS 的 RTMP 客户端（`rtmps://`） | 已提出；`rtmps://` 推送目标作为尚不支持而拒绝 | — | I146 |
+| A298 | akio-media 的 RTMP 和 SRT 客户端在会话上线和结束时告诉其所有者，并给出其发送量 | 已提出；权宜做法：RTMP 推流由其客户端的 `Reconnect` 重试，并由对其流的监视重启；SRT 推流用 akit 自己的会话处理器拨号 | 1 | I146 |
 | A301 | `H2Client` 在引擎优雅关闭时结束其连接（`GOAWAY`；没有打开的流时立即关闭，否则在最后一个流结束后关闭），如同 HTTP/1 客户端关闭其空闲连接 | 已进入 akio 的 main 并锁定（自 `db34bfd7` 起）：`H2Acceptor::on_shutdown`；akit 的权宜做法（`EngineSlot::shutdown`）已去掉 | 4, 10 | I18, I18b |
 | A302 | io_uring 上的 `Conn::close` 像 epoll 上一样重置一个收到了未交付数据的 TCP 连接（或提供以重置方式关闭的 `Conn::abort`）：目前进行中的接收在 shutdown 之后取走数据，面对零窗口的对端永远收不到重置 | 已提出；没有权宜做法（其间 fastcgi.rs 的 `cut_connections` 在 io_uring 上会失败） | — | I75 |
 | A303 | 在工作窃取（ADR-104）下依然成立的联动背压：暂停的上游读取（akio-http 的 `ResponseBody::hold_reads`，akit 的 `Download::hold_reads` 在其上）与写满的下游（`BodyStream::queued_bytes`、`on_drain`）像在事件循环上一样限制流式转发占用的内存 | 已提出；权宜做法：akit 的 TCP 监听器选择 `Scheduling::EventLoops`（`akit_runtime::scheduled`，决定 91），除非设置了 `AKIO_DEFAULT_SCHEDULING` | 8, 11 | I16, I17, I18b |
@@ -2465,6 +2469,41 @@ akio 的 HTTP 客户端给出的响应不带其连接握手时看到的证书链
 
 **akit 如何使用。** `vod` 在挂起的请求上设置超时，去掉自己的计时线程。
 
+
+## A297 akio-media 的基于 TLS 的 RTMP 客户端
+
+**状态。** 由 I146 提出（2026-11-28）。akit 把推送目标的 `rtmps://` URL 作为尚不支持而拒绝；fit 可以推送到 RTMPS 接入点（fib 的客户端
+通过 TLS 拨号）。
+
+**问题。** CDN 的接入点越来越多地接受 RTMPS（有些只接受它）。akio-media 的 `rtmp::client::RtmpUrl::parse` 拒绝 `rtmps://`，`push`
+用明文 TCP 拨号。
+
+**证据。** 在 akio `d8d51f61` 中，`akio-media/src/rtmp/client.rs`：`ClientError::BadUrl` 的文档（“`rtmps://` is not supported”），
+`dial` 使用 `Engine::dial`。
+
+**建议的 API。** `RtmpUrl::parse` 接受 `rtmps://`（默认端口 443），`push` 和 `pull` 用 akio-tls 的客户端拨号
+（`RtmpClientConfig::tls: Option<ClientConfig>`，默认使用系统根证书），SNI 为 URL 的主机。
+
+**akit 将如何使用。** 推送目标的 `rtmps://` 像 `rtmp://` 一样读取并推送。
+
+## A298 告诉其所有者会话开始和结束的 RTMP 与 SRT 客户端
+
+**状态。** 由 I146 提出（2026-11-28）。akit 中的权宜做法：RTMP 推流把重试交给客户端的 `Reconnect`，并在媒体中心里监视其流（一个等待的
+订阅），在发布者回来时重新启动客户端；其状态从 `RtmpClient::state` 读取，没有失败次数和字节数。SRT 推流用 `srt::dial` 和 akit 自己的
+会话处理器拨号，处理器听到握手和关闭，并像 `srt::push` 那样自己把流封装成 MPEG-TS。
+
+**问题。** 转推流的网关（fit 的推送目标）按自己的时间表重连目标，统计其连接和失败次数，并在状态变化时报告状态，而不轮询。akio-media 的
+`rtmp::push` 和 `srt::push` 什么都不告诉其所有者：RTMP 客户端在它认为重试也无法解决的拒绝或其发布者离开时永久结束，而 SRT 推流完全没有
+重连也没有回调。
+
+**证据。** 在 akio `d8d51f61` 中，`akio-media/src/rtmp/client.rs`：`RtmpClient::state`、`error` 和 `reconnects` 只能读取；`retryable`
+在 `ClientError::Hub` 和凭据拒绝时结束客户端。`akio-media/src/srt/server.rs`：`push` 返回一个带 `is_connected` 但没有钩子的 `SrtSession`。
+
+**建议的 API。** `RtmpClientConfig::on_state(Fn(ClientState, Option<&ClientError>))` 和 `SrtPushConfig { on_connect, on_close,
+reconnect }`（或接受处理器的 `srt::push`），以及客户端发送的字节数（`RtmpClient::stats`）。
+
+**akit 将如何使用。** 推送去掉其监视，从回调读取状态，为两种协议统计失败次数和字节数，并像 fit 一样按自己的退避重试因凭据被拒的 RTMP
+目标。
 
 ## A301 引擎优雅关闭时结束 `H2Client`
 

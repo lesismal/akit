@@ -18,7 +18,7 @@ use std::time::Duration;
 use akio_http::{Method, Response};
 use akio_media::av::{Codec, Packet, Time, Track, Tracks};
 use akio_media::hub::{Hub, HubConfig, HubError, PeerInfo, Sink, SubscribeOptions, Subscription};
-use akit_config::channels::{ChannelSlot, StreamChannel, parse_channel_at};
+use akit_config::channels::{ChannelSlot, PushTarget, StreamChannel, parse_channel_at};
 use akit_config::medialib::MediaLibrary;
 
 use super::channel::SEND_AHEAD;
@@ -157,6 +157,7 @@ fn rig() -> Rig {
         libraries: key,
         clock: Some(Arc::clone(&clock) as Arc<dyn Clock>),
         seed: 7,
+        dial: None,
     }));
     Rig {
         key,
@@ -187,7 +188,7 @@ fn slot(at: &str, item: &str) -> ChannelSlot {
 
 impl Rig {
     fn apply(&self, chs: &[StreamChannel]) {
-        self.m.apply(chs).unwrap();
+        self.m.apply(chs, &[]).unwrap();
         self.settle();
     }
 
@@ -848,7 +849,10 @@ fn edges() {
     let r = rig();
     let mut bad = ch("x", &["a"]);
     bad.time_zone = "Mars/Base".into();
-    assert!(matches!(r.m.apply(&[bad]), Err(ApplyError::Invalid(_))));
+    assert!(matches!(
+        r.m.apply(&[bad], &[]),
+        Err(ApplyError::Invalid(_))
+    ));
     r.apply(&[ch("tv/e", &["films/bbb"])]);
     let c = r.m.channel("tv/e").unwrap();
     assert_eq!(c.name(), "tv/e");
@@ -910,13 +914,14 @@ fn metrics_and_registry() {
         libraries: key,
         clock: None,
         seed: 0,
+        dial: None,
     }));
     unregister(key, &other);
     assert!(lookup(key).is_some_and(|m| Arc::ptr_eq(&m, &r.m)));
     unregister(key, &r.m);
     assert!(lookup(key).is_none());
     r.m.stop();
-    assert_eq!(r.m.apply(&[]), Err(ApplyError::Closed));
+    assert_eq!(r.m.apply(&[], &[]), Err(ApplyError::Closed));
     assert!(r.m.channels().is_empty());
 }
 
@@ -966,5 +971,147 @@ fn admin() {
     assert!(body(&stop).contains(r#""state":"stopped""#));
     assert_eq!(post("/tv/a", r#"{"action": "skip"}"#).status, 409);
     assert_eq!(post("/tv/a", r#"{"action": "start"}"#).status, 200);
+    unregister(r.key, &r.m);
+}
+
+fn target(name: &str, stream: &str, url: &str) -> PushTarget {
+    PushTarget {
+        push: akit_config::channels::StreamPush {
+            name: name.into(),
+            stream: stream.into(),
+            url: url.into(),
+            ..akit_config::channels::StreamPush::default()
+        },
+        channel: String::new(),
+    }
+}
+
+/// fit's `TestPushFailures`, what needs no network: a target without an engine to dial from
+/// retries, its backoff doubling up to `retry_max`; an SRT target of a stream not published
+/// waits; a reload keeps a target whose stream, url and timeout are the same, and makes another
+/// of a new url; the URL never in an error.
+#[test]
+fn push_failures() {
+    let r = rig();
+    let tracks: Tracks = Arc::from(vec![Track::new(Codec::Aac, vec![0x11, 0x90])]);
+    let _live = r
+        .hub
+        .publish("live/x", tracks, PeerInfo::new("rtmp", None, ""))
+        .unwrap();
+    let targets = vec![
+        target("rtmp", "live/x", "rtmp://127.0.0.1:1/app/key-secret"),
+        target("srt", "live/none", "srt://127.0.0.1:1?streamid=key-secret"),
+    ];
+    r.m.apply(&[], &targets).unwrap();
+    let p = r.m.push("rtmp").unwrap();
+    let st = p.status();
+    assert_eq!(st.state, PUSH_RETRYING);
+    assert_eq!(st.error, "no engine to dial from");
+    assert!(st.retry_in > 0 && st.failures == 0, "{st:?}");
+    assert_eq!(st.url, "rtmp://127.0.0.1:1/app/…");
+    assert!(!format!("{:?}", st.to_value()).contains("secret"));
+    // Retries back off, up to retry_max.
+    for _ in 0..8 {
+        r.clock.advance(60 * SEC);
+    }
+    // At a retry, the next waits retry_max.
+    r.clock.advance(p.status().retry_in);
+    let st = p.status();
+    assert_eq!(st.retry_in, 30 * SEC, "{st:?}");
+    // An SRT target of a stream not published waits, tried again after retry_min.
+    let st = r.m.push("srt").unwrap().status();
+    assert_eq!(
+        (st.state, st.error.as_str()),
+        (PUSH_WAITING, "the stream is not published")
+    );
+    assert_eq!(st.retry_in, SEC);
+    // A reload of the same target keeps it; one of another url makes it again; one left out
+    // ends.
+    let mut t2 = targets.clone();
+    t2[0].push.retry_max = Duration::from_secs(10);
+    r.m.apply(&[], &t2[..1]).unwrap();
+    assert!(Arc::ptr_eq(&r.m.push("rtmp").unwrap(), &p));
+    assert!(r.m.push("srt").is_none());
+    t2[0].push.url = "rtmp://127.0.0.1:1/app/other".into();
+    r.m.apply(&[], &t2[..1]).unwrap();
+    assert!(!Arc::ptr_eq(&r.m.push("rtmp").unwrap(), &p));
+    // A target that does not compile changes nothing.
+    let bad = vec![target("bad", "live/x", "ftp://x")];
+    assert!(matches!(r.m.apply(&[], &bad), Err(ApplyError::Invalid(_))));
+    assert!(r.m.push("rtmp").is_some());
+    // Stop and start; the metrics.
+    let p = r.m.push("rtmp").unwrap();
+    p.stop();
+    assert_eq!(p.status().state, PUSH_STOPPED);
+    p.start();
+    assert_eq!(p.status().state, PUSH_RETRYING);
+    struct W(Vec<String>);
+    impl MetricWriter for W {
+        fn family(&mut self, _: &str, _: &str, _: &str) {}
+        fn sample(&mut self, name: &str, v: f64, labels: &[(&str, &str)]) {
+            let l: Vec<String> = labels.iter().map(|(k, v)| format!("{k}={v}")).collect();
+            self.0.push(format!("{name}{{{}}} {v}", l.join(",")));
+        }
+        fn histogram(
+            &mut self,
+            _: &str,
+            _: &akit_observe::metrics::HistogramSnapshot,
+            _: &[(&str, &str)],
+        ) {
+        }
+    }
+    let mut w = W(Vec::new());
+    r.m.write_metrics(&mut w);
+    assert!(
+        w.0.iter()
+            .any(|s| s == "akit_streaming_push_targets{state=retrying} 1"),
+        "{:?}",
+        w.0
+    );
+}
+
+/// fit's `admin/channels_test.go`, the push targets' part.
+#[test]
+fn admin_push() {
+    let r = rig();
+    let body = |resp: &Response| String::from_utf8(resp.body.clone()).unwrap();
+    register(r.key, &r.m);
+    let mut c = ch("tv/p", &["films/bbb"]);
+    c.push = vec![akit_config::channels::StreamPush {
+        url: "rtmp://127.0.0.1:1/app/key".into(),
+        ..akit_config::channels::StreamPush::default()
+    }];
+    let targets = akit_config::channels::push_targets(&[], std::slice::from_ref(&c));
+    r.m.apply(std::slice::from_ref(&c), &targets).unwrap();
+    r.settle();
+    let list = route_push(r.key, "", &Method::Get, b"");
+    let text = body(&list);
+    assert!(
+        text.starts_with(r#"{"push":[{"name":"tv/p#1","stream":"tv/p","channel":"tv/p","protocol":"rtmp","url":"rtmp://127.0.0.1:1/app/…","state":"#),
+        "{text}"
+    );
+    // A channel's status lists its push targets.
+    let one = body(&route(r.key, "/tv/p", &Method::Get, b""));
+    assert!(one.contains(r#""push":[{"name":"tv/p#1""#), "{one}");
+    let stop = route_push(r.key, "/tv/p#1", &Method::Post, br#"{"action": "stop"}"#);
+    assert!(
+        body(&stop).contains(r#""state":"stopped""#),
+        "{}",
+        body(&stop)
+    );
+    assert_eq!(
+        route_push(r.key, "/tv/p#1", &Method::Post, br#"{"action": "restart"}"#).status,
+        200
+    );
+    assert_eq!(
+        route_push(r.key, "/tv/p#1", &Method::Post, br#"{"action": "skip"}"#).status,
+        400
+    );
+    assert_eq!(
+        route_push(r.key, "/none", &Method::Post, br#"{"action": "stop"}"#).status,
+        404
+    );
+    assert_eq!(route_push(r.key, "", &Method::Post, b"").status, 405);
+    assert_eq!(route_push(r.key, "/tv/p#1", &Method::Get, b"").status, 405);
     unregister(r.key, &r.m);
 }
