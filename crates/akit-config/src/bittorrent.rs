@@ -1307,6 +1307,7 @@ fn tracker(
                 off,
                 path: o.at("auth"),
                 library: false,
+                needs_key: false,
             });
         }
         t.auth = name;

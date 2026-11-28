@@ -17,7 +17,7 @@ so in a note marked **akit:**; nine defaults that name the gateway are akit's, `
 say `fit` ([decision 037](../decisions/037-akit-names.md)).
 
 <!-- BEGIN GENERATED: summary -->
-akit reads **1301** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 195 objects akit reads, each has its table below.
+akit reads **1304** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 195 objects akit reads, each has its table below.
 <!-- END GENERATED -->
 
 How to read the tables:
@@ -2910,7 +2910,9 @@ Channels (I145): items of a media library played into the hub as live streams, i
 looped or on a schedule in a time zone, paced by their timestamps, which run on from one item to the
 next; every egress plays them under its auth. A reload changes a channel in place from its next
 item; the Admin API lists them and starts, stops and skips them at `/streaming/channels`. A
-channel's `encrypt` and `key_rotation` (I147) are not read yet.
+channel with `encrypt` (I147) plays over HLS under keys of its library's secret, as fit derives
+them, which an `hls` handler with `auth` alone serves; a reload that changes its encryption starts
+its HLS again under the new one.
 
 ```fit
 media_library films { roots /srv/films }
@@ -2933,9 +2935,9 @@ streaming {
 | --- | --- | --- | --- |
 | `library` | string | required | The media_library the channel's items are of. |
 | `name` | string | required | The stream the channel publishes into the hub, as tv/films: every egress of the streaming role plays it by that path, under its auth, as rtmp://host/tv/films or /hls/tv/films/index.m3u8. Parts of letters, digits, '.', '_', '~' and '-', split at '/'. A channel renamed is another channel: the old one ends. **akit:** Run by `akit run` (I145): each channel paced on akit-media's timer thread until akio gives a handler a timer of its engine (A296), its samples read on its library's file pool. `/metrics` has fit's channel families named `akit_streaming_channel*`; the Admin API serves `/streaming/channels`. |
-| `encrypt` | boolean |  | **Not supported yet**: refused by name. Encrypts the channel's HLS segments with AES-128 (METHOD=AES-128), fMP4 and MPEG-TS alike, under a key derived from the library's secret, which the hls handler serves only to a request its auth lets play the channel; so that segments copied, as a CDN keeps them, do not play without it. Needs the library's secret or secret_file. Low-Latency HLS parts are encrypted too, each on its own. The other egresses play the channel as before, under their auth. Off when left out. |
+| `encrypt` | boolean |  | Encrypts the channel's HLS segments with AES-128 (METHOD=AES-128), fMP4 and MPEG-TS alike, under a key derived from the library's secret, which the hls handler serves only to a request its auth lets play the channel; so that segments copied, as a CDN keeps them, do not play without it. Needs the library's secret or secret_file. Low-Latency HLS parts are encrypted too, each on its own. The other egresses play the channel as before, under their auth. Off when left out. **akit:** Run by `akit run` (I147): akio-media's HLS muxer encrypts the channel's segments and parts, a key every `key_rotation` segments, each derived from the library's secret as fit derives it, of `<stream>/<session>` and its number, a muxer started again having a session of its own. Its keys are named `key-<n>.key` beside the segments (`key-<n>.key?format=ts` for MPEG-TS), where fit names them `key-<session>-<n>.key`: a player follows the playlist either way (decision 043). |
 | `items` | list of string |  | The IDs of the library's items the channel plays, in this order unless order is shuffle, and again from the first when loop is on; between the schedule's slots too. An item the library does not hold, or cannot serve, is skipped. At most 10000. |
-| `key_rotation` | integer, 0 to 100000 | `10` | **Not supported yet**: refused by name. With encrypt, how many segments one key encrypts before the next takes over, so that a key handed out opens a few segments only. 10 when left out or 0. |
+| `key_rotation` | integer, 0 to 100000 | `10` | With encrypt, how many segments one key encrypts before the next takes over, so that a key handed out opens a few segments only. 10 when left out or 0. |
 | `loop` | boolean | `true` | Play items again from the first once the last has played. With loop off, the channel goes quiet after the last, staying published, until its next slot, or until the Admin API stops and starts it, which plays the list again from the first. On when left out. |
 | `max_buffer_bytes` | integer, 0 or more | `16777216` | The most bytes read ahead and not yet sent, whatever read_ahead says, at least 1 MiB; a sample larger than it ends its item. 16 MiB when left out or 0. |
 | `order` | string: `sequence`, `shuffle` | `"sequence"` | The order items are played in: sequence, as listed, or shuffle, every item once in a random order each time round. sequence when left out. |
@@ -3729,7 +3731,8 @@ Serves a media library's items as video on demand over HLS (I142):
 `/vod/films/films/bbb/index.m3u8` is the multivariant playlist of the item `films/bbb` of the
 library `films`; its renditions' media playlists of fMP4 or MPEG-TS segments, cut at keyframes by
 akio-media's planner near `segment_duration`, their initialization sections, its subtitles as
-WebVTT, its poster and the files themselves with ranges. `encrypt` is not read yet (I147).
+WebVTT, its poster and the files themselves with ranges. With `encrypt` (I147), its segments are
+AES-128 under the item's key of the library's secret, fit's byte for byte, served as `aes.key`.
 
 ```fit
 listener web :8080
@@ -3748,7 +3751,7 @@ route vod { match { path /vod/* }; handler vod { library films } }
 | `cache_control` | string |  | Sent as Cache-Control with every playlist, segment, subtitle and file, so that a CDN keeps them, as "public, max-age=86400": they change only when their file does, which their ETag and Last-Modified say. None when left out. |
 | `container` | string: `fmp4`, `ts` | `"fmp4"` | The segments of index.m3u8: fmp4, fragmented MP4 for H.264, H.265, AV1, AAC and Opus, or ts, MPEG-TS for H.264, H.265, AAC and Opus, for older players. Either is played by its own name too, index.fmp4.m3u8 and index.ts.m3u8. fmp4 when left out. |
 | `cors` | string |  | Sent as Access-Control-Allow-Origin, as "*", for players on other origins. None when left out. |
-| `encrypt` | boolean |  | **Not supported yet**: refused by name. Encrypts the segments with AES-128 (METHOD=AES-128), fMP4 and MPEG-TS alike, each item under a key of its own derived from the library's secret, which the media playlists name as aes.key in the item's directory and the handler serves only to a request auth lets play that item: segments copied, as a CDN keeps them, do not play without it. The files themselves are then not served; initialization sections, subtitles and posters stay clear. Needs auth and the library's secret or secret_file. Off when left out. |
+| `encrypt` | boolean |  | Encrypts the segments with AES-128 (METHOD=AES-128), fMP4 and MPEG-TS alike, each item under a key of its own derived from the library's secret, which the media playlists name as aes.key in the item's directory and the handler serves only to a request auth lets play that item: segments copied, as a CDN keeps them, do not play without it. The files themselves are then not served; initialization sections, subtitles and posters stay clear. Needs auth and the library's secret or secret_file. Off when left out. **akit:** Run by `akit run` (I147): the keys and IVs are fit's byte for byte, given the same library name and secret, so a key fetched from fit decrypts akit's segments and the other way round. A segment's ETag carries the keys' ID, so a new secret makes new ETags (decision 043). |
 | `max_cache_bytes` | integer, 0 or more | `268435456` | The most memory the handler keeps of what it builds from the files, for the next request: how each is cut into segments, its playlists, its segments and subtitles, the least recently used dropped; and of what it is building. 256 MiB when left out or 0. **akit:** What is being built holds none of it: builds are bounded by the library's file pool and `max_segment_bytes`, and what is built is admitted when done (decision row 90). |
 | `max_segment_bytes` | integer, 0 or more | `33554432` | The largest segment: one that would be larger is cut at an earlier keyframe, or without one when there is none. 64 KiB to 1 GiB, and at most a quarter of max_cache_bytes. 32 MiB when left out or 0. **akit:** A segment whose samples pass it is answered 500 rather than cut at an earlier keyframe, as akio-media's planner cuts by time alone (decision row 90). |
 | `prefix` | string |  | The part of the path before an item's ID: with /vod/films/, /vod/films/films/bbb/index.m3u8 is the playlist of the item films/bbb. /vod/<library>/ when left out. |

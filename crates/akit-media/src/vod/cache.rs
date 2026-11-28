@@ -41,6 +41,8 @@ pub(crate) enum What {
     List(super::names::C),
     Init,
     Segment(super::names::C, u32),
+    /// A segment encrypted under the keys whose ID's first 8 bytes are the third (I147).
+    Sealed(super::names::C, u32, u64),
     Vtt,
 }
 

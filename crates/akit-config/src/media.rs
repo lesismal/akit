@@ -740,6 +740,8 @@ pub(crate) struct AuthRef {
     pub(crate) path: String,
     /// A channel's `library` (I145), not a policy: checked against `media_library`.
     pub(crate) library: bool,
+    /// A channel's `encrypt` (I147): its library must have a secret.
+    pub(crate) needs_key: bool,
 }
 
 /// Decodes `media_auth`, with fit's checks of each policy and of the list.
@@ -1039,6 +1041,7 @@ pub(crate) fn streaming(
                     off,
                     path: o.at("auth"),
                     library: false,
+                    needs_key: false,
                 });
                 name
             }
@@ -1119,6 +1122,7 @@ pub(crate) fn streaming(
         off: l.off,
         path: l.path,
         library: true,
+        needs_key: l.needs_key,
     }));
     o.finish(d, STREAMING_FIELDS, STREAMING_FIT_ONLY);
     if s.rtmp.is_none()

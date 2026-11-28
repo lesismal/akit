@@ -87,6 +87,8 @@ struct StoreKey {
     cache_bytes: u64,
     cache_control: String,
     cors: String,
+    /// `encrypt` (I147): the store's segments are encrypted.
+    encrypt: bool,
 }
 
 type Stores = Mutex<HashMap<StoreKey, Arc<Store>>>;
@@ -105,7 +107,13 @@ fn take_store(k: StoreKey) -> Arc<Store> {
     let st = Arc::clone(m.entry(k.clone()).or_insert_with(|| {
         let tag = library::catalog::hex(
             akio_crypto::hash::Sha256::digest(
-                format!("1 {} {}", k.seg_dur.as_nanos(), k.seg_bytes).as_bytes(),
+                format!(
+                    "1 {} {}{}",
+                    k.seg_dur.as_nanos(),
+                    k.seg_bytes,
+                    if k.encrypt { " aes-128" } else { "" }
+                )
+                .as_bytes(),
             )
             .get(..4)
             .unwrap_or_default(),
@@ -157,6 +165,7 @@ struct Vod {
     container: C,
     cors: String,
     timeout: Duration,
+    encrypt: bool,
     auth: HandlerAuth,
     found: Arc<OnceLock<(usize, Arc<Store>)>>,
 }
@@ -181,6 +190,7 @@ pub(crate) fn new_vod(
         cache_bytes: v.cache_bytes(),
         cache_control: v.cache_control.clone(),
         cors: v.cors.clone(),
+        encrypt: v.encrypt,
     };
     p.env().engine().when_set(move |engine| {
         let engine = library::key(engine);
@@ -197,6 +207,7 @@ pub(crate) fn new_vod(
         },
         cors: v.cors.clone(),
         timeout: v.wait(),
+        encrypt: v.encrypt,
         auth,
         found,
     }) as Arc<dyn Handler>)
@@ -488,6 +499,7 @@ impl Service for Vod {
             container: self.container,
             timeout: self.timeout,
             cors: self.cors.clone(),
+            encrypt: self.encrypt,
         };
         self.auth.guard_resource(
             ctx,
@@ -510,6 +522,7 @@ struct Req {
     container: C,
     timeout: Duration,
     cors: String,
+    encrypt: bool,
 }
 
 /// What a response's header says of the viewer: a playlist that names a token or a grant, or
@@ -610,7 +623,14 @@ impl Req {
                 };
                 self.serve_vtt(ctx, s);
             }
-            Kind::Key => text(ctx, 404, "the item is not encrypted", &self.cors, &[]),
+            Kind::Key => self.serve_key(ctx),
+            Kind::File if self.encrypt => text(
+                ctx,
+                404,
+                "the files of an encrypted item are not served",
+                &self.cors,
+                &[],
+            ),
             Kind::File => {
                 let list = if self.nm.audio {
                     &self.it.audio
@@ -637,6 +657,30 @@ impl Req {
                 self.serve_file(ctx, &p.clone());
             }
         }
+    }
+
+    /// Serves the AES-128 key of the item, to a request `auth` let in for it, which no cache
+    /// may keep (fit's `serveKey`).
+    fn serve_key(&self, ctx: &mut Context) {
+        if !self.encrypt {
+            return text(ctx, 404, "the item is not encrypted", &self.cors, &[]);
+        }
+        let Some(keys) = self.l.keys() else {
+            return text(
+                ctx,
+                503,
+                "the media library's keys are not loaded",
+                &self.cors,
+                &[("Retry-After", "1")],
+            );
+        };
+        let key = keys.key(library::keys::KEY_ITEM, &self.it.id, 0);
+        let mut r = Response::with_body(200, "application/octet-stream", key.to_vec())
+            .header("Cache-Control", "private, no-store");
+        if !self.cors.is_empty() {
+            r = r.header("Access-Control-Allow-Origin", &self.cors);
+        }
+        ctx.respond(r);
     }
 
     fn subtitle(&self) -> Option<&Subtitle> {
@@ -709,7 +753,7 @@ impl Req {
             Kind::Media if query.is_empty() => Some(What::List(c)),
             Kind::Media => None,
             Kind::Init => Some(What::Init),
-            _ => Some(What::Segment(c, u32::try_from(n).unwrap_or(u32::MAX))),
+            _ => self.segment_what(c, n),
         };
         if let Some(what) = what {
             let k = Key {
@@ -759,8 +803,8 @@ impl Req {
 
     /// The media playlist of `r` from `p`, kept when it carries no query.
     fn media_blob(&self, p: &Plan, r: &Rendition, c: C, query: &str) -> Blob {
-        let data =
-            playlist::render_media(p, self.nm.audio, self.nm.i, c, query, false).into_bytes();
+        let data = playlist::render_media(p, self.nm.audio, self.nm.i, c, query, self.encrypt)
+            .into_bytes();
         let b = Blob {
             data,
             ctype: PLAYLIST,
@@ -875,6 +919,22 @@ impl Req {
         w.answer(move |ctx| st.send(ctx, &b, &Own::default()));
     }
 
+    /// What the cache keeps segment `n` in `c` as: encrypted under the library's keys with
+    /// `encrypt`, `None` while they are not loaded.
+    fn segment_what(&self, c: C, n: usize) -> Option<What> {
+        let n = u32::try_from(n).unwrap_or(u32::MAX);
+        if !self.encrypt {
+            return Some(What::Segment(c, n));
+        }
+        let keys = self.l.keys()?;
+        let id = keys.id().as_bytes();
+        let mut kid = [0u8; 8];
+        for (d, s) in kid.iter_mut().zip(id) {
+            *d = *s;
+        }
+        Some(What::Sealed(c, n, u64::from_be_bytes(kid)))
+    }
+
     /// Segment `n` of `r` in `c`, from the cache or built on the library's pool.
     #[allow(clippy::too_many_arguments)]
     fn segment(
@@ -893,9 +953,40 @@ impl Req {
             let cors = self.cors.clone();
             return w.answer(move |ctx| text(ctx, 404, "no such segment", &cors, &[]));
         }
+        let seal = if self.encrypt {
+            match self.l.keys() {
+                Some(keys) => Some((keys, self.it.id.clone())),
+                None => {
+                    let cors = self.cors.clone();
+                    return w.answer(move |ctx| {
+                        text(
+                            ctx,
+                            503,
+                            "the media library's keys are not loaded",
+                            &cors,
+                            &[("Retry-After", "1")],
+                        );
+                    });
+                }
+            }
+        } else {
+            None
+        };
+        let Some(what) = self.segment_what(c, n) else {
+            let cors = self.cors.clone();
+            return w.answer(move |ctx| {
+                text(
+                    ctx,
+                    503,
+                    "the media library's keys are not loaded",
+                    &cors,
+                    &[("Retry-After", "1")],
+                );
+            });
+        };
         let k = Key {
             file: FileKey::of(&r.file),
-            what: What::Segment(c, u32::try_from(n).unwrap_or(u32::MAX)),
+            what,
         };
         let reply = waiter_reply(
             w,
@@ -920,7 +1011,7 @@ impl Req {
         let (k3, st3) = (k.clone(), Arc::clone(&st));
         let ok = self.l.submit(
             Box::new(move || {
-                let res = build_segment(&l, &st, &r, &movie, &plan, n, c);
+                let res = build_segment(&l, &st, &r, &movie, &plan, n, c, seal.as_ref());
                 let bytes = val_bytes(res.as_ref().ok());
                 st.cache.done(&k, &Build(id), res, bytes);
             }),
@@ -988,6 +1079,7 @@ fn selected(r: &Rendition, movie: &Movie) -> Vec<Track> {
 }
 
 /// Reads and muxes segment `n` of `plan` on the pool. It blocks.
+#[allow(clippy::too_many_arguments)]
 fn build_segment(
     l: &Library,
     st: &Store,
@@ -996,6 +1088,7 @@ fn build_segment(
     plan: &Plan,
     n: usize,
     c: C,
+    seal: Option<&(Arc<library::keys::Keys>, String)>,
 ) -> Result<Val, Error> {
     let tracks = selected(r, movie);
     let mut seg = plan.segment(movie, n);
@@ -1062,10 +1155,18 @@ fn build_segment(
             "video/mp2t"
         }
     };
+    // I147: encrypted under the item's key, the IV the segment's number (fit's `build`).
+    let (out, sealed) = match seal {
+        Some((keys, id)) => (
+            library::keys::encrypt(&keys.key(library::keys::KEY_ITEM, id, 0), n as u64, &out),
+            format!("-{}", keys.id()),
+        ),
+        None => (out, String::new()),
+    };
     Ok(Val::Blob(Arc::new(Blob {
         data: out,
         ctype,
-        etag: etag(&r.file, &format!("{}{n}-{}", c.as_str(), st.tag)),
+        etag: etag(&r.file, &format!("{}{n}-{}{sealed}", c.as_str(), st.tag)),
         modified: r.file.modified,
     })))
 }

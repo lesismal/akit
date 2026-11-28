@@ -3175,10 +3175,21 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
     let media_library = media_library.map(|(m, _)| m).unwrap_or_default();
     for r in &routes {
         if let Handler::Vod(v) = &r.v.handler {
-            if !v.library.is_empty() && !media_library.iter().any(|l| l.name == v.library) {
+            let lib = media_library.iter().find(|l| l.name == v.library);
+            if !v.library.is_empty() && lib.is_none() {
                 let msg = format!("there is no media_library named {:?}", v.library);
                 if let Some(d) = ds.get_mut(r.file) {
                     d.error(r.off, &format!("{}.handler.params.library", r.path), msg);
+                }
+            }
+            // I147: the keys come from the library's secret.
+            if v.encrypt && lib.is_some_and(|l| !l.encryptable()) {
+                let msg = format!(
+                    "encrypt needs a key: set media_library {:?}'s secret or secret_file",
+                    v.library
+                );
+                if let Some(d) = ds.get_mut(r.file) {
+                    d.error(r.off, &format!("{}.handler.params.encrypt", r.path), msg);
                 }
             }
         }
@@ -3197,7 +3208,22 @@ pub(crate) fn merge(ds: &mut [Decoder<'_>], parts: Vec<Part>) -> Config {
             // The libraries the channels play (I145).
             let names: Vec<&str> = media_library.iter().map(|l| l.name.as_str()).collect();
             for r in refs.iter().filter(|r| r.library) {
-                if !names.contains(&r.name.as_str()) {
+                if r.needs_key {
+                    // I147: a channel's encrypt, its library's secret.
+                    if media_library
+                        .iter()
+                        .any(|l| l.name == r.name && !l.encryptable())
+                    {
+                        d.error(
+                            r.off,
+                            &r.path,
+                            format!(
+                                "encrypt needs a key: set media_library {:?}'s secret or secret_file",
+                                r.name
+                            ),
+                        );
+                    }
+                } else if !names.contains(&r.name.as_str()) {
                     d.error(
                         r.off,
                         &r.path,

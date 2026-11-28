@@ -181,6 +181,7 @@ fn start(json: &str, roles: bool) -> Akit {
     let mut m = Manager::new(
         &[
             akit_media::role::MEDIA_AUTH,
+            akit_media::library::MEDIA_LIBRARY,
             akit_media::streaming::STREAMING,
         ],
         Arc::clone(&engine),
@@ -562,4 +563,166 @@ fn push_targets() {
     stop.store(true, Ordering::SeqCst);
     feeder.join().unwrap();
     dial.shutdown();
+}
+
+/// A playlist's tag value, `#TAG:value`.
+fn tag<'a>(pl: &'a str, t: &str) -> Option<&'a str> {
+    pl.lines().find_map(|l| l.strip_prefix(&format!("#{t}:")))
+}
+
+/// fit's `TestChannelEncrypted` and `TestEncryptNotAChannel` (I147): a channel with `encrypt`
+/// plays over HLS encrypted under its library's keys, its key served to whom auth lets play it,
+/// fMP4 and MPEG-TS segments decrypting with it; a handler without `auth` serves no key; another
+/// stream plays clear.
+#[test]
+fn channel_encrypted() {
+    let lib = std::fs::canonicalize(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/medialib/lib"),
+    )
+    .unwrap();
+    let json = format!(
+        r#"{{"listeners": [{{"name": "web", "address": "127.0.0.1:0"}}],
+          "media_auth": [{{"name": "live", "tokens": [{{"token": "{TOKEN}", "publish": ["live/*"], "play": ["tv/*"]}}]}}],
+          "media_library": [{{"name": "lib", "roots": ["{}"], "secret": "the library's secret, 16 bytes or more"}}],
+          "streaming": {{"channels": [{{"name": "tv/enc", "library": "lib", "items": ["films/bbb"], "encrypt": true, "key_rotation": 2}},
+                                     {{"name": "tv/clear", "library": "lib", "items": ["films/bbb"]}}]}},
+          "routes": [
+            {{"match": {{"path": ["/hls/*"]}}, "handler": {{"module": "hls", "params": {{"prefix": "/hls/", "auth": "live", "target_duration": "1s", "play_wait": "10s"}}}}}},
+            {{"match": {{"path": ["/open/*"]}}, "handler": {{"module": "hls", "params": {{"prefix": "/open/", "target_duration": "1s", "play_wait": "10s"}}}}}}]}}"#,
+        lib.display()
+    );
+    let akit = start(&json, true);
+    let a = akit.http;
+    let bearer = format!("Bearer {TOKEN}");
+    let auth: &[(&str, &str)] = &[("Authorization", &bearer)];
+    for (format, sync) in [("fmp4", None), ("ts", Some(0x47u8))] {
+        let r = get(
+            a,
+            &format!("/hls/tv/enc/index.m3u8?format={format}"),
+            auth,
+            0,
+        );
+        assert_eq!(r.status, 200, "{}", String::from_utf8_lossy(&r.body));
+        let pl = String::from_utf8(r.body).unwrap();
+        let key_tag = tag(&pl, "EXT-X-KEY").unwrap_or_else(|| panic!("{pl}"));
+        assert!(key_tag.starts_with("METHOD=AES-128,URI=\""), "{key_tag}");
+        let uri = key_tag
+            .split("URI=\"")
+            .nth(1)
+            .and_then(|u| u.split('"').next())
+            .unwrap();
+        let seq: u64 = tag(&pl, "EXT-X-MEDIA-SEQUENCE").unwrap().parse().unwrap();
+        let seg = pl
+            .lines()
+            .skip_while(|l| !l.starts_with("#EXTINF"))
+            .find(|l| !l.starts_with('#') && !l.is_empty())
+            .unwrap()
+            .to_owned();
+        let key = get(a, &format!("/hls/tv/enc/{uri}"), auth, 0);
+        assert_eq!(key.status, 200);
+        assert_eq!(key.body.len(), 16);
+        // Without credentials, and from a handler without auth: refused.
+        assert_eq!(get(a, &format!("/hls/tv/enc/{uri}"), &[], 0).status, 401);
+        assert_eq!(get(a, &format!("/open/tv/enc/{uri}"), &[], 0).status, 403);
+        let body = get(a, &format!("/hls/tv/enc/{seg}"), auth, 0).body;
+        assert!(
+            !body.is_empty() && body.len() % 16 == 0,
+            "{} bytes",
+            body.len()
+        );
+        let k: [u8; 16] = key.body.as_slice().try_into().unwrap();
+        let mut plain = body.clone();
+        akio_crypto::aes::Aes::new128(&k)
+            .decrypt_cbc_padded(&u128::from(seq).to_be_bytes(), &mut plain)
+            .unwrap();
+        match sync {
+            Some(b) => assert_eq!(plain.first(), Some(&b), "MPEG-TS sync byte"),
+            None => assert!(plain.windows(4).any(|w| w == b"moof"), "no moof"),
+        }
+    }
+    // Another stream plays clear.
+    let r = get(a, "/open/tv/clear/index.m3u8", &[], 0);
+    assert_eq!(r.status, 200);
+    assert!(!String::from_utf8_lossy(&r.body).contains("EXT-X-KEY"));
+}
+
+/// The `URI` of the last `EXT-X-KEY` of `pl`, the newest key it names.
+fn last_key(pl: &str) -> Option<String> {
+    pl.lines()
+        .rev()
+        .find_map(|l| l.strip_prefix("#EXT-X-KEY:"))
+        .and_then(|t| t.split("URI=\"").nth(1))
+        .and_then(|u| u.split('"').next())
+        .map(str::to_owned)
+}
+
+/// fit's `TestEncryptedReload` (I147): a reload that turns `encrypt` on serves the channel
+/// encrypted from the next request on; one that changes `key_rotation` starts its HLS under new
+/// keys, one that changes nothing keeps them; turned off, it plays clear; its library unloaded,
+/// its playlists and keys are 503, never clear.
+#[test]
+fn channel_encrypted_reload() {
+    let lib = std::fs::canonicalize(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/medialib/lib"),
+    )
+    .unwrap();
+    let doc = |enc: &str| {
+        let libs = format!(
+            r#"[{{"name": "lib", "roots": ["{}"], "secret": "the library's secret, 16 bytes or more"}}]"#,
+            lib.display()
+        );
+        format!(
+            r#"{{"listeners": [{{"name": "web", "address": "127.0.0.1:0"}}],
+              "media_auth": [{{"name": "live", "tokens": [{{"token": "{TOKEN}", "play": ["tv/*"]}}]}}],
+              "media_library": {libs},
+              "streaming": {{"channels": [{{"name": "tv/sec", "library": "lib", "items": ["films/bbb"]{enc}}}]}},
+              "routes": [{{"match": {{"path": ["/hls/*"]}}, "handler": {{"module": "hls", "params": {{"prefix": "/hls/", "auth": "live", "target_duration": "1s", "play_wait": "10s"}}}}}}]}}"#
+        )
+    };
+    let mut akit = start(&doc(""), true);
+    let a = akit.http;
+    let engine = Arc::clone(&akit.engine);
+    let bearer = format!("Bearer {TOKEN}");
+    let auth: &[(&str, &str)] = &[("Authorization", &bearer)];
+    let playlist = |a| {
+        let r = get(a, "/hls/tv/sec/index.m3u8", auth, 0);
+        assert_eq!(r.status, 200, "{}", String::from_utf8_lossy(&r.body));
+        String::from_utf8(r.body).unwrap()
+    };
+    let key = |a, uri: &str| get(a, &format!("/hls/tv/sec/{uri}"), auth, 0);
+    assert!(last_key(&playlist(a)).is_none());
+    let mut apply = |json: String| {
+        let c = akit_config::from_json(&json, None).unwrap_or_else(|e| panic!("{json}: {e}"));
+        let errs = akit.roles.apply(&c);
+        assert!(errs.is_empty(), "{errs:?}");
+    };
+    apply(doc(r#", "encrypt": true, "key_rotation": 2"#));
+    let uri = last_key(&playlist(a)).expect("the encrypted playlist");
+    let k1 = key(a, &uri);
+    assert_eq!((k1.status, k1.body.len()), (200, 16));
+    // Nothing changed: the same keys.
+    apply(doc(r#", "encrypt": true, "key_rotation": 2"#));
+    let again = key(a, &uri);
+    assert_eq!((again.status, &again.body), (200, &k1.body), "{uri}");
+    // Another rotation: new keys.
+    apply(doc(r#", "encrypt": true, "key_rotation": 3"#));
+    let uri3 = last_key(&playlist(a)).expect("the playlist of the new rotation");
+    let k3 = key(a, &uri);
+    assert!(k3.status != 200 || k3.body != k1.body, "{uri} carried on");
+    assert_eq!(key(a, &uri3).status, 200);
+    // Turned off: clear.
+    apply(doc(""));
+    assert!(last_key(&playlist(a)).is_none());
+    // The library unloaded: 503, never clear.
+    apply(doc(r#", "encrypt": true"#));
+    let uri = last_key(&playlist(a)).expect("the encrypted playlist again");
+    akit_media::library::apply(akit_media::library::key(&engine), &[]).unwrap();
+    for target in [
+        "/hls/tv/sec/index.m3u8".to_owned(),
+        format!("/hls/tv/sec/{uri}"),
+    ] {
+        let r = get(a, &target, auth, 0);
+        assert_eq!(r.status, 503, "{target}");
+        assert_eq!(r.header("retry-after"), Some("1"), "{target}");
+    }
 }

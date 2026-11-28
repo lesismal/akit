@@ -655,6 +655,9 @@ pub struct Vod {
     pub cors: String,
     /// `timeout`: [`DEFAULT_VOD_TIMEOUT`] when zero.
     pub timeout: Duration,
+    /// `encrypt` (I147): AES-128 segments, each item under a key of its own derived from the
+    /// library's secret.
+    pub encrypt: bool,
     /// The policy `auth` names, from the config.
     pub policy: Option<crate::media::MediaAuth>,
 }
@@ -711,9 +714,10 @@ const VOD_FIELDS: &[&str] = &[
     "cache_control",
     "cors",
     "timeout",
+    // I147.
+    "encrypt",
 ];
-// Encrypted segments (I147).
-const VOD_FIT_ONLY: &[&str] = &["encrypt"];
+const VOD_FIT_ONLY: &[&str] = &[];
 
 /// Decodes the `vod` handler's params, with fit's checks (`VOD.Provision`); the library it names
 /// is checked once every file is read.
@@ -816,6 +820,24 @@ pub(crate) fn vod(
         }
     }
     v.timeout = duration(d, &mut o, "timeout");
+    if let Some(x) = o.take("encrypt") {
+        let p = o.at("encrypt");
+        match &x.kind {
+            crate::json::Kind::Bool(b) => v.encrypt = *b,
+            other => d.error(
+                x.off,
+                &p,
+                format!("expected a boolean, got {}", other.name()),
+            ),
+        }
+        if v.encrypt && v.auth.is_empty() {
+            d.error(
+                x.off,
+                &p,
+                "encrypt needs auth: the key is served only to a request its policy lets play the item",
+            );
+        }
+    }
     o.finish(d, VOD_FIELDS, VOD_FIT_ONLY);
     Some(v)
 }

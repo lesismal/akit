@@ -17,6 +17,7 @@
 pub mod admin;
 pub mod catalog;
 pub mod files;
+pub mod keys;
 pub mod pool;
 mod scan;
 mod tables;
@@ -154,6 +155,8 @@ pub(crate) struct Settings {
     pub(crate) workers: usize,
     pub(crate) queue: usize,
     pub(crate) timeout: Duration,
+    /// The keys of encrypted HLS (I147), derived from `secret` or `secret_file`.
+    pub(crate) keys: Option<Arc<keys::Keys>>,
 }
 
 impl Settings {
@@ -177,6 +180,7 @@ impl Settings {
             workers: c.workers(),
             queue: c.queue(),
             timeout: c.timeout(),
+            keys: keys::Keys::of(c)?.map(Arc::new),
         };
         for r in &c.roots {
             if r.trim().is_empty() {
@@ -452,6 +456,12 @@ impl Library {
         }
     }
 
+    /// The library's keys of encrypted HLS (I147); `None` without a secret.
+    #[must_use]
+    pub fn keys(&self) -> Option<Arc<keys::Keys>> {
+        self.settings().keys.clone()
+    }
+
     fn settings(&self) -> Arc<Settings> {
         self.set.get().unwrap_or_else(|| {
             Arc::new(Settings {
@@ -470,6 +480,7 @@ impl Library {
                 workers: 1,
                 queue: 1,
                 timeout: Duration::ZERO,
+                keys: None,
             })
         })
     }

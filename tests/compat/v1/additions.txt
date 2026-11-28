@@ -969,3 +969,6 @@ config	added	supported	streaming.push[].retry_max
 config	added	supported	streaming.push[].retry_min
 config	added	supported	streaming.push[].stream
 config	added	supported	streaming.push[].url
+config	added	supported	routes[].handler<vod>.params.encrypt
+config	added	supported	streaming.channels[].encrypt
+config	added	supported	streaming.channels[].key_rotation

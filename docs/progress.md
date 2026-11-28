@@ -18,7 +18,7 @@ done and where the work differs from the plan.
 | Next | the external security review ([scope](security/review-scope.md)), whose findings finish I80b; fit's answer to the fields decision 035 proposes (CRL files, a WASM digest); the tracks after 1.0 ([the plan](dev-plan.md#after-10)): Console and encrypted store done (I89–I94, I93b, I93c); fit's Admin API rules for connections without the token, on the console's slots (akio's A232) (Logging done: I81–I83; Access lists done: I85–I87); the Gateway API's conformance run (tests/conformance, the maintainer's) |
 | akio requests | A1–A24, A29, A30, A32, A33, A35–A38, A45, A48, A49, A51–A54, A57, A58, A63–A66, A75, A78, A79, A90–A94, A105, A108, A109, A111–A113, A117, A132–A135, A148, A165–A172, A180, A200, A214, A215, A220, A230–A238, A245 and A247–A249 on akio's main and pinned; A225 (an external review, L15) requested ([akio API requests](akio-api-requests.md)) |
 | Streaming and media auth | [I120–I126](dev-plan.md#streaming-and-media-auth), fit's I115–I117 (decision 040): I120 (`media_auth` and `streaming` in the config), I121 (the policies, the checks, `akit media-token`), I122 (the role's hub, RTMP, RTSP and SRT), I123 (`httpflv`, `hls`), I124 (the WebRTC port, `stream_whip`, `stream_whep`), I125 (`media_pages`) and I126 (`auth` on `whip`, `whep` and `webrtc_proxy`) done; the media library's `libraries`, `vod` and `channels` wait for its track; akio requests A263–A268 |
-| Media library and channels | [I140–I149](dev-plan.md#media-library-and-channels), fit's I131–I139 and I119 (decision 043): I140 (`media_library` in the config) I141 (the catalog, the role `media_library`, `/media/library`) I142 (`vod`), I143 (`keys`, `media_tokens`), I144 (`url_signing`), I145 (channels) and I146 (push targets) done; akio requests A295–A298 |
+| Media library and channels | [I140–I149](dev-plan.md#media-library-and-channels), fit's I131–I139 and I119 (decision 043): I140 (`media_library` in the config) I141 (the catalog, the role `media_library`, `/media/library`) I142 (`vod`), I143 (`keys`, `media_tokens`), I144 (`url_signing`), I145 (channels), I146 (push targets) and I147 (encrypted segments) done; akio requests A295–A298 |
 
 ## Log
 
@@ -165,6 +165,35 @@ done and where the work differs from the plan.
   - On io_uring, `Engine::remove_listener` returns once the listener's accepts are cancelled, so a
     listener a reload removes takes no connection after it; `H3Upload::finish` is no longer
     refused by its own response; the pool pressure watcher samples every 500 ms (was 100 ms).
+### 2026-11-28: I147, encrypted segments
+
+- **Built**: fit's I136. `akit_media::library::keys`: a library's keys derived from its `secret` or
+  `secret_file` (read each time the config is applied) as fit derives them, byte for byte: an
+  item's key, a channel's key of a session and number, the keys' ID, AES-128-CBC with the media
+  sequence number as the IV. akit-config reads `vod`'s `encrypt` (it needs `auth` and a library
+  with a secret) and a channel's `encrypt` and `key_rotation` (its library needs a secret), with
+  fit's errors. `vod` with `encrypt` names `aes.key` in its media playlists after the
+  initialization section, serves it only to whom `auth` lets play the item (`private, no-store`),
+  encrypts every segment under the item's key on the library's pool, its ETag carrying the keys'
+  ID, and serves none of the item's files; a channel with `encrypt` plays over the `hls` handler
+  from akio-media's muxers with an `HlsEncryption` of the channel's keys, a key every
+  `key_rotation` segments and a session a muxer, its keys served only by a handler with `auth`
+  (403 without it, 503 while its library or keys are not loaded); a reload that changes the
+  channel's encryption (on, off, the library's keys, the rotation) starts its HLS again under the
+  new one, one that changes nothing keeps it.
+- **Differs from fit**: a channel's keys are named `key-<n>.key` (`key-<n>.key?format=ts` for
+  MPEG-TS), the names akio-media's muxer serves them by, where fit names them
+  `key-<session>-<n>.key`; players follow the playlist either way (decision 043).
+- **Checked**: fit's `TestKeys` vector (made with fit's own code) for the derivation; fit's
+  `TestEncrypt`, `TestEncryptTokens`, `TestEncryptSecretChanged` and `TestEncryptProvision` for
+  `vod`; fit's `TestChannelEncrypted`, `TestEncryptNotAChannel` and `TestEncryptedReload` in
+  `tests/handlers.rs`, fMP4 and MPEG-TS segments decrypted with the key served. Interop against
+  fit's binary with the same library and secret: fit's `aes.key` for an item equals akit's, akit's
+  segments decrypt with fit's key and fit's with akit's, fMP4 and MPEG-TS; ffmpeg plays every item
+  of the fixtures encrypted, in both containers, and an encrypted channel from akit and from fit,
+  fMP4 and MPEG-TS, without an error.
+- **Next**: I148, the video site.
+
 ### 2026-11-28: I146, push targets
 
 - **Built**: fit's I134's push targets. akit-config reads `streaming.push` and a channel's `push`

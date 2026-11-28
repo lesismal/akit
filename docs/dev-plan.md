@@ -261,7 +261,7 @@ Tunnel and LLM track; I110–I114 are the WebRTC track, and I115–I119 are rese
 | I144 | Playback URLs that expire: `url_signing`, sessions, `media_tokens`' `/urls` | I142, I143 | done |
 | I145 | Channels: library items played as live streams, `streaming.channels` | I141, I123 | done |
 | I146 | Push targets: `streaming.push` and a channel's `push` | I145 | done |
-| I147 | Encrypted segments: `encrypt` on `vod` and on channels' HLS | I144, I145 | todo |
+| I147 | Encrypted segments: `encrypt` on `vod` and on channels' HLS | I144, I145 | done |
 | I148 | A video site: `media_pages`' `libraries`, `vod` and `channels`, the example, the guide | I144, I145 | todo |
 | I149 | The console's media library pages, and its files managed (fit's I138, I139) | I148 | todo |
 | I150 | BitTorrent I: `bittorrent.client` and `bittorrent.tracker` in the config, fit's fields, checks and clashes; what later iterations run refused as not supported yet | I98 | done |
@@ -2295,7 +2295,7 @@ is asked as akio A295–A300. Names akit shows are akit's (decision 037), format
   item is akit's for the same secret, library and item.
 - **Touches**: `akit-media` (`library`, `vod`, `channels`), `akit-config`.
 - **fit**: `medialib/keys.go`, `handler/vod`, `streaming`; I136.
-- **Status**: todo.
+- **Status**: done (2026-11-28). See the progress log.
 
 ### I148 A video site: the media pages' library and player pages
 

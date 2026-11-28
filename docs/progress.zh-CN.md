@@ -17,7 +17,7 @@
 | 下一步 | 外部安全审查（[范围](security/review-scope.zh-CN.md)），其发现完成 I80b；fit 对决定 035 所提议字段（CRL 文件、WASM 摘要）的答复；1.0 之后的各条线（[开发计划](dev-plan.zh-CN.md#10-之后)）：控制台与加密的 store 已完成（I89–I94、I93b、I93c）；fit 的 Admin API 对没有令牌的连接的规则，基于控制台的 slots（akio 的 A232）（日志已完成：I81–I83；访问控制列表已完成：I85–I87）；Gateway API 一致性测试的运行（tests/conformance，由维护者运行） |
 | akio 需求 | A1–A24、A29、A30、A32、A33、A35–A38、A45、A48、A49、A51–A54、A57、A58、A63–A66、A75、A78、A79、A90–A94、A105、A108、A109、A111–A113、A117、A132–A135、A148、A165–A172、A180、A200、A214、A215、A220、A230–A238、A245 和 A247–A249 已进入 akio 的 main 并锁定；A225（外部审查，L15）已提出（[akio API 请求](akio-api-requests.zh-CN.md)） |
 | 流媒体与媒体认证 | [I120–I126](dev-plan.zh-CN.md#流媒体与媒体认证)，fit 的 I115–I117（决定 040）：I120（配置中的 `media_auth` 和 `streaming`）、I121（策略、检查、`akit media-token`）I122（角色的媒体中心、RTMP、RTSP 和 SRT）、I123（`httpflv`、`hls`）、I124（WebRTC 端口、`stream_whip`、`stream_whep`）、I125（`media_pages`）和 I126（`whip`、`whep` 和 `webrtc_proxy` 上的 `auth`）已完成；媒体库的 `libraries`、`vod` 和 `channels` 等待其那条线；akio 请求 A263–A268 |
-| 媒体库与频道 | [I140–I149](dev-plan.zh-CN.md#媒体库与频道)，fit 的 I131–I139 和 I119（决定 043）：I140（配置中的 `media_library`）、I141（目录、角色 `media_library`、`/media/library`）、I142（`vod`）、I143（`keys`、`media_tokens`）、I144（`url_signing`）、I145（频道）和 I146（推送目标）已完成；akio 需求 A295–A298 |
+| 媒体库与频道 | [I140–I149](dev-plan.zh-CN.md#媒体库与频道)，fit 的 I131–I139 和 I119（决定 043）：I140（配置中的 `media_library`）、I141（目录、角色 `media_library`、`/media/library`）、I142（`vod`）、I143（`keys`、`media_tokens`）、I144（`url_signing`）、I145（频道）、I146（推送目标）和 I147（加密分片）已完成；akio 需求 A295–A298 |
 
 ## 日志
 
@@ -116,6 +116,25 @@
     它对吞吐的影响留给基准任务测量（规则 30）。
   - 在 io_uring 上，`Engine::remove_listener` 在监听器的 accept 取消完成后才返回，重载移除的监听器此后不再接受连接；`H3Upload::finish`
     不再被其自身的响应拒绝；池压力监视器每 500 ms 采样一次（原为 100 ms）。
+### 2026-11-28：I147，加密分片
+
+- **构建**：fit 的 I136。`akit_media::library::keys`：按 fit 的方式、逐字节一致地从媒体库的 `secret` 或 `secret_file`（每次应用配置时
+  读取）派生其密钥：条目的密钥、频道某会话某编号的密钥、密钥的 ID，以及以媒体序号为 IV 的 AES-128-CBC。akit-config 读取 `vod` 的
+  `encrypt`（需要 `auth` 和设置了 secret 的媒体库）以及频道的 `encrypt` 和 `key_rotation`（其媒体库需要 secret），错误信息与 fit 相同。
+  设置了 `encrypt` 的 `vod` 在其媒体播放列表的初始化段之后给出 `aes.key`，只提供给 `auth` 允许播放该条目的请求（`private, no-store`），
+  在媒体库的池上用条目的密钥加密每个分片，其 ETag 带有密钥的 ID，并且不提供条目的文件本身；设置了 `encrypt` 的频道通过 `hls` 处理器
+  播放，由 akio-media 的复用器带着用频道密钥构造的 `HlsEncryption` 生成，每 `key_rotation` 个分片一把密钥、每个复用器一个会话，其密钥
+  只由设置了 `auth` 的处理器提供（没有 auth 为 403，媒体库或密钥未加载时为 503）；重载改变频道的加密（开启、关闭、媒体库的密钥、轮换）
+  时，其 HLS 在新的加密下重新开始，什么都没改变的重载保留它。
+- **与 fit 的不同**：频道的密钥命名为 `key-<n>.key`（MPEG-TS 为 `key-<n>.key?format=ts`），即 akio-media 的复用器提供它们所用的名字，
+  而 fit 命名为 `key-<session>-<n>.key`；两种方式下播放器都按播放列表取用（决定 043）。
+- **验证**：派生用 fit 的 `TestKeys` 向量（由 fit 自己的代码生成）；`vod` 用 fit 的 `TestEncrypt`、`TestEncryptTokens`、
+  `TestEncryptSecretChanged` 和 `TestEncryptProvision`；`tests/handlers.rs` 中的 fit 的 `TestChannelEncrypted`、`TestEncryptNotAChannel`
+  和 `TestEncryptedReload`，fMP4 和 MPEG-TS 分片用所提供的密钥解密。与 fit 二进制在同一媒体库和 secret 下互通：fit 为条目提供的
+  `aes.key` 与 akit 的相同，akit 的分片能用 fit 的密钥解密、fit 的能用 akit 的解密，fMP4 和 MPEG-TS 皆然；ffmpeg 无错误地播放夹具中
+  每个加密条目的两种容器，以及来自 akit 和来自 fit 的加密频道（fMP4 和 MPEG-TS）。
+- **下一步**：I148，视频网站。
+
 ### 2026-11-28：I146，推送目标
 
 - **构建**：fit 的 I134 的推送目标。akit-config 读取 `streaming.push` 和频道的 `push`（`name`、`stream`、`url`、`retry_min`、

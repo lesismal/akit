@@ -1,5 +1,5 @@
 //! fit's `config/channels_test.go`, ported for the channels (I145): what is read, its defaults,
-//! and fit's refusals; push targets (I146); encryption (I147) is not supported yet.
+//! and fit's refusals; push targets (I146); encryption (I147).
 
 use super::*;
 use crate::from_json;
@@ -38,6 +38,27 @@ fn channels_read() {
     assert!(news.looped && !news.shuffle);
     assert_eq!(news.read_ahead_or(), DEFAULT_CHANNEL_READ_AHEAD);
     assert_eq!(news.buffer_bytes(), DEFAULT_CHANNEL_MAX_BUFFER_BYTES);
+    assert!(!ch.encrypt && ch.rotation() == DEFAULT_CHANNEL_KEY_ROTATION);
+    assert_eq!(
+        StreamChannel {
+            key_rotation: 3,
+            ..StreamChannel::default()
+        }
+        .rotation(),
+        3
+    );
+    // I147: encrypt, with the library's secret.
+    let c = from_json(
+        &format!(
+            "{}{}}}",
+            HEAD.replace(r#""roots": ["/srv/films"]"#, r#""roots": ["/srv/films"], "secret": "0123456789abcdef""#),
+            r#"{"channels": [{"name": "x", "library": "films", "items": ["a"], "encrypt": true, "key_rotation": 5}]}"#
+        ),
+        None,
+    )
+    .unwrap();
+    let ch = &c.streaming.unwrap().channels[0];
+    assert!(ch.encrypt && ch.rotation() == 5);
 }
 
 /// fit's refusals of channels.
@@ -115,7 +136,11 @@ fn channels_refused() {
         ),
         (
             r#"{"channels": [{"name": "x", "library": "films", "items": ["a"], "encrypt": true}]}"#,
-            "not supported yet",
+            r#"set media_library "films"'s secret"#,
+        ),
+        (
+            r#"{"channels": [{"name": "x", "library": "films", "items": ["a"], "key_rotation": 100001}]}"#,
+            "key_rotation",
         ),
         ("{}", "nothing takes streams in"),
     ] {

@@ -170,3 +170,27 @@ not supported yet for this track.
   (A297), rather than accepted and never connected.
 - **A push URL is a secret**: the errors and the config's `Debug` show its scheme and host, and the
   Admin API its scheme, host and app.
+
+## I147: encrypted segments
+
+- **The keys are fit's, byte for byte**: the same library name and secret give the same item and
+  channel keys, the same IVs (the media sequence number) and the same keys' ID, so a key fetched
+  from fit decrypts akit's segments and the other way round. A vod segment's ETag carries the
+  keys' ID, and its cache key the encryption, so a new secret makes new segments and ETags.
+- **A channel is encrypted by akio-media's muxer** (`HlsEncryption`), which encrypts its segments
+  and parts and serves its keys at `key-<n>.key` beside them, authorized by the handler's `auth`
+  before akio sees the request. A channel's two formats are two muxers with keys of their own, so
+  the MPEG-TS muxer names its keys `key-<n>.key?format=ts` and the handler routes a key by that
+  query, as it routes a playlist. fit names a key `key-<session>-<n>.key` and serves it itself; a
+  player follows the playlist's `URI` either way, so the names need not match.
+- **A session is a muxer's**: a channel's key is derived of `<stream>/<session>` and its number, as
+  fit's, and a muxer that starts again (its number back at 0) takes a new random session, so its
+  keys and IVs never repeat.
+- **A change of encryption makes new muxers**: the handler keeps a channel's encrypted services
+  with what they were made for (the hub, the library, the keys' ID, the rotation) and makes new
+  ones at the first request after any of these changes, so a channel is never served clear past
+  the reload that encrypts it, nor under old keys past one that changes them; fit ends its muxers
+  at the next playlist request for the same reasons.
+- **Without `auth` a handler serves no key of an encrypted channel** (403), since anyone could take
+  it; a channel whose library or keys are not loaded answers 503 with `Retry-After: 1`, never
+  clear.

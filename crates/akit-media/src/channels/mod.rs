@@ -71,6 +71,9 @@ pub(crate) struct Settings {
     pub(crate) rendition: String,
     pub(crate) read_ahead: Time,
     pub(crate) max_bytes: u64,
+    /// `encrypt` (I147), and `key_rotation`.
+    pub(crate) encrypt: bool,
+    pub(crate) rotation: u32,
 }
 
 fn compile(c: &StreamChannel) -> Result<Settings, String> {
@@ -99,6 +102,8 @@ fn compile(c: &StreamChannel) -> Result<Settings, String> {
         rendition: c.rendition.clone(),
         read_ahead: i64::try_from(c.read_ahead_or().as_nanos()).unwrap_or(i64::MAX),
         max_bytes: c.buffer_bytes(),
+        encrypt: c.encrypt,
+        rotation: c.rotation(),
     })
 }
 
@@ -314,6 +319,17 @@ impl Manager {
         for p in ps {
             p.remove();
         }
+    }
+
+    /// How the HLS of `stream` is encrypted (I147, fit's `Encryption`): its channel's library and
+    /// `key_rotation`; `None` for a stream that is not a channel with `encrypt`.
+    #[must_use]
+    pub fn encryption(&self, stream: &str) -> Option<(String, u32)> {
+        let c = self.lock().channels.get(stream).cloned()?;
+        let st = c.lock();
+        st.set
+            .encrypt
+            .then(|| (st.set.library.clone(), st.set.rotation))
     }
 
     /// The push target named `name`.

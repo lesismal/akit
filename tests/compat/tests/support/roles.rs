@@ -1696,7 +1696,7 @@ fn media_tokens(out: &mut Vec<(String, String, Read)>) {
 /// The `vod` handler's params (I142).
 fn vod(out: &mut Vec<(String, String, Read)>) {
     const P: &str = r#"{"name": "p", "public": ["play"]}"#;
-    const L: &str = r#"[{"name": "l", "roots": ["/srv/a"]}, {"name": "m", "roots": ["/srv/b"]}]"#;
+    const L: &str = r#"[{"name": "l", "roots": ["/srv/a"], "secret": "0123456789abcdef"}, {"name": "m", "roots": ["/srv/b"], "secret": "0123456789abcdef"}]"#;
     let w = |m: &str| {
         format!(
             r#"{{"listeners": [{{"name": "web", "address": ":8080"}}], "media_auth": [{P}], "media_library": {L}, "routes": [{{"handler": {{"module": "vod", "params": {m}}}}}]}}"#
@@ -1730,6 +1730,8 @@ fn vod(out: &mut Vec<(String, String, Read)>) {
             f("cache_control", q("public"), q("private")),
             f("cors", q("*"), q("https://a")),
             f("timeout", q("1s"), q("2s")),
+            // I147: with auth, and a library with a secret.
+            fx("encrypt", "false", "true", &[("auth", r#""p""#)]),
         ],
     );
 }
@@ -1773,7 +1775,7 @@ fn media_library(out: &mut Vec<(String, String, Read)>) {
 
 /// The streaming role's channels (I145).
 fn channels(out: &mut Vec<(String, String, Read)>) {
-    const L: &str = r#"[{"name": "l", "roots": ["/srv/a"]}, {"name": "m", "roots": ["/srv/b"]}]"#;
+    const L: &str = r#"[{"name": "l", "roots": ["/srv/a"], "secret": "0123456789abcdef"}, {"name": "m", "roots": ["/srv/b"], "secret": "0123456789abcdef"}]"#;
     let s = |c: &str| {
         format!(
             r#"{{"media_library": {L}, "streaming": {{"rtmp": {{"listen": ":1935"}}, "channels": {c}}}}}"#
@@ -1809,6 +1811,9 @@ fn channels(out: &mut Vec<(String, String, Read)>) {
             f("rendition", q("a"), q("b")),
             f("read_ahead", q("1s"), q("2s")),
             f("max_buffer_bytes", "1048576", "2097152"),
+            // I147: of a library with a secret.
+            f("encrypt", "false", "true"),
+            fx("key_rotation", "2", "3", &[("encrypt", "true")]),
         ],
     );
     // I146: push targets.

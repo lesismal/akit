@@ -589,3 +589,182 @@ fn signed_url_cookie() {
     assert_ne!(r.status, 200);
     assert_eq!(get(h, &format!("{B}v0.0.m4s")).status, 401);
 }
+
+const LIB_SECRET: &str = "the library's secret, 16 bytes or more";
+
+/// A player's AES-128 of segment `n` under `key`.
+fn decrypt(key: &[u8], n: u64, data: &[u8]) -> Vec<u8> {
+    assert!(
+        !data.is_empty() && data.len() % 16 == 0,
+        "{} bytes",
+        data.len()
+    );
+    let mut out = data.to_vec();
+    let k: [u8; 16] = key.try_into().unwrap();
+    akio_crypto::aes::Aes::new128(&k)
+        .decrypt_cbc_padded(&u128::from(n).to_be_bytes(), &mut out)
+        .unwrap();
+    out
+}
+
+/// fit's `TestEncrypt` and `TestEncryptTokens` (I147): an encrypted item's media playlists
+/// name the key after the init section, the key goes to whom auth lets play the item alone, and
+/// its segments, fMP4 and MPEG-TS, decrypt with it into the clear handler's own; the key of an
+/// item another token may not play is refused, and the files are not served.
+#[test]
+fn encrypt() {
+    let lib = copy_lib();
+    let json = format!(
+        r#"{{"listeners": [{{"name": "web", "address": "127.0.0.1:0"}}],
+          "media_auth": [{{"name": "site", "tokens": [{{"token": "{TOKEN}", "play": ["vod/lib/films/*"]}}]}}],
+          "media_library": [{{"name": "lib", "roots": ["{}"], "secret": "{LIB_SECRET}"}}],
+          "routes": [{{"match": {{"path": ["/vod/*"]}}, "handler": {{"module": "vod", "params": {{"library": "lib", "auth": "site", "encrypt": true, "cache_control": "public, max-age=60"}}}}}},
+                     {{"match": {{"path": ["/clear/*"]}}, "handler": {{"module": "vod", "params": {{"library": "lib", "prefix": "/clear/lib/"}}}}}}]}}"#,
+        lib.0.display()
+    );
+    let a = start(&json, true);
+    let h = a.http;
+    let clear = |name: &str| get(h, &format!("/clear/lib/films/bbb/{name}"));
+    let bearer = format!("Bearer {TOKEN}");
+    let with = |name: &str| {
+        request(
+            h,
+            "GET",
+            &format!("{B}{name}"),
+            &[("Authorization", &bearer)],
+        )
+    };
+    let master = with("index.m3u8");
+    assert_eq!(master.status, 200);
+    assert!(!master.text().contains("EXT-X-KEY"), "{}", master.text());
+    let keys = akit_media::library::keys::Keys::new("lib", LIB_SECRET).unwrap();
+    let want = keys.key(akit_media::library::keys::KEY_ITEM, "films/bbb", 0);
+    let key = with("aes.key");
+    assert_eq!(key.status, 200);
+    assert_eq!(key.body, want);
+    assert_eq!(key.header("cache-control"), Some("private, no-store"));
+    assert_eq!(key.header("content-type"), Some("application/octet-stream"));
+    for (c, ext) in [("fmp4", "m4s"), ("ts", "ts")] {
+        let media = with(&format!("v0.{c}.m3u8")).text();
+        let k = media
+            .find(r#"#EXT-X-KEY:METHOD=AES-128,URI="aes.key""#)
+            .unwrap_or_else(|| panic!("{media}"));
+        assert_eq!(media.matches("#EXT-X-KEY").count(), 1);
+        assert!(media.find("#EXT-X-MAP").is_none_or(|m| m < k), "{media}");
+        assert!(media.find("#EXTINF").unwrap() > k, "{media}");
+        let name = format!("v0.0.{ext}");
+        let enc = with(&name);
+        let plain = clear(&name);
+        assert_eq!((enc.status, plain.status), (200, 200));
+        assert_ne!(enc.body[..16], plain.body[..16]);
+        assert_eq!(decrypt(&key.body, 0, &enc.body), plain.body);
+        assert_eq!(enc.header("cache-control"), Some("public, max-age=60"));
+        assert_ne!(enc.header("etag"), plain.header("etag"));
+        assert!(enc.header("etag").is_some());
+    }
+    // The init section stays clear.
+    assert_eq!(&with("v0.init.mp4").body[4..8], b"ftyp");
+    // With a token in the query, the playlist names the key with it.
+    let media = get(h, &format!("{B}v0.ts.m3u8?token={TOKEN}")).text();
+    assert!(
+        media.contains(&format!(r#"URI="aes.key?token={TOKEN}""#)),
+        "{media}"
+    );
+    // The key without credentials, of an item the token may not play, and of a clear item.
+    assert_eq!(get(h, &format!("{B}aes.key")).status, 401);
+    assert_eq!(
+        request(
+            h,
+            "GET",
+            "/vod/lib/sintel/aes.key",
+            &[("Authorization", &bearer)]
+        )
+        .status,
+        403
+    );
+    assert_eq!(clear("aes.key").status, 404);
+    // The files are not served; the poster is.
+    assert_eq!(with("v0.mp4").status, 404);
+    assert_eq!(with("poster.jpg").status, 200);
+}
+
+fn encrypted_config(root: &Path, secret_file: &Path) -> String {
+    format!(
+        r#"{{"listeners": [{{"name": "web", "address": "127.0.0.1:0"}}],
+          "media_auth": [{{"name": "site", "tokens": [{{"token": "{TOKEN}", "play": ["vod/lib/films/*"]}}]}}],
+          "media_library": [{{"name": "lib", "roots": ["{}"], "secret_file": "{}"}}],
+          "routes": [{{"match": {{"path": ["/vod/*"]}}, "handler": {{"module": "vod", "params": {{"library": "lib", "auth": "site", "encrypt": true}}}}}}]}}"#,
+        root.display(),
+        secret_file.display()
+    )
+}
+
+/// fit's `TestEncryptSecretChanged` (I147): a new secret, read from `secret_file` as the config
+/// is applied again, makes new keys, new segments and new ETags of the same media.
+#[test]
+fn encrypt_secret_changed() {
+    let lib = copy_lib();
+    let file = lib.0.join("secret");
+    std::fs::write(&file, "the first secret of the library\n").unwrap();
+    let json = encrypted_config(&lib.0, &file);
+    let mut a = start(&json, true);
+    let h = a.http;
+    let bearer = format!("Bearer {TOKEN}");
+    let with = |name: &str| {
+        request(
+            h,
+            "GET",
+            &format!("{B}{name}"),
+            &[("Authorization", &bearer)],
+        )
+    };
+    let key1 = with("aes.key");
+    let seg1 = with("v0.0.m4s");
+    assert_eq!((key1.status, seg1.status), (200, 200));
+    std::fs::write(&file, "the second secret of the library").unwrap();
+    let config = akit_config::from_json(&json, None).unwrap();
+    let errs = a.roles.apply(&config);
+    assert!(errs.is_empty(), "{errs:?}");
+    let key2 = with("aes.key");
+    let seg2 = with("v0.0.m4s");
+    assert_eq!((key2.status, seg2.status), (200, 200));
+    assert_ne!(key1.body, key2.body);
+    assert_ne!(seg1.body, seg2.body);
+    assert_ne!(seg1.header("etag"), seg2.header("etag"));
+    assert_eq!(
+        decrypt(&key1.body, 0, &seg1.body),
+        decrypt(&key2.body, 0, &seg2.body),
+        "the segment is another"
+    );
+    let keys = akit_media::library::lookup(akit_media::library::key(&a.engine), "lib")
+        .and_then(|l| l.keys())
+        .unwrap();
+    assert_eq!(
+        keys.key(akit_media::library::keys::KEY_ITEM, "films/bbb", 0)[..],
+        key2.body[..],
+        "the library's keys are not the handler's"
+    );
+}
+
+/// fit's `TestEncryptProvision` (I147), its part that reads the disk: a `secret_file` that
+/// cannot be read, or holds a secret too short, fails the library's apply.
+#[test]
+fn encrypt_secret_file_refused() {
+    let lib = copy_lib();
+    let short = lib.0.join("short");
+    std::fs::write(&short, "short\n").unwrap();
+    for (file, want) in [
+        (lib.0.join("nonexistent"), "secret_file"),
+        (short, "at least 16"),
+    ] {
+        let config = akit_config::from_json(&encrypted_config(&lib.0, &file), None).unwrap();
+        let engine = Arc::new(Engine::builder().build().unwrap());
+        let mut m = Manager::new(&[akit_media::library::MEDIA_LIBRARY], engine, None);
+        let errs = m.apply(&config);
+        assert!(
+            errs.iter().any(|e| format!("{e:?}").contains(want)),
+            "{errs:?}, want {want:?}"
+        );
+        m.stop(Duration::ZERO);
+    }
+}

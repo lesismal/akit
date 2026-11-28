@@ -15,13 +15,24 @@
 //! hands them the path without it (the access log then writes the path so), and `hls` keeps one
 //! `Hls` a format (akio request A266). An `hls` handler's segments are shared by the handlers of
 //! the same params, so that a reload that keeps them keeps its segments and their numbering.
+//!
+//! A channel with `encrypt` (I147) is served by `Hls` services of its own, whose segments and
+//! parts are encrypted with AES-128 (akio-media's `HlsEncryption`) under keys of the channel's
+//! library, a key every `key_rotation` segments, derived as fit derives them from the stream, a
+//! session of the muxer's own and the key's number ([`ChannelKeys`]); akio-media serves the keys
+//! beside the segments (`key-<n>.key`, `?format=ts` added for MPEG-TS's, so that the handler
+//! routes a key to the muxer that issued it), to a request the handler's `auth` let in, and an
+//! `hls` handler without `auth` serves none. A channel whose encryption changes (a reload, its library's secret) gets
+//! services of the new encryption at the next request, never one served clear.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 use std::time::Duration;
 
 use akio_http::{Context, Response, Service};
-use akio_media::hls::{Hls as AkioHls, HlsConfig, SegmentFormat};
+use akio_media::hls::{
+    Hls as AkioHls, HlsConfig, HlsEncryption, HlsKey, KeyProvider, SegmentFormat,
+};
 use akio_media::httpflv::{HttpFlv as AkioFlv, HttpFlvConfig};
 use akit_config::media::HlsFormat;
 use akit_runtime::{
@@ -236,6 +247,65 @@ struct HlsShared {
     /// akio-media's services of the role's current hub, by the hub's number: fMP4 and MPEG-TS.
     cur: Swap<(u64, AkioHls, AkioHls)>,
     make: Mutex<()>,
+    /// The services of the channels with `encrypt` (I147), by stream: the encryption they were
+    /// made with, and the two services.
+    enc: Mutex<HashMap<String, (EncWant, AkioHls, AkioHls)>>,
+}
+
+/// The encryption services were made with: the hub's number, the library, its keys' ID and the
+/// rotation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct EncWant {
+    hub_no: u64,
+    library: String,
+    keys: String,
+    rotation: u32,
+}
+
+/// The keys of a channel's encrypted HLS (fit's `hlsShared.encrypt`): key `n` of a session
+/// derived from the library's secret, as fit derives it, of `<stream>/<session>` and `n`. A
+/// muxer that starts again starts a session of its own, so that its keys and IVs never repeat.
+///
+/// The MPEG-TS service's keys are named `key-<n>.key?format=ts`, so that a key request reaches
+/// the muxer that issued it: both formats mux the stream, each with keys of its own.
+struct ChannelKeys {
+    keys: Arc<crate::library::keys::Keys>,
+    sessions: Mutex<HashMap<String, String>>,
+    ts: bool,
+}
+
+impl ChannelKeys {
+    fn new_session() -> String {
+        let mut b = [0u8; 8];
+        if akio_crypto::rand::fill_random(&mut b).is_err() {
+            let t = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_nanos());
+            b.copy_from_slice(t.to_be_bytes().get(8..).unwrap_or(&[0; 8]));
+        }
+        crate::library::catalog::hex(&b)
+    }
+}
+
+impl KeyProvider for ChannelKeys {
+    fn key(&self, path: &str, n: u64) -> HlsKey {
+        let mut m = self.sessions.lock().unwrap_or_else(PoisonError::into_inner);
+        if n == 0 || !m.contains_key(path) {
+            m.insert(path.to_owned(), ChannelKeys::new_session());
+        }
+        let session = m.get(path).cloned().unwrap_or_default();
+        drop(m);
+        let key = self.keys.key(
+            crate::library::keys::KEY_CHANNEL,
+            &format!("{path}/{session}"),
+            n,
+        );
+        if self.ts {
+            HlsKey::with_uri(key, format!("key-{n}.key?format=ts"))
+        } else {
+            HlsKey::new(key)
+        }
+    }
 }
 
 type SharedMap = Mutex<HashMap<(usize, String), Arc<HlsShared>>>;
@@ -258,6 +328,7 @@ fn shared(key: usize, params: String, cfg: HlsConfig, def: SegmentFormat) -> Arc
             refs: Mutex::new(0),
             cur: Swap::default(),
             make: Mutex::new(()),
+            enc: Mutex::new(HashMap::new()),
         })
     }));
     {
@@ -301,6 +372,67 @@ impl HlsShared {
         self.cur
             .set(Some(Arc::new((hub_no, s.0.clone(), s.1.clone()))));
         s
+    }
+
+    /// The services of `stream`: those of the channel's encryption when it encrypts (made anew
+    /// when it changed), else the handler's; `Err` with why for a channel whose library or keys
+    /// are not loaded.
+    fn services_of(
+        &self,
+        hub_no: u64,
+        hub: &akio_media::Hub,
+        channels: Option<&Arc<crate::channels::Manager>>,
+        stream: &str,
+    ) -> Result<(AkioHls, AkioHls), &'static str> {
+        let enc = channels.and_then(|m| m.encryption(stream));
+        let Some((library, rotation)) = enc else {
+            let mut m = self.enc.lock().unwrap_or_else(PoisonError::into_inner);
+            if !m.is_empty() {
+                // A channel no longer encrypted: its services go.
+                m.remove(stream);
+            }
+            drop(m);
+            return Ok(self.services(hub_no, hub));
+        };
+        let keys = crate::library::lookup(self.key.0, &library)
+            .and_then(|l| l.keys())
+            .ok_or("the channel's media library, and its keys, are not loaded")?;
+        let want = EncWant {
+            hub_no,
+            library,
+            keys: keys.id().to_owned(),
+            rotation,
+        };
+        let mut m = self.enc.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some((w, a, b)) = m.get(stream) {
+            if *w == want {
+                return Ok((a.clone(), b.clone()));
+            }
+        }
+        let make = |format: SegmentFormat| {
+            let mut c = self.cfg.clone();
+            c.format = format;
+            let mut e = HlsEncryption::new(NoKeys).rotate_every(rotation);
+            e.keys = Arc::new(ChannelKeys {
+                keys: Arc::clone(&keys),
+                sessions: Mutex::new(HashMap::new()),
+                ts: format == SegmentFormat::MpegTs,
+            });
+            c.encryption = Some(e);
+            AkioHls::new(hub.clone(), c)
+        };
+        let s = (make(SegmentFormat::Fmp4), make(SegmentFormat::MpegTs));
+        m.insert(stream.to_owned(), (want, s.0.clone(), s.1.clone()));
+        Ok(s)
+    }
+}
+
+/// A provider never asked for a key: replaced at once by the channel's.
+struct NoKeys;
+
+impl KeyProvider for NoKeys {
+    fn key(&self, _path: &str, _n: u64) -> HlsKey {
+        HlsKey::new([0; 16])
     }
 }
 
@@ -427,12 +559,28 @@ impl Service for HlsHandler {
         let Some(found) = self.base.found.get() else {
             return text(ctx, 503, "the streaming role is not running");
         };
-        let (Some((hub_no, hub)), Some(sh)) = (
-            found.role.with(|c| c.map(|c| (c.hub_no, c.hub.clone()))),
+        let (Some((hub_no, hub, channels)), Some(sh)) = (
+            found
+                .role
+                .with(|c| c.map(|c| (c.hub_no, c.hub.clone(), c.channels.clone()))),
             found.hls.clone(),
         ) else {
             return text(ctx, 503, "the streaming role is not running");
         };
+        // I147: an encrypted channel's keys go only to whom auth lets play it.
+        let key = name.starts_with("key-") && name.ends_with(".key");
+        if key
+            && !self.base.auth.named()
+            && channels
+                .as_ref()
+                .is_some_and(|m| m.encryption(&stream).is_some())
+        {
+            return text(
+                ctx,
+                403,
+                "the keys of an encrypted channel are served only by an hls handler with auth",
+            );
+        }
         let unprefixed = self.base.prefix != "/";
         let checked = stream.clone();
         // The stream's resource, as a signed URL is signed for: the path up to the playlist's or
@@ -448,9 +596,22 @@ impl Service for HlsHandler {
             &resource,
             &self.base.cors,
             move |ctx, access: Access| {
-                let (fmp4, ts) = sh.services(hub_no, &hub);
+                let (fmp4, ts) = match sh.services_of(hub_no, &hub, channels.as_ref(), &stream) {
+                    Ok(s) => s,
+                    Err(why) => {
+                        redact(ctx);
+                        return ctx.respond(
+                            Response::with_body(
+                                503,
+                                "text/plain; charset=utf-8",
+                                format!("{why}\n").into_bytes(),
+                            )
+                            .header("Retry-After", "1"),
+                        );
+                    }
+                };
                 let playlist = name.ends_with(".m3u8");
-                let format = if playlist {
+                let format = if playlist || key {
                     match ctx.req().query_param("format") {
                         Some("ts") => SegmentFormat::MpegTs,
                         Some("fmp4") => SegmentFormat::Fmp4,

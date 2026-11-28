@@ -328,7 +328,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 1301 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 1304 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
@@ -354,7 +354,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`http.handlers/stream_whep`](#fields-http-handlers-stream-whep) | 5 | 5 | 0 |
 | [`http.handlers/stream_whip`](#fields-http-handlers-stream-whip) | 5 | 5 | 0 |
 | [`http.handlers/sync_ingest`](#fields-http-handlers-sync-ingest) | 6 | 0 | 6 |
-| [`http.handlers/vod`](#fields-http-handlers-vod) | 13 | 12 | 1 |
+| [`http.handlers/vod`](#fields-http-handlers-vod) | 13 | 13 | 0 |
 | [`http.handlers/webrtc_proxy`](#fields-http-handlers-webrtc-proxy) | 8 | 8 | 0 |
 | [`http.handlers/websockify`](#fields-http-handlers-websockify) | 12 | 0 | 12 |
 | [`http.handlers/whep`](#fields-http-handlers-whep) | 4 | 4 | 0 |
@@ -385,7 +385,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`routes`](#fields-routes) | 24 | 24 | 0 |
 | [`schema_version`](#fields-schema-version) | 1 | 1 | 0 |
 | [`services`](#fields-services) | 13 | 13 | 0 |
-| [`streaming`](#fields-streaming) | 76 | 68 | 8 |
+| [`streaming`](#fields-streaming) | 76 | 70 | 6 |
 | [`sync`](#fields-sync) | 42 | 0 | 42 |
 | [`sync.codecs/canal_json`](#fields-sync-codecs-canal-json) | 87 | 0 | 87 |
 | [`sync.codecs/csv`](#fields-sync-codecs-csv) | 116 | 0 | 116 |
@@ -453,7 +453,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`tunnel`](#fields-tunnel) | 164 | 161 | 3 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 76 | 0 |
-| **合计** | 3821 | 1301 | 2520 |
+| **合计** | 3821 | 1304 | 2517 |
 
 <a id="fields-access"></a>
 
@@ -1124,7 +1124,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | `routes[].handler<vod>.params.cache_control` | `string` | 已支持 |
 | `routes[].handler<vod>.params.container` | `enum(fmp4\|ts)` | 已支持 |
 | `routes[].handler<vod>.params.cors` | `string` | 已支持 |
-| `routes[].handler<vod>.params.encrypt` | `boolean` | 尚不支持（not supported yet） |
+| `routes[].handler<vod>.params.encrypt` | `boolean` | 已支持 |
 | `routes[].handler<vod>.params.library` | `string, required` | 已支持 |
 | `routes[].handler<vod>.params.max_cache_bytes` | `integer` | 已支持 |
 | `routes[].handler<vod>.params.max_segment_bytes` | `integer` | 已支持 |
@@ -1947,9 +1947,9 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | `streaming.access.deny` | `array<string>` | 已支持 |
 | `streaming.access.deny_files` | `array<string>` | 已支持 |
 | `streaming.channels` | `array<object>` | 已支持 |
-| `streaming.channels[].encrypt` | `boolean` | 尚不支持（not supported yet） |
+| `streaming.channels[].encrypt` | `boolean` | 已支持 |
 | `streaming.channels[].items` | `array<string>` | 已支持 |
-| `streaming.channels[].key_rotation` | `integer` | 尚不支持（not supported yet） |
+| `streaming.channels[].key_rotation` | `integer` | 已支持 |
 | `streaming.channels[].library` | `string, required` | 已支持 |
 | `streaming.channels[].loop` | `boolean` | 已支持 |
 | `streaming.channels[].max_buffer_bytes` | `integer` | 已支持 |

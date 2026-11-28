@@ -14,7 +14,7 @@ akit 配置的每个字段：配置的每一部分是做什么的、一个示例
 akit 与 fit 不同之处，在表格中以 **akit：** 标出。
 
 <!-- BEGIN GENERATED: summary -->
-fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **1301** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 195 个对象，下文各有一张表。
+fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **1304** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 195 个对象，下文各有一张表。
 <!-- END GENERATED -->
 
 字段说明来自 fit 代码中的 `doc` 标签，是英文的，所以每个字段的完整说明在[英文版](config.md)的同一张表中；本页的表格给出每个字段的
@@ -3063,7 +3063,8 @@ streaming {
 
 频道（I145）：把媒体库的条目作为直播流播放到媒体中心，按顺序、随机、循环或按某个时区的节目表播放，按其时间戳控制节奏，时间戳从一个条目
 延续到下一个；每种出口都在其 auth 下播放它们。重载就地修改频道，从其下一个条目生效；Admin API 在 `/streaming/channels` 列出它们，
-并启动、停止和跳过它们。频道的 `encrypt` 和 `key_rotation`（I147）尚不读取。
+并启动、停止和跳过它们。设置了 `encrypt`（I147）的频道以 HLS 播放，密钥按 fit 的方式从其媒体库的 secret 派生，只由设置了 `auth`
+的 `hls` 处理器提供；重载改变其加密时，其 HLS 在新的加密下重新开始。
 
 ```fit
 media_library films { roots /srv/films }
@@ -3088,9 +3089,9 @@ streaming {
 | --- | --- | --- | --- |
 | `library` | 字符串 | 必填 |  |
 | `name` | 字符串 | 必填 | **akit：**由 `akit run` 运行（I145）：在 akio 给处理器提供其引擎的计时器（A296）之前，每个频道在 akit-media 的计时线程上控制节奏，其样本在其媒体库的文件池上读取。`/metrics` 有 fit 的频道指标族，名为 `akit_streaming_channel*`；Admin API 提供 `/streaming/channels`。 |
-| `encrypt` | 布尔值 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `encrypt` | 布尔值 |  | **akit：**由 `akit run` 运行（I147）：akio-media 的 HLS 复用器加密频道的分片和部分分片，每 `key_rotation` 个分片换一把密钥，每把密钥按 fit 的方式从媒体库的 secret 派生，派生自 `<stream>/<session>` 及其编号，重新启动的复用器有自己的会话。其密钥在分片旁命名为 `key-<n>.key`（MPEG-TS 为 `key-<n>.key?format=ts`），而 fit 命名为 `key-<session>-<n>.key`：两种方式下播放器都按播放列表取用（决定 043）。 |
 | `items` | 字符串的列表 |  |  |
-| `key_rotation` | 整数，0 到 100000 | `10` | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `key_rotation` | 整数，0 到 100000 | `10` |  |
 | `loop` | 布尔值 | `true` |  |
 | `max_buffer_bytes` | 整数，≥ 0 | `16777216` |  |
 | `order` | 字符串：`sequence`、`shuffle` | `"sequence"` |  |
@@ -3920,7 +3921,8 @@ route tokens {
 
 以 HLS 点播媒体库的条目（I142）：`/vod/films/films/bbb/index.m3u8` 是媒体库 `films` 中条目 `films/bbb` 的多码率播放列表；
 其各版本的 fMP4 或 MPEG-TS 分片的媒体播放列表（由 akio-media 的规划器在 `segment_duration` 附近的关键帧处切分）、初始化段、
-WebVTT 字幕、海报，以及按范围提供的文件本身。尚未读取 `encrypt`（I147）。
+WebVTT 字幕、海报，以及按范围提供的文件本身。设置 `encrypt`（I147）时，其分片以媒体库 secret 派生的条目密钥做 AES-128 加密，
+与 fit 逐字节一致，密钥以 `aes.key` 提供。
 
 ```fit
 listener web :8080
@@ -3941,7 +3943,7 @@ route vod { match { path /vod/* }; handler vod { library films } }
 | `cache_control` | 字符串 |  |  |
 | `container` | 字符串：`fmp4`、`ts` | `"fmp4"` |  |
 | `cors` | 字符串 |  |  |
-| `encrypt` | 布尔值 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `encrypt` | 布尔值 |  | **akit：**由 `akit run` 运行（I147）：同一媒体库名和 secret 下，密钥和 IV 与 fit 逐字节一致，从 fit 取得的密钥能解密 akit 的分片，反之亦然。分片的 ETag 带有密钥的 ID，新的 secret 产生新的 ETag（决定 043）。 |
 | `max_cache_bytes` | 整数，≥ 0 | `268435456` | **akit：**正在构建的内容不占用它：构建受媒体库文件池和 `max_segment_bytes` 限制，构建完成后才接纳（待审决定第 90 行）。 |
 | `max_segment_bytes` | 整数，≥ 0 | `33554432` | **akit：**样本超过它的分片回答 500，而不是在更早的关键帧处切分，因为 akio-media 的规划器只按时间切分（待审决定第 90 行）。 |
 | `prefix` | 字符串 |  |  |

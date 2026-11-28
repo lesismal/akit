@@ -1344,8 +1344,7 @@ media_library[].file_queue
 media_library[].file_timeout
 media_library[].secret
 media_library[].secret_file
-# I142: the vod handler (akit-media's vod), its params as fit's; encrypt (I147) refused as not
-# supported yet.
+# I142: the vod handler (akit-media's vod), its params as fit's; encrypt from I147.
 routes[].handler<media_tokens>
 routes[].handler<media_tokens>.params
 routes[].handler<media_tokens>.params.prefix
@@ -1369,9 +1368,10 @@ routes[].handler<vod>.params.max_segment_bytes
 routes[].handler<vod>.params.cache_control
 routes[].handler<vod>.params.cors
 routes[].handler<vod>.params.timeout
+routes[].handler<vod>.params.encrypt
 # I120: fit's media auth policies and streaming role (akit-config's media module); a policy's keys
-# (I143) and url_signing (I144); the role's channels (I145) and push targets (I146), but for the
-# channels' encrypt and key_rotation (I147). Refused as not supported yet, as are RTMP's and RTSP's mptcp, RTMP's max_message_bytes (akio A263)
+# (I143) and url_signing (I144); the role's channels (I145), push targets (I146) and the channels'
+# encrypt and key_rotation (I147). Refused as not supported yet, as are RTMP's and RTSP's mptcp, RTMP's max_message_bytes (akio A263)
 # and RTSP's auth_methods, realm and idle_timeout (Digest and Basic, a sessionless idle bound: akio A264). akit run runs the role from I122.
 media_auth
 media_auth[].keys
@@ -1415,6 +1415,8 @@ streaming.access.deny
 streaming.access.deny_files
 streaming.channels
 streaming.channels[].items
+streaming.channels[].encrypt
+streaming.channels[].key_rotation
 streaming.channels[].library
 streaming.channels[].loop
 streaming.channels[].max_buffer_bytes

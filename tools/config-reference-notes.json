@@ -321,6 +321,14 @@
     "streaming.channels[].push[].url": {
       "en": "`rtmps://` is refused as not supported yet until akio's RTMP client dials over TLS (akio API request A297). An RTMP push's retries are its client's own (akio-media's `Reconnect`), with `retry_min` and `retry_max`, until akio tells its owner a session ended (A298); a refusal for credentials ends it until its stream is published again or the Admin API restarts it.",
       "zh": "在 akio 的 RTMP 客户端能通过 TLS 拨号之前（akio API 请求 A297），`rtmps://` 作为尚不支持而拒绝。在 akio 告诉其所有者会话结束之前（A298），RTMP 推流的重试由其客户端自己完成（akio-media 的 `Reconnect`），使用 `retry_min` 和 `retry_max`；因凭据被拒会结束它，直到其流再次发布或 Admin API 重启它。"
+    },
+    "routes[].handler<vod>.params.encrypt": {
+      "en": "Run by `akit run` (I147): the keys and IVs are fit's byte for byte, given the same library name and secret, so a key fetched from fit decrypts akit's segments and the other way round. A segment's ETag carries the keys' ID, so a new secret makes new ETags (decision 043).",
+      "zh": "由 `akit run` 运行（I147）：同一媒体库名和 secret 下，密钥和 IV 与 fit 逐字节一致，从 fit 取得的密钥能解密 akit 的分片，反之亦然。分片的 ETag 带有密钥的 ID，新的 secret 产生新的 ETag（决定 043）。"
+    },
+    "streaming.channels[].encrypt": {
+      "en": "Run by `akit run` (I147): akio-media's HLS muxer encrypts the channel's segments and parts, a key every `key_rotation` segments, each derived from the library's secret as fit derives it, of `<stream>/<session>` and its number, a muxer started again having a session of its own. Its keys are named `key-<n>.key` beside the segments (`key-<n>.key?format=ts` for MPEG-TS), where fit names them `key-<session>-<n>.key`: a player follows the playlist either way (decision 043).",
+      "zh": "由 `akit run` 运行（I147）：akio-media 的 HLS 复用器加密频道的分片和部分分片，每 `key_rotation` 个分片换一把密钥，每把密钥按 fit 的方式从媒体库的 secret 派生，派生自 `<stream>/<session>` 及其编号，重新启动的复用器有自己的会话。其密钥在分片旁命名为 `key-<n>.key`（MPEG-TS 为 `key-<n>.key?format=ts`），而 fit 命名为 `key-<session>-<n>.key`：两种方式下播放器都按播放列表取用（决定 043）。"
     }
   }
 }

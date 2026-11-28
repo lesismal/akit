@@ -234,6 +234,17 @@ fn vod_params() {
     assert_eq!(v.segment_bytes(), DEFAULT_MAX_SEGMENT_BYTES);
     assert_eq!(v.wait(), DEFAULT_VOD_TIMEOUT);
     assert_eq!(v.policy.as_ref().unwrap().name, "p");
+    assert!(!v.encrypt);
+    // I147: encrypt, with the library's secret.
+    let enc = doc(r#"{"library": "films", "auth": "p", "encrypt": true}"#).replace(
+        r#""roots": ["/srv/films"]"#,
+        r#""roots": ["/srv/films"], "secret": "0123456789abcdef""#,
+    );
+    let c = from_json(&enc, None).unwrap();
+    let crate::Handler::Vod(v) = &c.routes[0].handler else {
+        panic!("not vod");
+    };
+    assert!(v.encrypt);
     let v = Vod {
         prefix: "/v".into(),
         max_cache_bytes: 1 << 20,
@@ -284,7 +295,11 @@ fn vod_params() {
         ),
         (
             r#"{"library": "films", "encrypt": true}"#,
-            "not supported yet",
+            "encrypt needs auth",
+        ),
+        (
+            r#"{"library": "films", "auth": "p", "encrypt": true}"#,
+            r#"encrypt needs a key: set media_library "films"'s secret"#,
         ),
         (r#"{"library": "films", "nope": 1}"#, "unknown field"),
     ] {

@@ -398,7 +398,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 1301 supported.
+3821 fields in 121 sections, at fit `7daee573`; 1304 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -424,7 +424,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`http.handlers/stream_whep`](#fields-http-handlers-stream-whep) | 5 | 5 | 0 |
 | [`http.handlers/stream_whip`](#fields-http-handlers-stream-whip) | 5 | 5 | 0 |
 | [`http.handlers/sync_ingest`](#fields-http-handlers-sync-ingest) | 6 | 0 | 6 |
-| [`http.handlers/vod`](#fields-http-handlers-vod) | 13 | 12 | 1 |
+| [`http.handlers/vod`](#fields-http-handlers-vod) | 13 | 13 | 0 |
 | [`http.handlers/webrtc_proxy`](#fields-http-handlers-webrtc-proxy) | 8 | 8 | 0 |
 | [`http.handlers/websockify`](#fields-http-handlers-websockify) | 12 | 0 | 12 |
 | [`http.handlers/whep`](#fields-http-handlers-whep) | 4 | 4 | 0 |
@@ -455,7 +455,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`routes`](#fields-routes) | 24 | 24 | 0 |
 | [`schema_version`](#fields-schema-version) | 1 | 1 | 0 |
 | [`services`](#fields-services) | 13 | 13 | 0 |
-| [`streaming`](#fields-streaming) | 76 | 68 | 8 |
+| [`streaming`](#fields-streaming) | 76 | 70 | 6 |
 | [`sync`](#fields-sync) | 42 | 0 | 42 |
 | [`sync.codecs/canal_json`](#fields-sync-codecs-canal-json) | 87 | 0 | 87 |
 | [`sync.codecs/csv`](#fields-sync-codecs-csv) | 116 | 0 | 116 |
@@ -523,7 +523,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 161 | 3 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 76 | 0 |
-| **Total** | 3821 | 1301 | 2520 |
+| **Total** | 3821 | 1304 | 2517 |
 
 <a id="fields-access"></a>
 
@@ -1194,7 +1194,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `routes[].handler<vod>.params.cache_control` | `string` | supported |
 | `routes[].handler<vod>.params.container` | `enum(fmp4\|ts)` | supported |
 | `routes[].handler<vod>.params.cors` | `string` | supported |
-| `routes[].handler<vod>.params.encrypt` | `boolean` | not supported yet |
+| `routes[].handler<vod>.params.encrypt` | `boolean` | supported |
 | `routes[].handler<vod>.params.library` | `string, required` | supported |
 | `routes[].handler<vod>.params.max_cache_bytes` | `integer` | supported |
 | `routes[].handler<vod>.params.max_segment_bytes` | `integer` | supported |
@@ -2017,9 +2017,9 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `streaming.access.deny` | `array<string>` | supported |
 | `streaming.access.deny_files` | `array<string>` | supported |
 | `streaming.channels` | `array<object>` | supported |
-| `streaming.channels[].encrypt` | `boolean` | not supported yet |
+| `streaming.channels[].encrypt` | `boolean` | supported |
 | `streaming.channels[].items` | `array<string>` | supported |
-| `streaming.channels[].key_rotation` | `integer` | not supported yet |
+| `streaming.channels[].key_rotation` | `integer` | supported |
 | `streaming.channels[].library` | `string, required` | supported |
 | `streaming.channels[].loop` | `boolean` | supported |
 | `streaming.channels[].max_buffer_bytes` | `integer` | supported |

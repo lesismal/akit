@@ -1,8 +1,8 @@
 //! The streaming role's channels (I145, fit's `config/channels.go`): items of a media library
 //! played into the hub as live streams, in order, shuffled, looped or on a schedule; and its push
-//! targets (I146), streams of the hub relayed to outside RTMP and SRT servers. A channel's HLS
-//! encryption (I147) is refused as not supported yet, as is a push to `rtmps://` (akio API
-//! request A297).
+//! targets (I146), streams of the hub relayed to outside RTMP and SRT servers; and their HLS
+//! encryption (I147). A push to `rtmps://` is refused as not supported yet (akio API request
+//! A297).
 //!
 //! A schedule's times are read here (`at`), and the time zone's name checked for its form; the
 //! zone itself is loaded, from the system's zoneinfo files, when the role applies the config,
@@ -29,6 +29,8 @@ pub const MIN_CHANNEL_MAX_BUFFER_BYTES: u64 = 1 << 20;
 pub const MAX_CHANNEL_ITEMS: usize = 10_000;
 /// fit's `MaxChannelSlots`.
 pub const MAX_CHANNEL_SLOTS: usize = 1000;
+/// fit's `DefaultChannelKeyRotation`.
+pub const DEFAULT_CHANNEL_KEY_ROTATION: u32 = 10;
 /// fit's `MaxChannels`.
 pub const MAX_CHANNELS: usize = 256;
 const MAX_CHANNEL_ITEM_LENGTH: usize = 256;
@@ -58,6 +60,10 @@ pub struct StreamChannel {
     pub max_buffer_bytes: u64,
     /// `push` (I146): outside servers the channel is relayed to.
     pub push: Vec<StreamPush>,
+    /// `encrypt` (I147): its HLS segments encrypted with AES-128 under keys of its library.
+    pub encrypt: bool,
+    /// `key_rotation` (I147): [`DEFAULT_CHANNEL_KEY_ROTATION`] when 0.
+    pub key_rotation: u32,
 }
 
 impl StreamChannel {
@@ -78,6 +84,16 @@ impl StreamChannel {
             DEFAULT_CHANNEL_MAX_BUFFER_BYTES
         } else {
             self.max_buffer_bytes
+        }
+    }
+
+    /// `key_rotation`, or its default.
+    #[must_use]
+    pub fn rotation(&self) -> u32 {
+        if self.key_rotation == 0 {
+            DEFAULT_CHANNEL_KEY_ROTATION
+        } else {
+            self.key_rotation
         }
     }
 
@@ -304,9 +320,11 @@ const CHANNEL_FIELDS: &[&str] = &[
     "max_buffer_bytes",
     // I146.
     "push",
+    // I147.
+    "encrypt",
+    "key_rotation",
 ];
-// I147.
-const CHANNEL_FIT_ONLY: &[&str] = &["encrypt", "key_rotation"];
+const CHANNEL_FIT_ONLY: &[&str] = &[];
 const SLOT_FIELDS: &[&str] = &["at", "item"];
 
 /// A channel's library, for the check once every file is read: its name, where it is written,
@@ -316,6 +334,8 @@ pub(crate) struct LibraryRef {
     pub(crate) name: String,
     pub(crate) off: usize,
     pub(crate) path: String,
+    /// The channel's `encrypt` (I147): the library must have a secret.
+    pub(crate) needs_key: bool,
 }
 
 /// Decodes `streaming.channels`, with fit's checks (`checkChannels`) but for the libraries'
@@ -370,6 +390,7 @@ fn channel(
             name: library.clone(),
             off: loff,
             path: o.at("library"),
+            needs_key: false,
         });
     }
     let mut c = StreamChannel {
@@ -460,6 +481,30 @@ fn channel(
             }
             c.max_buffer_bytes = b;
         }
+    }
+    if let Some(v) = o.take("encrypt") {
+        match &v.kind {
+            crate::json::Kind::Bool(b) => c.encrypt = *b,
+            other => d.error(
+                v.off,
+                &o.at("encrypt"),
+                format!("expected a boolean, got {}", other.name()),
+            ),
+        }
+        if c.encrypt && !c.library.is_empty() {
+            libs.push(LibraryRef {
+                name: c.library.clone(),
+                off: v.off,
+                path: o.at("encrypt"),
+                needs_key: true,
+            });
+        }
+    }
+    if let Some(v) = o.take("key_rotation") {
+        c.key_rotation = d
+            .int(v, &o.at("key_rotation"), 0, 100_000)
+            .and_then(|n| u32::try_from(n).ok())
+            .unwrap_or(0);
     }
     let name = c.name.clone();
     for (mut p, off, path) in list(d, &mut o, "push", push) {
