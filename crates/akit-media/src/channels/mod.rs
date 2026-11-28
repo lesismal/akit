@@ -366,6 +366,14 @@ impl Manager {
         c.status().to_value(self.pushes_of(c.name()))
     }
 
+    /// A publisher left the hub (its `on_unpublish`, [`unpublish_hook`]): the channels whose
+    /// stream was taken, or which found the hub full, claim it again then, never by a timer.
+    pub fn unpublished(&self, _path: &str) {
+        for c in self.list() {
+            c.stream_freed();
+        }
+    }
+
     /// The channel named `name`.
     #[must_use]
     pub fn channel(&self, name: &str) -> Option<Arc<Channel>> {
@@ -503,6 +511,17 @@ type Registry = Mutex<HashMap<usize, Arc<Manager>>>;
 fn registry() -> &'static Registry {
     static REG: std::sync::LazyLock<Registry> = std::sync::LazyLock::new(Registry::default);
     &REG
+}
+
+/// The hub's `on_unpublish` hook for the channels of the engine `key`: a publisher leaving the
+/// hub tells its channels manager ([`Manager::unpublished`]).
+#[must_use]
+pub fn unpublish_hook(key: usize) -> akio_media::hub::PathHook {
+    Arc::new(move |path: &str| {
+        if let Some(m) = lookup(key) {
+            m.unpublished(path);
+        }
+    })
 }
 
 /// Makes `m` the manager [`lookup`] finds for the engine `key`.

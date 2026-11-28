@@ -4,6 +4,10 @@
 //! is refused rather than kept; a job that waited past the timeout is given up.
 //!
 //! The threads are started as jobs come, up to the bound, and stay until the pool is closed.
+//!
+//! A job refused, or given up, is not tried again later by a timer: the pool's room notice
+//! ([`super::notice::Notice`]) changes each time a job leaves the queue and when the pool is
+//! closed, so that what it refused waits for that and tries again then.
 
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
@@ -39,6 +43,8 @@ struct Inner {
     refused: AtomicU64,
     expired: AtomicU64,
     name: String,
+    /// Fired when a job leaves the queue, and when the pool is closed.
+    room: Option<Arc<super::notice::Notice>>,
 }
 
 /// What a pool is doing.
@@ -75,6 +81,18 @@ impl Pool {
     /// each taken up within `timeout` of being queued; its threads are named after `name`.
     #[must_use]
     pub fn new(workers: usize, queue: usize, timeout: Duration, name: &str) -> Pool {
+        Pool::with_room(workers, queue, timeout, name, None)
+    }
+
+    /// [`Pool::new`], firing `room` each time a job leaves the queue, and when it is closed.
+    #[must_use]
+    pub fn with_room(
+        workers: usize,
+        queue: usize,
+        timeout: Duration,
+        name: &str,
+        room: Option<Arc<super::notice::Notice>>,
+    ) -> Pool {
         Pool(Arc::new(Inner {
             state: Mutex::new(State::default()),
             more: Condvar::new(),
@@ -85,6 +103,7 @@ impl Pool {
             refused: AtomicU64::new(0),
             expired: AtomicU64::new(0),
             name: name.to_owned(),
+            room,
         }))
     }
 
@@ -123,22 +142,29 @@ impl Pool {
         true
     }
 
+    /// Tells those waiting for room that a job left the queue.
+    fn roomier(&self) {
+        if let Some(r) = &self.0.room {
+            r.fire();
+        }
+    }
+
     fn work(&self) {
         let mut st = self.lock();
         loop {
             if let Some(job) = st.queue.pop_front() {
+                // Busy from here, so that the pool is not idle while the job is told about.
+                st.busy = st.busy.saturating_add(1);
+                drop(st);
+                self.roomier();
                 if job.queued.elapsed() > self.0.timeout {
-                    drop(st);
                     self.0.expired.fetch_add(1, Relaxed);
                     if let Some(e) = job.expire {
                         e();
                     }
-                    st = self.lock();
-                    continue;
+                } else {
+                    (job.run)();
                 }
-                st.busy = st.busy.saturating_add(1);
-                drop(st);
-                (job.run)();
                 st = self.lock();
                 st.busy = st.busy.saturating_sub(1);
                 if st.busy == 0 && st.queue.is_empty() {
@@ -177,6 +203,7 @@ impl Pool {
             }
         }
         self.0.more.notify_all();
+        self.roomier();
     }
 
     /// Waits until a closed pool's threads have ended, `limit` at most; whether they had.

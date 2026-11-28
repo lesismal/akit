@@ -651,8 +651,12 @@ impl Server {
         hc.on_subscribe = Some(Arc::new(move |path: &str, info: &PeerInfo| {
             s.hook(Action::Play, path, info)
         }));
-        hc.on_unpublish = Some(Arc::new(|path: &str| {
+        // A publisher leaving tells the role's channels too: one whose stream was taken, or
+        // which found the hub full, claims it then (I145).
+        let channels = crate::channels::unpublish_hook(registry::key(&self.engine));
+        hc.on_unpublish = Some(Arc::new(move |path: &str| {
             akit_observe::info!(Webrtc, "streaming: {path} unpublished");
+            channels(path);
         }));
         Hub::new(hc)
     }

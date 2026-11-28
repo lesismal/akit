@@ -196,6 +196,22 @@ done and where the work differs from the plan.
   - On io_uring, `Engine::remove_listener` returns once the listener's accepts are cancelled, so a
     listener a reload removes takes no connection after it; `H3Upload::finish` is no longer
     refused by its own response; the pool pressure watcher samples every 500 ms (was 100 ms).
+### 2026-11-28: a channel never retries on a timer
+
+- **Changed**: the channels' last timer retries, fit's, are events now (decision 043). A load or
+  a read the library's file pool refuses as busy waits for the library's room notice
+  (`library::notice::Notice`), which changes each time a job leaves the pool's queue, a movie's
+  read ends, the pool is replaced or the library removed; a channel with nothing to play waits for
+  its catalog replaced by a scan, a reload, or its next slot; a channel whose stream is taken, or
+  the hub full, waits for a publisher to leave the hub (its `on_unpublish`, through
+  `channels::unpublish_hook`). The pool counts a job busy from when it leaves the queue.
+- **Checked**: `refused_load_waits_for_room` and `refused_read_waits_for_room` fill a pool of one
+  worker and one place, see the channel refused and waiting with the clock moved 10s, then see it
+  load, or read on, once the pool's job ends, the clock not moved; `items_skipped` sees a channel
+  with nothing to play not try again in 10s, and try once a rescan replaces its catalog;
+  `stream_taken` sees the channel claim its stream once the other publisher leaves, not before;
+  `library::notice` that a change is never missed.
+
 ### 2026-11-28: a channel waits for its library untimed
 
 - **Changed**: a channel made before its library's first scan ends no longer chooses its item again

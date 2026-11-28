@@ -6,7 +6,7 @@
 //! submitted to its pool, is queued under the lock and run once it is released.
 
 use std::collections::VecDeque;
-use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering::Relaxed, Ordering::SeqCst};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
 
 use akio_media::av::{Packet, Time, Tracks};
@@ -41,17 +41,14 @@ pub(crate) const SEND_AHEAD: Time = 5 * MS;
 const MAX_LATE: Time = 1000 * MS;
 /// The most media one read on the pool takes.
 const READ_SPAN: Time = 1000 * MS;
-/// How soon a read or a load the library's pool refused is tried again.
-const RETRY_BUSY: Time = 200 * MS;
-/// How soon a channel with nothing to play, or whose stream is taken, tries again.
-pub(crate) const RETRY_IDLE: Time = 5000 * MS;
 /// The least time between the last packet sent and the first of an item cut in.
 const MIN_GAP: Time = MS;
 /// How far past a slot's start an item chosen to follow another still starts it.
 const SLOT_SLACK: Time = 50 * MS;
 /// No time: a wall time before any.
 const NEVER: i64 = i64::MIN;
-/// A `wait_until` no time reaches: the channel waits until its library tells it.
+/// A `wait_until` no time reaches: the channel waits until it is told (its library scanned, its
+/// pool with room, its catalog replaced). No timer tries again.
 const UNTIL_TOLD: i64 = i64::MAX;
 
 /// The errors of the Admin API's actions on a channel.
@@ -133,8 +130,11 @@ pub(crate) struct St {
     now: Option<Playing>,
     /// The last item queued, until it starts.
     next: Option<Arc<Source>>,
-    /// When a channel that found nothing to play, or a busy pool, chooses again.
+    /// When the channel chooses its next item again: [`UNTIL_TOLD`] while it waits to be told.
     wait_until: i64,
+    /// The library's catalog notice as the last choice of an item saw it: a channel that found
+    /// nothing to play waits for a change since.
+    cat_seen: u64,
     pub(crate) list: ListState,
     /// The start of the latest slot started, or passed over: a slot whose start is later
     /// starts when it falls due.
@@ -162,6 +162,8 @@ pub struct Channel {
     pub(crate) played: AtomicU64,
     pub(crate) failed: AtomicU64,
     pub(crate) underruns: AtomicU64,
+    /// Its claim of its stream was refused: a publisher leaving the hub lets it claim again.
+    wants_stream: AtomicBool,
 }
 
 impl std::fmt::Debug for Channel {
@@ -209,6 +211,7 @@ impl Channel {
                 now: None,
                 next: None,
                 wait_until: NEVER,
+                cat_seen: 0,
                 list: ListState::default(),
                 slot_done: NEVER,
                 last_err: String::new(),
@@ -217,6 +220,7 @@ impl Channel {
             played: AtomicU64::new(0),
             failed: AtomicU64::new(0),
             underruns: AtomicU64::new(0),
+            wants_stream: AtomicBool::new(false),
         })
     }
 
@@ -351,8 +355,11 @@ impl Channel {
     }
 
     /// Makes the channel the publisher of its stream, its tracks to come, and starts playing;
-    /// or tries again later when the stream has another publisher, or the hub no room.
+    /// or, when the stream has another publisher or the hub no room, waits until a publisher
+    /// leaves the hub ([`Channel::stream_freed`]), never trying again by a timer.
     fn claim(&self, st: &mut St, now: i64) {
+        // Wanted before it is tried, so that a publisher leaving while it is refused is heard.
+        self.wants_stream.store(true, SeqCst);
         match self
             .ctx
             .hub
@@ -360,9 +367,9 @@ impl Channel {
         {
             Err(e) => {
                 st.pub_err = e.to_string();
-                self.arm(st, now.saturating_add(RETRY_IDLE));
             }
             Ok(p) => {
+                self.wants_stream.store(false, SeqCst);
                 st.publisher = Some(p);
                 st.pub_err.clear();
                 st.tracks = None;
@@ -400,25 +407,48 @@ impl Channel {
             .max(Self::channel_now(st, now))
             .saturating_add(st.last_delay);
         let at = Self::wall_of(st, now, st.last_end.max(from));
+        if let Some(l) = self.library(st) {
+            st.cat_seen = l.replaced().seen();
+        }
         match self.choose(st, at, join) {
             None => self.idle(st, now),
             Some(ch) => self.load(st, now, ch),
         }
     }
 
-    /// Arms the channel's timer for when it has something to play: its next slot, or
-    /// [`RETRY_IDLE`] from now.
+    /// Waits for something to play: its next slot, on the channel's timer, or its library's
+    /// catalog replaced since the channel last chose, or a reload; never a timer trying again.
     fn idle(&self, st: &mut St, now: i64) {
-        self.wait(st, now.saturating_add(RETRY_IDLE));
+        st.wait_until = UNTIL_TOLD;
+        if let Some(l) = self.library(st) {
+            let seen = st.cat_seen;
+            let (a, b) = (self.told_by(st), self.told_by(st));
+            if l.replaced().when(seen, a) {
+                st.jobs.push(b);
+            }
+        }
         if let Some(next) = self.next_slot(st, now) {
             self.arm(st, next);
         }
     }
 
-    /// Makes the channel choose its next item no sooner than `at`.
-    fn wait(&self, st: &mut St, at: i64) {
-        st.wait_until = at;
-        self.arm(st, at);
+    /// A callback that tells the channel, as of its epoch now, to go on ([`Channel::told`]).
+    fn told_by(&self, st: &St) -> Job {
+        let (me, epoch) = (self.me.clone(), st.epoch);
+        Box::new(move || {
+            if let Some(c) = me.upgrade() {
+                c.told(epoch);
+            }
+        })
+    }
+
+    /// Waits for room in `lib`'s pool and tables, as its notice was at `seen`, and goes on then:
+    /// at once (once the lock is released) when there was room since.
+    fn wait_room(&self, st: &mut St, lib: &Library, seen: u64) {
+        let (a, b) = (self.told_by(st), self.told_by(st));
+        if lib.room().when(seen, a) {
+            st.jobs.push(b);
+        }
     }
 
     /// The item to play from `at`: a slot that starts then, or has started and not been, joined
@@ -524,13 +554,7 @@ impl Channel {
         let src = match self.library(st) {
             None => Err(SourceError::NoLibrary),
             Some(l) => {
-                let (me, epoch) = (self.me.clone(), st.epoch);
-                let told = Box::new(move || {
-                    if let Some(c) = me.upgrade() {
-                        c.library_scanned(epoch);
-                    }
-                });
-                if !l.when_scanned(told) {
+                if !l.when_scanned(self.told_by(st)) {
                     // The first scan has not ended: the item is chosen again once it has, when
                     // the library tells the channel, never by a timer.
                     st.list.undo(&ch);
@@ -553,9 +577,11 @@ impl Channel {
         let me = self.me.clone();
         st.jobs.push(Box::new(move || {
             let s2 = Arc::clone(&src);
+            // Read before the load, so that room made while it is refused is not missed.
+            let seen = src.lib.room().seen();
             src.load(move |r| {
                 if let Some(c) = me.upgrade() {
-                    c.loaded(epoch, &s2, r);
+                    c.loaded(epoch, &s2, r, seen);
                 }
             });
         }));
@@ -577,21 +603,54 @@ impl Channel {
         self.advance(st, now, join);
     }
 
-    /// The library the channel waited for has scanned, or gone: the channel chooses its item
-    /// again, unless it was stopped or started again since.
-    pub(crate) fn library_scanned(&self, epoch: u64) {
+    /// What the channel waited for came (its library scanned or gone, room in its pool, its
+    /// catalog replaced): it goes on, choosing its item again if it waited to, unless it was
+    /// stopped or started again since.
+    pub(crate) fn told(&self, epoch: u64) {
         self.locked(|c, st| {
-            if epoch != st.epoch || !st.running || st.wait_until != UNTIL_TOLD {
+            if epoch != st.epoch || !st.running {
                 return;
             }
-            st.wait_until = NEVER;
+            if st.wait_until == UNTIL_TOLD {
+                st.wait_until = NEVER;
+            }
             let now = c.now();
             c.tick(st, now);
         });
     }
 
+    /// A publisher left the hub: a channel waiting for its stream, or for room in the hub,
+    /// claims it, on the channel's clock's thread, since the hub tells of it from wherever the
+    /// publisher was closed, a channel's lock held perhaps.
+    pub(crate) fn stream_freed(&self) {
+        if !self.wants_stream.load(SeqCst) {
+            return;
+        }
+        let me = self.me.clone();
+        let t = self.ctx.clock.after(
+            0,
+            Box::new(move || {
+                if let Some(c) = me.upgrade() {
+                    c.locked(|c, st| {
+                        if st.running && st.publisher.is_none() {
+                            let now = c.now();
+                            c.claim(st, now);
+                        }
+                    });
+                }
+            }),
+        );
+        drop(t);
+    }
+
     /// Places `src` on the timeline once its movies are read, queues its start and reads it.
-    pub(crate) fn loaded(&self, epoch: u64, src: &Arc<Source>, r: Result<(), SourceError>) {
+    pub(crate) fn loaded(
+        &self,
+        epoch: u64,
+        src: &Arc<Source>,
+        r: Result<(), SourceError>,
+        seen: u64,
+    ) {
         self.locked(|c, st| {
             if epoch != st.epoch || !st.running {
                 return;
@@ -600,8 +659,11 @@ impl Channel {
             let now = c.now();
             match r {
                 Err(SourceError::Library(library::Error::Busy)) => {
+                    // The pool, or the tables, had no room: the item is loaded again once they
+                    // have, when the library tells the channel.
                     st.list.undo(&src.choice);
-                    c.wait(st, now.saturating_add(RETRY_BUSY));
+                    st.wait_until = UNTIL_TOLD;
+                    c.wait_room(st, &src.lib, seen);
                     return;
                 }
                 Err(e) => return c.load_failed(st, now, &format!("{}: {e}", src.choice.item)),
@@ -672,20 +734,27 @@ impl Channel {
         let busy_me = self.me.clone();
         let s1 = Arc::clone(&src);
         let s2 = Arc::clone(&src);
+        let seen = src.lib.room().seen();
         let run: Job = Box::new(move || {
             let r = s1.read(READ_SPAN, budget, max);
             if let Some(c) = me.upgrade() {
-                c.read_done(epoch, &s1, r);
+                c.read_done(epoch, &s1, r, seen);
             }
         });
         let busy: Job = Box::new(move || {
             if let Some(c) = busy_me.upgrade() {
-                c.read_done(epoch, &s2, Err(SourceError::Library(library::Error::Busy)));
+                c.read_done(
+                    epoch,
+                    &s2,
+                    Err(SourceError::Library(library::Error::Busy)),
+                    seen,
+                );
             }
         });
         if !src.lib.submit(run, Some(busy)) {
+            // Read again once the pool has room, when the library tells the channel.
             st.reading = false;
-            self.arm(st, now.saturating_add(RETRY_BUSY));
+            self.wait_room(st, &src.lib, seen);
         }
     }
 
@@ -695,6 +764,7 @@ impl Channel {
         epoch: u64,
         src: &Arc<Source>,
         r: Result<(Vec<Packet>, u64), SourceError>,
+        seen: u64,
     ) {
         self.locked(|c, st| {
             if epoch != st.epoch || !st.running {
@@ -719,7 +789,8 @@ impl Channel {
             st.q_bytes = st.q_bytes.saturating_add(n);
             match err {
                 Some(SourceError::Library(library::Error::Busy)) => {
-                    c.arm(st, now.saturating_add(RETRY_BUSY));
+                    let lib = Arc::clone(&src.lib);
+                    c.wait_room(st, &lib, seen);
                     return;
                 }
                 Some(e) => {

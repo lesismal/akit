@@ -122,6 +122,7 @@ struct Rig {
 
 impl Drop for Rig {
     fn drop(&mut self) {
+        unregister(self.key, &self.m);
         self.m.stop();
         self.hub.close();
         library::remove(self.key);
@@ -137,20 +138,29 @@ fn data() -> String {
 }
 
 fn rig() -> Rig {
-    let key = KEYS.fetch_add(1, SeqCst);
+    rig_with(MediaLibrary::default())
+}
+
+/// The library `lib` of the fixtures, `c` its other settings, scanned.
+fn library_of(key: usize, c: MediaLibrary) -> Arc<Library> {
     library::apply(
         key,
         &[MediaLibrary {
             name: "lib".into(),
             roots: vec![data()],
-            ..MediaLibrary::default()
+            ..c
         }],
     )
     .unwrap();
-    let lib = library::lookup(key, "lib").unwrap();
-    lib.wait_status(WAIT, |s| s.scans >= 1 && !s.scanning)
-        .expect("the library's first scan");
-    let hub = Hub::new(HubConfig::default());
+    library::lookup(key, "lib").unwrap()
+}
+
+/// A hub whose publishers leaving tell the channels manager of `key`, as the role's does, and
+/// the manager on a fake clock, registered under `key`.
+fn manager_of(key: usize, lib: Arc<Library>) -> Rig {
+    let mut hc = HubConfig::default();
+    hc.on_unpublish = Some(unpublish_hook(key));
+    let hub = Hub::new(hc);
     let clock = FakeClock::new(t0());
     let m = Arc::new(Manager::new(Options {
         hub: hub.clone(),
@@ -159,6 +169,7 @@ fn rig() -> Rig {
         seed: 7,
         dial: None,
     }));
+    register(key, &m);
     Rig {
         key,
         lib,
@@ -166,6 +177,45 @@ fn rig() -> Rig {
         clock,
         m,
     }
+}
+
+/// [`rig`], the library's settings `c`.
+fn rig_with(c: MediaLibrary) -> Rig {
+    let key = KEYS.fetch_add(1, SeqCst);
+    let lib = library_of(key, c);
+    lib.wait_status(WAIT, |s| s.scans >= 1 && !s.scanning)
+        .expect("the library's first scan");
+    manager_of(key, lib)
+}
+
+/// Holds the library's pool, of one worker and a queue of one, full: a job running until the
+/// gate opens and one queued behind it.
+fn fill_pool(lib: &Library) -> Arc<(Mutex<bool>, std::sync::Condvar)> {
+    let gate = Arc::new((Mutex::new(false), std::sync::Condvar::new()));
+    let (started_tx, started) = std::sync::mpsc::channel();
+    let g = Arc::clone(&gate);
+    assert!(lib.submit(
+        Box::new(move || {
+            started_tx.send(()).unwrap();
+            let (m, cv) = &*g;
+            let mut open = m.lock().unwrap();
+            while !*open {
+                open = cv.wait(open).unwrap();
+            }
+        }),
+        None
+    ));
+    started
+        .recv_timeout(WAIT)
+        .expect("the blocking job running");
+    assert!(lib.submit(Box::new(|| {}), None), "the queue's one place");
+    assert!(!lib.submit(Box::new(|| {}), None), "a full pool took a job");
+    gate
+}
+
+fn open_gate(gate: &(Mutex<bool>, std::sync::Condvar)) {
+    *gate.0.lock().unwrap() = true;
+    gate.1.notify_all();
 }
 
 fn ch(name: &str, items: &[&str]) -> StreamChannel {
@@ -369,22 +419,7 @@ fn waits_for_the_first_scan() {
     let lib = library::lookup(key, "lib").unwrap();
     lib.wait_status(WAIT, |s| s.scanning)
         .expect("the first scan under way");
-    let hub = Hub::new(HubConfig::default());
-    let clock = FakeClock::new(t0());
-    let m = Arc::new(Manager::new(Options {
-        hub: hub.clone(),
-        libraries: key,
-        clock: Some(Arc::clone(&clock) as Arc<dyn Clock>),
-        seed: 7,
-        dial: None,
-    }));
-    let r = Rig {
-        key,
-        lib,
-        hub,
-        clock,
-        m,
-    };
+    let r = manager_of(key, lib);
     r.m.apply(&[ch("tv/a", &["films/bbb"])], &[]).unwrap();
     let st = r.status("tv/a");
     assert_eq!(st.error, "the library has not been scanned yet", "{st:?}");
@@ -725,7 +760,17 @@ fn items_skipped() {
         "{st:?}"
     );
     let failed = st.failed;
-    r.run(channel::RETRY_IDLE + 100 * MS);
+    // No timer tries again: it waits, however long, for its catalog to change.
+    r.run(10 * SEC);
+    assert_eq!(r.status("tv/none").failed, failed, "tried again by a timer");
+    assert!(r.lib.replaced().waiting() >= 1);
+    // A scan that replaces the catalog tells it, and it tries again, the clock not moved.
+    let scans = r.lib.status().scans;
+    assert!(r.lib.rescan());
+    r.lib
+        .wait_status(WAIT, |s| s.scans > scans && !s.scanning)
+        .expect("the rescan");
+    r.settle();
     assert!(r.status("tv/none").failed > failed, "not tried again");
     // A library that does not run.
     let mut c = ch("tv/nolib", &["films/bbb"]);
@@ -751,10 +796,88 @@ fn stream_taken() {
     r.apply(&[ch("tv/taken", &["films/bbb"])]);
     let st = r.status("tv/taken");
     assert!(st.state == STATE_WAITING && !st.error.is_empty(), "{st:?}");
+    // No timer tries again: the stream stays taken.
+    r.run(10 * SEC);
+    assert_eq!(r.status("tv/taken").state, STATE_WAITING);
+    // The other publisher leaving tells the channel, which claims the stream at once (its
+    // claim dispatched on the channel's clock, due now).
     other.close();
     drop(other);
-    r.run(channel::RETRY_IDLE + 100 * MS);
+    r.clock.advance(0);
+    r.settle();
+    r.run(300 * MS);
     assert_eq!(r.status("tv/taken").state, STATE_PLAYING);
+}
+
+/// A load the library's pool refuses waits for room, untimed: once a job leaves the pool's
+/// queue the channel loads its item, the clock not moved.
+#[test]
+fn refused_load_waits_for_room() {
+    let r = rig_with(MediaLibrary {
+        file_workers: 1,
+        file_queue: 1,
+        ..MediaLibrary::default()
+    });
+    let gate = fill_pool(&r.lib);
+    let refused = r.lib.pool().stats().refused;
+    r.m.apply(&[ch("tv/busy", &["films/bbb"])], &[]).unwrap();
+    assert!(
+        r.lib.pool().stats().refused > refused,
+        "the load was not refused"
+    );
+    let st = r.status("tv/busy");
+    assert_eq!(st.state, STATE_IDLE, "{st:?}");
+    assert_eq!(r.lib.room().waiting(), 1);
+    // However long, no timer tries again.
+    r.clock.advance(10 * SEC);
+    assert_eq!(r.status("tv/busy").state, STATE_IDLE);
+    let at = r.clock.now();
+    open_gate(&gate);
+    r.settle();
+    assert_eq!(r.clock.now(), at);
+    let st = r.status("tv/busy");
+    assert_eq!(st.state, STATE_LOADING, "{st:?}");
+    assert_eq!(r.lib.room().waiting(), 0);
+    let (rec, _sub) = r.play("tv/busy");
+    r.run(300 * MS);
+    assert!(!rec.all().is_empty(), "nothing played");
+    assert_eq!(r.status("tv/busy").state, STATE_PLAYING);
+}
+
+/// A read the library's pool refuses waits for room, untimed: once a job leaves the pool's
+/// queue the channel reads on, the clock not moved.
+#[test]
+fn refused_read_waits_for_room() {
+    let r = rig_with(MediaLibrary {
+        file_workers: 1,
+        file_queue: 1,
+        ..MediaLibrary::default()
+    });
+    let (_rec, _sub) = r.play("tv/rd");
+    r.apply(&[ch("tv/rd", &["films/bbb"])]);
+    r.run(500 * MS);
+    assert_eq!(r.status("tv/rd").state, STATE_PLAYING);
+    let gate = fill_pool(&r.lib);
+    // The clock moves on, the pool full, until the channel wants to read and is refused.
+    let refused = r.lib.pool().stats().refused;
+    let mut n = 0;
+    while r.lib.room().waiting() == 0 {
+        n += 1;
+        assert!(n < 1000, "the channel never read");
+        r.clock.advance(5 * MS);
+    }
+    assert!(r.lib.pool().stats().refused > refused);
+    let before = r.status("tv/rd").buffered;
+    // However long, no timer tries again.
+    let at = r.clock.now();
+    open_gate(&gate);
+    r.settle();
+    assert_eq!(r.clock.now(), at);
+    assert_eq!(r.lib.room().waiting(), 0);
+    assert!(
+        r.status("tv/rd").buffered > before,
+        "the channel did not read on"
+    );
 }
 
 /// fit's `TestStopStart`: timestamps run on across a stop.
@@ -935,11 +1058,11 @@ fn edges() {
         (st.timer_id, st.epoch, st.playing().unwrap())
     };
     c.fire(id + 100);
-    c.loaded(epoch + 1, &src, Ok(()));
-    c.read_done(epoch + 1, &src, Ok((Vec::new(), 0)));
+    c.loaded(epoch + 1, &src, Ok(()), 0);
+    c.read_done(epoch + 1, &src, Ok((Vec::new(), 0)), 0);
     // A read that fails ends the item where it was read to.
     c.lock().reading = true;
-    c.read_done(epoch, &src, Err(source::SourceError::Nothing));
+    c.read_done(epoch, &src, Err(source::SourceError::Nothing), 0);
     assert!(c.status().error.contains("nothing"), "{:?}", c.status());
     r.run(2 * SEC);
     assert_eq!(c.status().state, STATE_PLAYING);
@@ -1015,6 +1138,8 @@ fn admin() {
     let body = |resp: &Response| String::from_utf8(resp.body.clone()).unwrap();
     let get = |p: &str| route(r.key, p, &Method::Get, b"");
     let post = |p: &str, b: &str| route(r.key, p, &Method::Post, b.as_bytes());
+    // The rig registers its manager: without one, 404.
+    unregister(r.key, &r.m);
     assert_eq!(get("").status, 404);
     register(r.key, &r.m);
     r.apply(&[ch("tv/a", &["films/bbb", "sintel"])]);

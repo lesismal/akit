@@ -18,6 +18,7 @@ pub mod admin;
 pub mod catalog;
 pub mod files;
 pub mod keys;
+pub mod notice;
 pub mod pool;
 mod scan;
 mod tables;
@@ -311,6 +312,11 @@ pub struct Library {
     /// Told once the first scan has put its catalog in place, or the library is removed: the
     /// channels waiting for its items ([`Library::when_scanned`]).
     scanned: Mutex<Vec<Box<dyn FnOnce() + Send>>>,
+    /// Fired when the file pool or the sample tables have room again: a job left the pool's
+    /// queue, a movie's read ended, the pool was replaced or the library removed.
+    room: Arc<notice::Notice>,
+    /// Fired when a scan replaces the catalog, and when the library is removed.
+    replaced: notice::Notice,
 }
 
 impl std::fmt::Debug for Library {
@@ -327,7 +333,14 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 
 impl Library {
     fn new(name: &str, s: Settings) -> Arc<Library> {
-        let pool = Pool::new(s.workers, s.queue, s.timeout, &pool_name(name));
+        let room = Arc::new(notice::Notice::default());
+        let pool = Pool::with_room(
+            s.workers,
+            s.queue,
+            s.timeout,
+            &pool_name(name),
+            Some(Arc::clone(&room)),
+        );
         let l = Arc::new(Library {
             name: name.to_owned(),
             set: Swap::default(),
@@ -344,6 +357,8 @@ impl Library {
             hook: Mutex::new(None),
             scanner: Mutex::new(None),
             scanned: Mutex::new(Vec::new()),
+            room,
+            replaced: notice::Notice::default(),
         });
         l.set.set(Some(Arc::new(s)));
         l.cat.set(Some(Arc::new(Catalog::default())));
@@ -456,6 +471,21 @@ impl Library {
         }
         w.push(tell);
         false
+    }
+
+    /// The notice of room in the library's file pool and sample tables: read
+    /// [`seen`](notice::Notice::seen) before work that may be refused as [`Error::Busy`], and
+    /// wait with [`when`](notice::Notice::when) when it is, rather than try again later.
+    #[must_use]
+    pub fn room(&self) -> &notice::Notice {
+        &self.room
+    }
+
+    /// The notice of the catalog replaced by a scan, or the library removed: what found nothing
+    /// to play in it waits for that.
+    #[must_use]
+    pub fn replaced(&self) -> &notice::Notice {
+        &self.replaced
     }
 
     /// Tells those [`Library::when_scanned`] kept.
@@ -609,6 +639,7 @@ impl Library {
             self.cat.set(Some(Arc::new(cat)));
         }
         self.tell_scanned();
+        self.replaced.fire();
         let cat = self.catalog();
         let keep: HashSet<tables::Key> = cat
             .items
@@ -638,7 +669,13 @@ impl Library {
     fn apply(&self, s: Settings) {
         let old = self.settings();
         if old.workers != s.workers || old.queue != s.queue || old.timeout != s.timeout {
-            let p = Pool::new(s.workers, s.queue, s.timeout, &pool_name(&self.name));
+            let p = Pool::with_room(
+                s.workers,
+                s.queue,
+                s.timeout,
+                &pool_name(&self.name),
+                Some(Arc::clone(&self.room)),
+            );
             let was = std::mem::replace(&mut *lock(&self.pool), p);
             was.close();
         }
@@ -667,6 +704,8 @@ impl Library {
         self.pool().close();
         self.tables.clear();
         self.tell_scanned();
+        self.room.fire();
+        self.replaced.fire();
     }
 
     /// Waits for the scanner of a removed library to end, and its pool's threads, `limit` at
@@ -806,6 +845,8 @@ impl Library {
                     .open_file(&r.file)
                     .and_then(|h| tables::read_movie(&h, &r, &Limits::default()).map(Arc::new));
                 me.tables.done(&key, id, res);
+                // Its bytes in the tables are counted now: room for another read.
+                me.room.fire();
             }),
             move |e| fail_me.tables.done(&fail_key, id, Err(e)),
         );

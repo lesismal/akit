@@ -151,10 +151,22 @@ not supported yet for this track.
   tested on the test's time, waiting for the library's pool to be idle, never for wall time.
 - **The media libraries apply before the streaming role**, so that a channel finds its library at
   its first item.
-- **A channel waits for its library's first scan untimed**: where fit chooses the item again
-  every 200 ms until the scan ends, the library tells the channels waiting for it once its first
-  catalog is in place, or once it is removed (`Library::when_scanned`), and they choose their item
-  then. akit's timers are for what is about time, never a retry (rules.md).
+- **A channel waits to be told, never retries on a timer**: where fit tries again later, akit's
+  channel waits for the event that lets it go on (akit's timers are for what is about time, never
+  a retry):
+  - its library's first scan: the library tells the channels waiting once its first catalog is in
+    place, or once it is removed (`Library::when_scanned`), where fit tries every 200 ms;
+  - room in the library's file pool or sample tables, for a load or a read refused as busy: the
+    library's room notice (`library::notice::Notice`) changes each time a job leaves the pool's
+    queue, a movie's read ends, the pool is replaced or the library removed, and a channel waits
+    for a change since it read the notice before trying, so that none is missed; fit tries again
+    in 200 ms;
+  - something to play, once every item failed or the list played out: the library's catalog
+    replaced by a scan, a reload, or the schedule's next slot, where fit tries every 5s;
+  - its stream, taken by another publisher or the hub full: the hub's `on_unpublish`, through the
+    channels manager, where fit tries every 5s. A stream slot that frees without a publisher
+    leaving (players waiting for a stream that never came giving up) does not tell it; a reload
+    or the Admin API's start does.
 
 ## I146: push targets
 
