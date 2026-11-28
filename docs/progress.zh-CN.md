@@ -21,6 +21,26 @@
 
 ## 日志
 
+### 2026-11-28：调度的 A/B：工作窃取对比事件循环
+
+- 去掉 A303 的权宜做法后，akit 的监听器运行在 akio 的默认调度上，即 epoll 上的工作窃取；对同一个二进制（akit `e3473df3`）
+  做同一轮 A/B，设置 `AKIO_DEFAULT_SCHEDULING=event-loops`（A）与不设置（B），HTTP/1.1 上的 static 和 proxy 场景，交替 5 轮，
+  预热 2 s 后测 10 s（[`bench/results/ab-scheduling-2026-11-28`](../bench/results/ab-scheduling-2026-11-28/report.md)）：
+
+  | 场景 | A 每秒请求 | B 每秒请求 | 变化 | A µs/请求 | B µs/请求 | A p99 | B p99 |
+  | --- | --- | --- | --- | --- | --- | --- | --- |
+  | static | 776k | 730k | -6.0% | 8.41 | 8.56 | 1.25 ms | 0.58 ms |
+  | proxy | 256k | 260k | +1.5%（噪声） | 21.35 | 25.16 | 3.83 ms | 1.09 ms |
+
+  工作窃取让 `static` 损失 6% 的吞吐（每一轮都如此：719–734k 对 771–784k），中位延迟翻倍（0.36 ms 对 0.16），让代理每个请求
+  多用 18% 的 CPU（同样的请求用 6.55 核对 5.47 核）；两者的 p99 都更好（低 2.2 倍和 3.5 倍），因为一个连接慢的轮次不再拖住同一
+  线程上的其他连接。内存相近。没有切回：akit 跟随 akio 的默认（决定 91 的结果）；这些数字留给维护者和 akio 的工作窃取（转发时
+  每个请求的 CPU、短请求的吞吐）。`AKIO_DEFAULT_SCHEDULING=event-loops` 可让一个进程使用事件循环。
+- `bench/ab.sh` 新增 `-env-a` 和 `-env-b`，为每一侧的 akit 设置一个变量；A 与 B 是同一个 ref 时只构建一次 akit，两侧运行同一个
+  二进制（`lib.sh` 的 `image_akit`）。
+- 各轮独占持有 `/root/bench.lock`，通过一个 `flock -x` 的包装而不是主机的 `quiet.sh`（后者会停掉主机上的模型服务）：主机自身的
+  服务在运行，因此只有比值有意义。
+
 ### 2026-11-28：test-timeout 的看门狗 sleep 随其测试二进制一同结束
 
 - `tools/test-timeout.sh`（规则 31）有 akio 副本同样的缺陷（已在 akio `2575a253` 修复）：看门狗启动 `sleep` 之后、trap 知道其 pid

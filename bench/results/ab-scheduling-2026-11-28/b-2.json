@@ -1,0 +1,112 @@
+{
+  "started": "2026-11-28T06:25:48.70465025Z",
+  "finished": "2026-11-28T06:26:16.622719408Z",
+  "host": {
+    "architecture": "x86_64",
+    "cores": "8",
+    "cpu(s)": "16",
+    "docker_arch": "x86_64",
+    "docker_cpus": "16",
+    "file_max": "9223372036854775807",
+    "kernel": "Linux 7.0.0-42-generic",
+    "max_mhz": "5053",
+    "memory": "64953076 kB",
+    "model_name": "AMD Ryzen 7 7800X3D 8-Core Processor",
+    "nr_open": "2000500",
+    "numa_nodes": "1",
+    "os": "linux",
+    "port_range": "1024-65535",
+    "rmem_max": "7500000",
+    "somaxconn": "65535",
+    "tcp_mem_pressure_bytes": "1073741824",
+    "threads_per_core": "2"
+  },
+  "params": {
+    "duration": "10s",
+    "warmup": "2s",
+    "connections": 256,
+    "h2_connections": 64,
+    "h2_streams": 32,
+    "idle_connections": 10000,
+    "idle_settle": "5s",
+    "network": "host",
+    "server_cpus": "0-6",
+    "client_cpus": "7-13",
+    "backend_cpus": "14-15",
+    "aligned": {
+      "backend_conns": 16384,
+      "backend_idle_per_worker": 2341,
+      "backlog": 65535,
+      "nginx_worker_connections": 65536
+    }
+  },
+  "versions": {
+    "akit": "akit 0.0.1",
+    "docker": "29.1.3",
+    "h2load": "h2load nghttp2/1.59.0",
+    "wrk": "wrk debian/4.1.0-4build2 [epoll] Copyright (C) 2012 Will Glozer"
+  },
+  "images": {
+    "akit": "akit-bench@sha256:0910c69521d2c7e66e25485e7d2b0cd9f4b8c5fccc3efec2cf8fb311ca39c3a5"
+  },
+  "results": [
+    {
+      "server": "akit",
+      "scenario": "static",
+      "protocol": "http/1.1",
+      "tool": "wrk",
+      "requests_per_sec": 731376.5066936383,
+      "requests": 7386548,
+      "errors": 0,
+      "latency_ms": {
+        "p50": 0.362,
+        "p90": 0.45,
+        "p99": 0.51,
+        "p99.9": 2.175,
+        "mean": 0.32811,
+        "stdev": 0.15255000000000002,
+        "max": 12.354
+      },
+      "cpu_cores": 6.235080334517359,
+      "memory_bytes": 5148672,
+      "anon_bytes": 2756608,
+      "anon_start_bytes": 1933312,
+      "anon_peak_bytes": 2756608,
+      "in_flight": 252,
+      "cpu_us_per_request": 8.525130732875908,
+      "requests_per_sec_per_mib": 278205.6251316068,
+      "bytes_per_in_flight": 3267.0476190476193
+    },
+    {
+      "server": "akit",
+      "scenario": "proxy",
+      "protocol": "http/1.1",
+      "tool": "wrk",
+      "requests_per_sec": 260491.1502072845,
+      "requests": 2612081,
+      "errors": 0,
+      "latency_ms": {
+        "p50": 0.962,
+        "p90": 0.995,
+        "p99": 1.029,
+        "p99.9": 1.257,
+        "mean": 0.9618300000000001,
+        "stdev": 0.04635,
+        "max": 3.948
+      },
+      "cpu_cores": 6.540810781550315,
+      "backend_cpu_cores": 1.9863307908628522,
+      "memory_bytes": 10498048,
+      "anon_bytes": 7184384,
+      "anon_start_bytes": 1933312,
+      "anon_peak_bytes": 7184384,
+      "in_flight": 252,
+      "cpu_us_per_request": 25.109531653361348,
+      "requests_per_sec_per_mib": 38019.23286947824,
+      "bytes_per_in_flight": 20837.5873015873
+    }
+  ],
+  "startup_anon_bytes": {
+    "akit": 1933312
+  }
+}

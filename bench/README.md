@@ -105,7 +105,10 @@ h2c, 3 rounds alternating A and B, 10s runs after 2s of warm-up, every round und
 returns an id; `bench/ab.sh -report ID` summarizes what has finished, requests a second, CPU per
 request and p99, marking a change only past 1% (`AB_NOISE`) and the spread of the rounds, with
 fit's abreport; `-wait ID` waits for the end. Options: `-scenarios`, `-protocols`, `-rounds`,
-`-duration`, `-warmup`, `-args`.
+`-duration`, `-warmup`, `-args`, and `-env-a` and `-env-b`, an environment variable for one side's
+akit (`VAR=VALUE`). With the same ref for A and B, akit is built once and both sides run the same
+binary, so `bench/ab.sh -env-a AKIO_DEFAULT_SCHEDULING=event-loops work work` compares a setting
+alone.
 
 ## Each middleware against fit's
 

@@ -15,6 +15,12 @@
 #   -duration D       each measured run             (default: 10s)
 #   -warmup D         unmeasured load before each   (default: 2s)
 #   -args FLAGS       more fitbench flags for every run, as '-connections 500'
+#   -env-a VAR=VALUE  an environment variable for A's akit (one, no spaces or quotes)
+#   -env-b VAR=VALUE  the same for B's
+#
+# When A and B are the same ref, akit is built once and both run the same binary, so a
+# comparison of two settings (-env-a AKIO_DEFAULT_SCHEDULING=event-loops) measures the settings
+# alone.
 #
 # Every round runs under the host's /root/bench.lock alone (quiet.sh), held for the whole
 # comparison, so A and B see the same host.
@@ -50,6 +56,8 @@ rounds=3
 duration=10s
 warmup=2s
 args=
+env_a=
+env_b=
 while [ $# -gt 2 ]; do
 	case "$1" in
 	-scenarios) scenarios=$2 ;;
@@ -58,6 +66,8 @@ while [ $# -gt 2 ]; do
 	-duration) duration=$2 ;;
 	-warmup) warmup=$2 ;;
 	-args) args=$2 ;;
+	-env-a) env_a=$2 ;;
+	-env-b) env_b=$2 ;;
 	*) die "unknown option $1" ;;
 	esac
 	shift 2
@@ -66,11 +76,18 @@ done
 
 id=ab-$(date +%Y%m%d-%H%M%S)
 stage_fit
-desc_a=$(stage_akit "$1" "$id-a")
-desc_b=$(stage_akit "$2" "$id-b")
+desc_a=$(stage_akit "$1" "$id-a" "$env_a")
+if [ "$1" = "$2" ]; then
+	image_akit "$id-a" "$id-b" "$env_b"
+	desc_b="$desc_a, the same binary"
+else
+	desc_b=$(stage_akit "$2" "$id-b" "$env_b")
+fi
+desc_a="$desc_a${env_a:+ with $env_a}"
+desc_b="$desc_b${env_b:+ with $env_b}"
 dir="$BENCH_DIR/ab/$id"
 $BENCH_SSH "mkdir -p $dir && echo '$desc_a' > $dir/a.ref && echo '$desc_b' > $dir/b.ref && touch $dir/status && cat > $dir/params" <<EOP
-scenarios=$scenarios protocols=$protocols rounds=$rounds duration=$duration warmup=$warmup args=$args fit=$fit_rev
+scenarios=$scenarios protocols=$protocols rounds=$rounds duration=$duration warmup=$warmup args=$args env_a=$env_a env_b=$env_b fit=$fit_rev
 EOP
 $BENCH_SSH "cat > $dir/rounds.sh && chmod +x $dir/rounds.sh" <<EOP
 #!/bin/sh

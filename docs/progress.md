@@ -22,6 +22,31 @@ done and where the work differs from the plan.
 
 ## Log
 
+### 2026-11-28: the scheduling A/B: work stealing against event loops
+
+- With the A303 stopgap gone akit's listeners run on akio's default, work stealing on epoll; a
+  same-run A/B of one binary (akit at `e3473df3`) with `AKIO_DEFAULT_SCHEDULING=event-loops` (A)
+  and without (B), the static and proxy scenarios over HTTP/1.1, 5 rounds alternating, 10 s after
+  2 s of warm-up ([`bench/results/ab-scheduling-2026-11-28`](../bench/results/ab-scheduling-2026-11-28/report.md)):
+
+  | Scenario | A req/s | B req/s | Change | A µs/req | B µs/req | A p99 | B p99 |
+  | --- | --- | --- | --- | --- | --- | --- | --- |
+  | static | 776k | 730k | -6.0% | 8.41 | 8.56 | 1.25 ms | 0.58 ms |
+  | proxy | 256k | 260k | +1.5% (noise) | 21.35 | 25.16 | 3.83 ms | 1.09 ms |
+
+  Work stealing costs `static` 6% of its throughput (every round: 719–734k against 771–784k) and
+  doubles its median latency (0.36 ms against 0.16), and costs the proxy 18% more CPU a request
+  (6.55 cores against 5.47 for the same requests); it gives both a better p99 (2.2 and 3.5 times
+  lower), as one connection's slow round no longer holds the others on its thread. Memory alike.
+  Not switched back: akit follows akio's default (decision 91's outcome); the numbers are for the
+  maintainer and for akio's work stealing (its CPU a request on a relay, its throughput on short
+  requests). `AKIO_DEFAULT_SCHEDULING=event-loops` gives a process event loops.
+- `bench/ab.sh` takes `-env-a` and `-env-b`, a variable for each side's akit, and builds akit once
+  when A and B are the same ref, so both sides run the same binary (`lib.sh`'s `image_akit`).
+- The rounds held `/root/bench.lock` alone, through a wrapper of `flock -x` rather than the host's
+  `quiet.sh`, which would have stopped the host's model service: the host's own services ran, so
+  only the ratios count.
+
 ### 2026-11-28: test-timeout's watchdog sleep ends with its binary
 
 - `tools/test-timeout.sh` (rule 31) had the flaw akio's copy had (fixed in akio `2575a253`): a TERM

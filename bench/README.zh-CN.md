@@ -84,7 +84,9 @@ bench/ab.sh main work
 在同一次运行中对比两个 akit 构建：只有 akit，HTTP/1.1 和 h2c 上的 fixed 场景，A 与 B 交替 3 轮，每次预热 2s 后测量
 10s，每一轮都持有锁。它返回一个 id；`bench/ab.sh -report ID` 用 fit 的 abreport 汇总已完成的部分：每秒请求数、每个
 请求的 CPU 和 p99，只有超过 1%（`AB_NOISE`）且超出各轮波动时才标记变化；`-wait ID` 等到结束。选项：`-scenarios`、
-`-protocols`、`-rounds`、`-duration`、`-warmup`、`-args`。
+`-protocols`、`-rounds`、`-duration`、`-warmup`、`-args`，以及 `-env-a` 和 `-env-b`：为一侧的 akit 设置一个环境变量
+（`VAR=VALUE`）。A 和 B 是同一个 ref 时只构建一次 akit，两侧运行同一个二进制，因此
+`bench/ab.sh -env-a AKIO_DEFAULT_SCHEDULING=event-loops work work` 只比较这一设置。
 
 ## 每个中间件与 fit 的对比
 

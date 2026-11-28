@@ -50,11 +50,13 @@ stage_fit() {
 		die "building fit's harness on the host failed"
 }
 
-# stage_akit REF TAG builds akit at REF (a git ref, or "work" for the working tree) on the host
-# and makes the image akit-bench:TAG from it; prints what REF was.
+# stage_akit REF TAG [ENV] builds akit at REF (a git ref, or "work" for the working tree) on the
+# host and makes the image akit-bench:TAG from it, with ENV (one VAR=VALUE, no spaces or quotes)
+# in the image's environment when given; prints what REF was.
 stage_akit() {
 	ref=$1
 	tag=$2
+	env=${3:+ENV $3}
 	src="$BENCH_DIR/src-$tag"
 	$BENCH_SSH "rm -rf $src && mkdir -p $src"
 	if [ "$ref" = work ]; then
@@ -74,8 +76,18 @@ stage_akit() {
 	$BENCH_SSH "$host_path; cd $src && flock -s /root/bench.lock \
 		cargo build -q --release -p akit --target-dir $BENCH_DIR/target &&
 		mkdir -p image && cp $BENCH_DIR/target/release/akit image/akit &&
-		printf 'FROM ubuntu:24.04\nCOPY akit /usr/local/bin/akit\n' > image/Dockerfile &&
+		printf 'FROM ubuntu:24.04\nCOPY akit /usr/local/bin/akit\n$env\n' > image/Dockerfile &&
 		docker build -q -t akit-bench:$tag image >/dev/null" >&2 ||
 		die "building akit $desc on the host failed"
 	echo "$desc"
+}
+
+# image_akit FROM TAG [ENV] makes the image akit-bench:TAG from the binary stage_akit built for
+# the tag FROM, with ENV in its environment: the same binary, run another way.
+image_akit() {
+	env=${3:+ENV $3}
+	$BENCH_SSH "cd $BENCH_DIR/src-$1 && mkdir -p image-$2 && cp image/akit image-$2/akit &&
+		printf 'FROM ubuntu:24.04\nCOPY akit /usr/local/bin/akit\n$env\n' > image-$2/Dockerfile &&
+		docker build -q -t akit-bench:$2 image-$2 >/dev/null" >&2 ||
+		die "making the image akit-bench:$2 on the host failed"
 }

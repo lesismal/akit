@@ -1,0 +1,1 @@
+scenarios=static,proxy protocols=http/1.1 rounds=5 duration=10s warmup=2s args= env_a=AKIO_DEFAULT_SCHEDULING=event-loops env_b= fit=7daee573b102d87837cc10f033e4cc5894769210
