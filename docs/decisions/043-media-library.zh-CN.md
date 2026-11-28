@@ -165,8 +165,10 @@ akio-crypto 有带 PKCS #7 填充的 AES-128-CBC。流媒体路线（决定 040�
   Content-Security-Policy 读取同样的内容，只在配置版本变化时重新读取。
 - **控制台的用户和主机以 `Akit-Console-User` 和 `Akit-Console-Host` 传给它们**（fit 的 `Fit-Console-User` 和
   `Fit-Console-Host` 改名，决定 037），由控制台在其转发的请求上设置，从不取自浏览器；持有 Admin API token 的调用者可以自己设置。
-- **上传的文件沿用 fit 的名字**（`.fit-upload-<id>.part` 和 `.json`，整写文件用 `.fit-tmp-`），正如 `fitstore` 文件沿用其魔数：
-  在 fit 上开始的上传可以在 akit 上从同一个 `upload_dir` 继续，反之亦然。
+- **上传的文件使用 akit 的名字**（`.akit-upload-<id>.part` 和 `.json`，整写文件用 `.akit-tmp-`；fit 的是 `.fit-upload-` 和
+  `.fit-tmp-`），正如决定 037 对 akit 写入的所有文件名的要求。akit 不接管 fit 遗留的 `.fit-upload-*` 文件：037 只为配置和
+  `fitstore` 存储保留 fit 的格式，此外不接受、读取或应答 fit 的任何名字；而上传只是客户端可以从其偏移续传的几分钟工作，不值得
+  作为例外。扫描不查看以 '.' 开头的名字，因此不会动 fit 的文件；在 fit 上开始的上传要在 akit 上重新开始。
 - **`PATCH` 的请求体被暂停而非阻塞等待**：fit 的处理器在写入一块时阻塞其 goroutine；akit 的暂停读取请求体（akio 的
   `BodyReads::hold`），在该块落盘后恢复，并收集已在进行的读取带来的数据，因此最多保留 512 KiB 加一次读取。被截断的请求体以已写入的
   部分结束写入，与 fit 的读取错误相同。

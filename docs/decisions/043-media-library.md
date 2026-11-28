@@ -235,9 +235,13 @@ not supported yet for this track.
 - **The console's user and host reach them as `Akit-Console-User` and `Akit-Console-Host`**
   (fit's `Fit-Console-User` and `Fit-Console-Host`, renamed, decision 037), set by the console on
   what it passes, never taken from the browser; a caller with the Admin API's token may set them.
-- **An upload's files keep fit's names** (`.fit-upload-<id>.part` and `.json`, `.fit-tmp-` for a
-  file written whole), as the `fitstore` file keeps its magic: an upload begun on fit goes on on
-  akit, and the other way round, from the same `upload_dir`.
+- **An upload's files are named akit's** (`.akit-upload-<id>.part` and `.json`, `.akit-tmp-` for a
+  file written whole; fit's `.fit-upload-` and `.fit-tmp-`), as decision 037 has every file name
+  akit writes. akit does not take up fit's leftover `.fit-upload-*` files: 037 keeps fit's format
+  only for the config and the `fitstore` store and has akit accept, read or answer none of fit's
+  names besides, and an upload is a few minutes' work a client resumes from its offset, not state
+  worth an exception. A scan, looking at no name that starts with '.', leaves fit's files alone;
+  an upload begun on fit is begun again on akit.
 - **A `PATCH`'s body is held, not blocked on**: fit's handler blocks its goroutine while a piece is
   written; akit's holds the body's reads (akio's `BodyReads::hold`) and lets them go once the
   piece is on disk, gathering what a read already under way brings, so at most 512 KiB and one

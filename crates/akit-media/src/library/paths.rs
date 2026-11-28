@@ -204,13 +204,13 @@ pub(crate) fn writable(r: &Root, rel: &str) -> Result<PathBuf, FileError> {
 }
 
 /// Writes `data` to `abs` through a temporary file beside it, which a scan does not look at
-/// (`.fit-tmp-`, fit's name: the files on disk are fit's). It blocks.
+/// (`.akit-tmp-`). It blocks.
 pub(crate) fn write_atomic(abs: &Path, data: &[u8]) -> io::Result<()> {
     use std::io::Write as _;
     let mut rnd = [0u8; 8];
     let _ = akio_crypto::rand::fill_random(&mut rnd);
     let dir = abs.parent().unwrap_or_else(|| Path::new("."));
-    let tmp = dir.join(format!(".fit-tmp-{}", super::catalog::hex(&rnd)));
+    let tmp = dir.join(format!(".akit-tmp-{}", super::catalog::hex(&rnd)));
     let r = (|| {
         let mut f = std::fs::OpenOptions::new()
             .write(true)

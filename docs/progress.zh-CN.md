@@ -201,7 +201,7 @@
   `upload_dir`（位于某个根目录内或就是根目录）、`max_upload_bytes`、`max_uploads`（最多 1024）、`min_free_bytes` 和
   `upload_expiry`（至少 1m），检查和默认值与 fit 相同。`akit_media::library::upload`：上传以其在 `upload_dir` 下的路径和大小开始
   （媒体库不写入或不查看的路径被拒绝，超过 `max_upload_bytes` 为 413，超过 `max_uploads` 为 429，文件已存在为 409，磁盘在
-  进行中的上传仍需的空间之外会剩下少于 `min_free_bytes` 时为 507），其字节按偏移写入 `.fit-upload-<id>.part`，旁边的 `.json`
+  进行中的上传仍需的空间之外会剩下少于 `min_free_bytes` 时为 507），其字节按偏移写入 `.akit-upload-<id>.part`，旁边的 `.json`
   使其跨重启保留，完整后同步并改名到位，并由它请求的扫描探测；只写入其根目录之内，符号链接解析之后也是如此。Admin API 的
   `/media/library/{name}/uploads`（`GET`、`POST`）和 `/uploads/{id}`（`GET`、`HEAD`、在 `Upload-Offset` 处的 `PATCH`、
   `DELETE`），使用 tus 的头字段。`PATCH` 以流方式读入（Admin API 的 `streamed` 前缀，控制台也是）：其分块被收集并在媒体库的池上

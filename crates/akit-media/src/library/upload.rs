@@ -1,8 +1,8 @@
 //! A library's uploads (I149, fit's `medialib/upload.go`): files written into its `upload_dir`
 //! in pieces, resumable after a cut connection, as tus's protocol has them: an upload begun with
 //! its path and size, written at its offset, asked where it is at, given up. Its bytes go to a
-//! temporary file in `upload_dir` (`.fit-upload-<id>.part`, beside a `.json` that keeps it
-//! across restarts; fit's names, the files on disk being fit's), synced and renamed into place
+//! temporary file in `upload_dir` (`.akit-upload-<id>.part`, beside a `.json` that keeps it
+//! across restarts; akit's names, decision 037), synced and renamed into place
 //! once whole, and probed by the scan that follows.
 //!
 //! Bounded: `max_upload_bytes` an upload, `max_uploads` under way, `min_free_bytes` left on the
@@ -25,7 +25,7 @@ use super::{Library, Root};
 
 /// The names of an upload's files in `upload_dir`, which a scan, looking at no name that starts
 /// with '.', leaves alone.
-const UPLOAD_PREFIX: &str = ".fit-upload-";
+const UPLOAD_PREFIX: &str = ".akit-upload-";
 const UPLOAD_PART: &str = ".part";
 const UPLOAD_META: &str = ".json";
 /// The most of an upload's `.json` read back after a restart.

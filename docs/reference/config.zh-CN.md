@@ -3208,7 +3208,7 @@ media_library films {
 | `scan_interval` | 时长 | `"10m"` |  |
 | `secret` | 字符串 |  |  |
 | `secret_file` | 字符串 |  |  |
-| `upload_dir` | 字符串 |  |  |
+| `upload_dir` | 字符串 |  | **akit：**从 I149 起读取：临时文件是 akit 的 `.akit-upload-<id>.part` 和 `.json`（决定 037）；fit 的 `.fit-upload-*` 文件不会被接管，也不会被改动。 |
 | `upload_expiry` | 时长 | `"24h"` |  |
 <!-- END GENERATED -->
 

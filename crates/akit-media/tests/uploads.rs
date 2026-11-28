@@ -361,6 +361,21 @@ fn upload_restart() {
     let id = s(&v, "id");
     let up = format!("/media/library/films/uploads/{id}");
     assert_eq!(r.patch(&up, 0, &[7; 40]).status, 200);
+    // akit's names (decision 037); fit's leftover upload is not taken up, nor touched.
+    let dir = r.root.0.join("uploads");
+    assert!(dir.join(format!(".akit-upload-{id}.part")).exists());
+    assert!(dir.join(format!(".akit-upload-{id}.json")).exists());
+    let fit_id = "0123456789abcdef0123456789abcdef";
+    let fit_meta = dir.join(format!(".fit-upload-{fit_id}.json"));
+    std::fs::write(
+        &fit_meta,
+        format!(
+            r#"{{"id": "{fit_id}", "root": "{}", "path": "uploads/fit.mp4", "size": 10, "created": "2026-11-28T00:00:00Z"}}"#,
+            r.root.0.display()
+        ),
+    )
+    .unwrap();
+    std::fs::write(dir.join(format!(".fit-upload-{fit_id}.part")), [1u8; 4]).unwrap();
     // The library goes, and comes back: the upload is read back from its .json.
     library::remove(r.key);
     r.lib.join(T);
@@ -368,6 +383,8 @@ fn upload_restart() {
     let l = library::lookup(r.key, "films").unwrap();
     scanned(&l, 0);
     let info = l.upload(&id).expect("the upload read back");
+    assert!(l.upload(fit_id).is_none(), "fit's upload taken up");
+    assert!(fit_meta.exists(), "fit's upload touched");
     assert_eq!(
         (info.offset, info.size, info.path.as_str()),
         (40, 100, "uploads/later.mp4")

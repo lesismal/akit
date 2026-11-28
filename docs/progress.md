@@ -276,7 +276,7 @@ done and where the work differs from the plan.
   `upload_dir` and its size (refused for a path the library does not write or look at, past
   `max_upload_bytes` 413, past `max_uploads` 429, a file there 409, a disk that would keep less
   than `min_free_bytes` besides what the uploads under way still need 507), its bytes written at
-  its offset to `.fit-upload-<id>.part` beside a `.json` that keeps it across restarts, synced and
+  its offset to `.akit-upload-<id>.part` beside a `.json` that keeps it across restarts, synced and
   renamed into place once whole, and probed by the scan it asks for; written only inside its root,
   links resolved. The Admin API's `/media/library/{name}/uploads` (`GET`, `POST`) and
   `/uploads/{id}` (`GET`, `HEAD`, `PATCH` at `Upload-Offset`, `DELETE`), tus's headers. A
