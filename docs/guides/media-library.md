@@ -33,6 +33,14 @@ Admin API's `POST /media/library/<name>/rescan`; `GET /media/library` and
 `GET /media/library/<name>` read the catalog. Files are probed and read on the library's file pool,
 never on an I/O thread.
 
+## The console's pages
+
+With `admin.console`, the console's **Media library** pages browse each library's items, play a
+preview through a URL signed for the user logged in, edit the channels on a timeline, issue test
+URLs, list and end playback sessions, rotate keys kept in files, and chart what is served. Behind
+them, the Admin API's `POST /media/preview`, `GET /media/auth` (with `/sessions`,
+`/sessions/end`, `/rotate` and `/urls` of a policy) and `GET /media/stats`.
+
 ## Video on demand
 
 ```fit

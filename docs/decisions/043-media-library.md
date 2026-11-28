@@ -223,3 +223,15 @@ not supported yet for this track.
 - **The guide is `docs/guides/media-library.md`**, beside akit's other guides, rather than
   `docs/media-library.md`, where fit keeps it; its configs are checked by `akit validate` with every
   other guide's.
+
+## I149: the console's media pages
+
+- **The pages are fit's, their endpoints akit-media's**: the console's `gw.medialib` module was
+  copied with the other pages at the pin; `akit_media::workbench` answers what it asks of the Admin
+  API, as fit's `admin/media.go` does, the same members and refusals.
+- **The endpoints read the running config the Admin API keeps**, parsed when they are asked, and
+  the listeners' bound ports from the engine, on the crate's pool; the console's
+  Content-Security-Policy reads the same, again only when the config's version changes.
+- **The console's user and host reach them as `Akit-Console-User` and `Akit-Console-Host`**
+  (fit's `Fit-Console-User` and `Fit-Console-Host`, renamed, decision 037), set by the console on
+  what it passes, never taken from the browser; a caller with the Admin API's token may set them.

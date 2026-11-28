@@ -26,6 +26,7 @@ pub(crate) mod playlist;
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
 use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 use std::time::{Duration, SystemTime};
 
@@ -76,6 +77,10 @@ struct Store {
     files: Mutex<HashMap<PathBuf, Arc<Files>>>,
     /// The catalog last seen, by address, so that a new one drops what it no longer lists.
     seen: Mutex<usize>,
+    /// The requests its handlers took, and the bytes of the bodies they answered (fit's
+    /// `requests` and `sent`), for the Admin API's `/media/stats`.
+    requests: AtomicU64,
+    sent: AtomicU64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -125,6 +130,8 @@ fn take_store(k: StoreKey) -> Arc<Store> {
             tag,
             files: Mutex::new(HashMap::new()),
             seen: Mutex::new(0),
+            requests: AtomicU64::new(0),
+            sent: AtomicU64::new(0),
         })
     }));
     let mut refs = lock(&st.refs);
@@ -140,6 +147,55 @@ fn give_store(st: &Store) {
     if *refs == 0 {
         m.remove(&st.key);
     }
+}
+
+/// What the `vod` handlers served, one object a library, sorted by its name (fit's `vod.Stats`,
+/// as `GET /media/stats` writes it): the requests, the bytes of the bodies answered, and what
+/// their caches hold and found.
+#[must_use]
+pub fn stats_value() -> akit_config::value::Value {
+    use akit_config::value::Value;
+    let m = lock(stores());
+    let mut libs: Vec<String> = m.values().map(|st| st.key.library.clone()).collect();
+    libs.sort();
+    libs.dedup();
+    let num = |v: u64| Value::Number(v.to_string());
+    let out = libs
+        .iter()
+        .map(|lib| {
+            let (mut req, mut sent) = (0u64, 0u64);
+            let mut c = CacheStats::default();
+            for st in m.values().filter(|st| st.key.library == *lib) {
+                req = req.saturating_add(st.requests.load(Relaxed));
+                sent = sent.saturating_add(st.sent.load(Relaxed));
+                let s = st.cache.stats();
+                c.entries = c.entries.saturating_add(s.entries);
+                c.bytes = c.bytes.saturating_add(s.bytes);
+                c.max = c.max.saturating_add(s.max);
+                c.hits = c.hits.saturating_add(s.hits);
+                c.misses = c.misses.saturating_add(s.misses);
+            }
+            let o = |m: Vec<(&str, Value)>| {
+                Value::Object(m.into_iter().map(|(k, v)| (k.to_owned(), v)).collect())
+            };
+            o(vec![
+                ("library", Value::String(lib.clone())),
+                ("requests", num(req)),
+                ("bytes", num(sent)),
+                (
+                    "cache",
+                    o(vec![
+                        ("entries", num(c.entries as u64)),
+                        ("bytes", num(c.bytes)),
+                        ("max", num(c.max)),
+                        ("hits", num(c.hits)),
+                        ("misses", num(c.misses)),
+                    ]),
+                ),
+            ])
+        })
+        .collect();
+    Value::Array(out)
 }
 
 /// What the caches of the `vod` handlers serving `library` hold, summed.
@@ -380,6 +436,8 @@ impl Store {
         if !self.key.cors.is_empty() {
             r = r.header("Access-Control-Allow-Origin", &self.key.cors);
         }
+        self.sent
+            .fetch_add(u64::try_from(r.body.len()).unwrap_or(0), Relaxed);
         ctx.respond(r);
     }
 
@@ -463,6 +521,7 @@ impl Service for Vod {
                 &[("Retry-After", "1")],
             );
         };
+        st.requests.fetch_add(1, Relaxed);
         let Some(l) = library::lookup(key, &self.library) else {
             return text(
                 ctx,
@@ -696,6 +755,11 @@ impl Req {
             return text(ctx, 404, "no such file", &self.cors, &[]);
         };
         let files = self.st.files(std::path::Path::new(root));
+        let st = Arc::clone(&self.st);
+        ctx.add_response_filter(move |resp, _| {
+            let n = resp.file.as_ref().map_or(resp.body.len() as u64, |f| f.len);
+            st.sent.fetch_add(n, Relaxed);
+        });
         if !self.cors.is_empty() {
             let cors = self.cors.clone();
             ctx.add_response_filter(move |resp, _| {

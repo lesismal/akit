@@ -69,7 +69,7 @@ fn status_value(st: &Status) -> Value {
 }
 
 /// A library as `GET /media/library` lists it.
-fn summary(l: &Library) -> Vec<(&'static str, Value)> {
+pub(crate) fn summary(l: &Library) -> Vec<(&'static str, Value)> {
     let cat = l.catalog();
     let errs = cat.items.iter().filter(|it| !it.error.is_empty()).count();
     let pool = l.pool().stats();

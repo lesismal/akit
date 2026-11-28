@@ -1641,6 +1641,39 @@ fn run(args: &[String]) -> ExitCode {
                     akit_media::channels::serve_push(key, ctx)
                 }),
             ));
+            // The console's media pages' endpoints, at /media/preview, /media/auth and
+            // /media/stats (I149): they read the running config and the listeners' ports.
+            let view: akit_media::workbench::ViewFn = {
+                let (configs, cell, engine) = (configs.clone(), cell.clone(), Arc::clone(&engine));
+                Arc::new(move || media_view(&configs, &cell, &engine))
+            };
+            // The console may load media from their listeners: the origins are read again once
+            // the running config's version changes.
+            api_opts.media_origins = Some({
+                let view = Arc::clone(&view);
+                let configs = configs.clone();
+                let cached: Arc<std::sync::Mutex<Option<(u64, akit_media::workbench::View)>>> =
+                    Arc::default();
+                Arc::new(move |host: &str| {
+                    let n = configs.current().number;
+                    let mut g = cached
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    if g.as_ref().is_none_or(|(m, _)| *m != n) {
+                        *g = Some((n, view()));
+                    }
+                    g.as_ref().map(|(_, v)| v.origins(host)).unwrap_or_default()
+                })
+            });
+            for prefix in akit_media::workbench::PREFIXES {
+                let view = Arc::clone(&view);
+                api_opts.endpoints.push((
+                    prefix,
+                    Arc::new(move |ctx: &mut akio_http::Context| {
+                        akit_media::workbench::serve(key, &view, ctx)
+                    }),
+                ));
+            }
             match akit_admin::Server::start(a, configs.clone(), submit, &api_opts) {
                 Ok(s) => {
                     println!("akit: admin API on {}", s.address());
@@ -1966,6 +1999,26 @@ pub fn main(akit_version: &str, modules: &[&'static [Info<HandlerParams>]]) -> E
             ExitCode::from(2)
         }
     }
+}
+
+/// What the console's media pages read of the running config and where its listeners listen
+/// (I149): the config as it was applied, parsed, and each listener's bound port by name.
+fn media_view(
+    configs: &Configs,
+    cell: &GraphCell,
+    engine: &Arc<akio::Engine>,
+) -> akit_media::workbench::View {
+    let cur = configs.current();
+    let config = akit_config::from_json(cur.effective(), None)
+        .ok()
+        .map(Arc::new);
+    let listeners = cell.with(|g| g.listeners().to_vec());
+    let ports: Vec<(String, u16)> = listeners
+        .iter()
+        .zip(akit_listener::addrs(&listeners, engine))
+        .filter_map(|(l, a)| a.addr().map(|a| (l.name.clone(), a.port())))
+        .collect();
+    akit_media::workbench::View::new(config, &ports)
 }
 
 #[cfg(test)]

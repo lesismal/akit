@@ -119,7 +119,14 @@ pub struct Options {
     /// The largest body the console takes for the cluster module's node switcher (I134): the
     /// manager's `max_response_bytes`; 0 without a manager.
     pub cluster_max_body: usize,
+    /// The origins the console's pages may load media from (I149): the listeners of the
+    /// running `vod` and `hls` routes, for the console's `Host` as the browser sent it; added to
+    /// its Content-Security-Policy, as fit's console `Sources`. None without it.
+    pub media_origins: Option<MediaOrigins>,
 }
+
+/// The origins of [`Options::media_origins`], for the console's `Host`.
+pub type MediaOrigins = Arc<dyn Fn(&str) -> Vec<String> + Send + Sync>;
 
 impl fmt::Debug for Options {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -171,6 +178,7 @@ impl Default for Options {
             node: None,
             cluster: None,
             cluster_max_body: 0,
+            media_origins: None,
         }
     }
 }

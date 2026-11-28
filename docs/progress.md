@@ -196,6 +196,35 @@ done and where the work differs from the plan.
   - On io_uring, `Engine::remove_listener` returns once the listener's accepts are cancelled, so a
     listener a reload removes takes no connection after it; `H3Upload::finish` is no longer
     refused by its own response; the pool pressure watcher samples every 500 ms (was 100 ms).
+### 2026-11-28: I149, the console's media pages: the read side
+
+- **Built**: the Admin API's endpoints behind the console's media library pages, which are fit's,
+  already copied at the pin (`akit_media::workbench`, fit's `admin/media.go`): `POST
+  /media/preview`, a URL of an item or a channel for the console's user, on the listener of the
+  first `vod` (`hls`) route serving it, good for two minutes: signed (`workbench:<user>`, a session
+  of its own) under a policy with `url_signing`, a token under one without, plain where playing is
+  public; `GET /media/auth`, the policies with their running `url_signing`, keys (names, whether a
+  file keeps them and when it was written; never a secret nor a path), sessions, refusals and
+  `media_tokens` routes; `GET /media/auth/{policy}/sessions` (paged, by subject and resource) and
+  `POST .../sessions/end`; `POST .../rotate`, a key, every key or the single secret written anew
+  to its file and used at once (409 for a secret in the config); `POST .../urls`, a test URL within
+  a `media_tokens` route's bounds or on the route's listener; `GET /media/stats`, the libraries,
+  what the `vod` handlers served (now counted: requests and bytes), the policies' sessions by
+  resource and the channels with their players and push targets. They run on the crate's pool, the
+  request suspended. The console passes them its user and the host the browser addressed
+  (`Akit-Console-User`, `Akit-Console-Host`, set by the console alone), and adds the media routes'
+  listeners to its Content-Security-Policy, read again when the running config's version changes,
+  so that a preview plays from them.
+- **Checked**: `tests/workbench.rs` ports fit's `TestMediaPreview`, `TestMediaAuth` and
+  `TestMediaStats`: a preview by URL, by token and public, each played by its route; a channel's;
+  the refusals; the policies with no secret in the answer; a session listed, ended and then
+  refused; a secret rotated through its file and the URLs it signed refused; test URLs and their
+  bounds; the stats. In a browser against `akit run`: the library page, an item's page whose
+  preview plays through its signed URL, the playback URLs page with its sessions, the metrics and
+  the channels pages. The file management the pages offer (uploads, rename, move, delete,
+  sidecars) answers 404 until the next pieces.
+- **Next**: I149's uploads.
+
 ### 2026-11-28: a channel never retries on a timer
 
 - **Changed**: the channels' last timer retries, fit's, are events now (decision 043). A load or

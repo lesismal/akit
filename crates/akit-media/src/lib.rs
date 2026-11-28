@@ -24,5 +24,6 @@ mod swap;
 mod tokens;
 pub mod urlsign;
 pub mod vod;
+pub mod workbench;
 
 pub use handlers::MODULES;

@@ -156,3 +156,12 @@ akio-crypto 有带 PKCS #7 填充的 AES-128-CBC。流媒体路线（决定 040�
   provision。无论哪种，配置都以 fit 的消息被拒绝。
 - **指南是 `docs/guides/media-library.md`**，与 akit 的其他指南放在一起，而不是 fit 放置它的 `docs/media-library.md`；其中的配置与
   其他指南的一样由 `akit validate` 检查。
+
+## I149：控制台的媒体页面
+
+- **页面是 fit 的，端点是 akit-media 的**：控制台的 `gw.medialib` 模块随其他页面在钉住的版本复制；`akit_media::workbench` 应答它向
+  Admin API 请求的内容，与 fit 的 `admin/media.go` 一样，成员和拒绝都相同。
+- **端点读取 Admin API 保存的运行中配置**，在被请求时解析，并从引擎读取监听器绑定的端口，都在 crate 的池上；控制台的
+  Content-Security-Policy 读取同样的内容，只在配置版本变化时重新读取。
+- **控制台的用户和主机以 `Akit-Console-User` 和 `Akit-Console-Host` 传给它们**（fit 的 `Fit-Console-User` 和
+  `Fit-Console-Host` 改名，决定 037），由控制台在其转发的请求上设置，从不取自浏览器；持有 Admin API token 的调用者可以自己设置。

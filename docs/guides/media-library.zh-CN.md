@@ -26,6 +26,12 @@ akit 按文件存储的原样提供其编码：H.264、H.265 和 AV1 视频，AA
 媒体库在创建时、每隔 `scan_interval`、重载改变它时以及 Admin API 的 `POST /media/library/<name>/rescan` 时扫描；
 `GET /media/library` 和 `GET /media/library/<name>` 读取目录。文件在媒体库的文件池上探测和读取，从不在 I/O 线程上。
 
+## 控制台页面
+
+设置 `admin.console` 后，控制台的 **媒体库** 页面浏览各媒体库的条目，通过为当前登录用户签名的地址播放预览，在时间线上编辑频道，
+签发测试地址，列出并结束播放会话，轮换保存在文件中的密钥，并绘制所提供内容的图表。它们背后是 Admin API 的
+`POST /media/preview`、`GET /media/auth`（以及策略的 `/sessions`、`/sessions/end`、`/rotate` 和 `/urls`）和 `GET /media/stats`。
+
 ## 点播
 
 ```fit

@@ -765,7 +765,7 @@ impl RevokePool {
 }
 
 /// A new signing secret: 32 random bytes in unpadded base64url (fit's `newSecret`).
-fn new_secret() -> String {
+pub(crate) fn new_secret() -> String {
     let mut b = [0u8; 32];
     if akio_crypto::rand::fill_random(&mut b).is_err() {
         // Never a predictable secret: the rotation fails instead (too short).
@@ -776,7 +776,7 @@ fn new_secret() -> String {
 
 /// Writes `secret` to `path` atomically: a temporary file beside it, mode 0600, renamed over it
 /// (fit's `writeSecret`). It blocks: the revoke pool's.
-fn write_secret(path: &str, secret: &str) -> std::io::Result<()> {
+pub(crate) fn write_secret(path: &str, secret: &str) -> std::io::Result<()> {
     use std::os::unix::fs::OpenOptionsExt as _;
     let target = std::path::Path::new(path);
     let dir = target.parent().unwrap_or_else(|| std::path::Path::new("."));

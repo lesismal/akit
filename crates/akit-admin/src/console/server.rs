@@ -77,6 +77,11 @@ pub const CSRF_HEADER: &str = "X-Akit-Csrf";
 /// The session cookie's name before its port: fit's `fit_console`, renamed (decision 037).
 pub const COOKIE: &str = "akit_console";
 
+/// The header fields the console sets on what it passes to the Admin API (I149):
+/// `akit_media::workbench`'s.
+const MEDIA_CONSOLE_USER: &str = "Akit-Console-User";
+const MEDIA_CONSOLE_HOST: &str = "Akit-Console-Host";
+
 /// The pages' Content-Security-Policy: their own files and origin only, fit's `csp`.
 pub const CSP: &str = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; \
      connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
@@ -159,6 +164,8 @@ struct Pages {
     secure: bool,
     login_pool: Arc<Pool>,
     conns: Arc<Conns>,
+    /// The media routes' origins, for the Content-Security-Policy (I149).
+    media_origins: Option<crate::server::MediaOrigins>,
 }
 
 /// The console's connections, fit's `limitHandler`: counted by [`Slots`], each closed at its
@@ -367,6 +374,7 @@ impl Console {
             secure,
             login_pool: pool(LOGIN_WORKERS, LOGIN_QUEUE),
             conns: Arc::clone(&conns),
+            media_origins: opts.media_origins.clone(),
         });
         let mut http = HttpConfig::default();
         // HTTP/1.1 alone, as the Admin API: one request at a time on each connection max_conns
@@ -697,9 +705,27 @@ impl Pages {
         c
     }
 
+    /// The Content-Security-Policy of a response: [`CSP`], or, with media origins (I149), it
+    /// with them added to `img-src` and `connect-src`, and `media-src` for them, the console's
+    /// own and `blob:`, which a player's MediaSource plays from (fit's `policy`).
+    fn policy(&self, ctx: &Context) -> String {
+        let origins = match (&self.media_origins, &self.kind) {
+            (Some(f), Kind::Admin(..)) => f(ctx.header("Host").unwrap_or("")),
+            _ => Vec::new(),
+        };
+        if origins.is_empty() {
+            return CSP.to_owned();
+        }
+        let more = origins.join(" ");
+        format!(
+            "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: {more}; connect-src 'self' {more}; media-src 'self' blob: {more}; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+        )
+    }
+
     fn serve(self: &Arc<Self>, ctx: &mut Context) {
         let conn = self.conns.begin(ctx);
-        ctx.add_response_header("Content-Security-Policy", CSP);
+        let csp = self.policy(ctx);
+        ctx.add_response_header("Content-Security-Policy", &csp);
         ctx.add_response_header("X-Content-Type-Options", "nosniff");
         ctx.add_response_header("X-Frame-Options", "DENY");
         ctx.add_response_header("Referrer-Policy", "no-referrer");
@@ -875,11 +901,16 @@ impl Pages {
                 }
             });
         }
+        let host = ctx.header("Host").unwrap_or("").to_owned();
         if let Some(req) = ctx.req_mut() {
             req.target = match query {
                 Some(q) => format!("{sub}?{q}"),
                 None => sub.to_owned(),
             };
+            // Who asks, and the host the browser addressed, for the media pages' endpoints
+            // (I149): set here alone, never taken from the browser.
+            req.headers.set(MEDIA_CONSOLE_USER, user);
+            req.headers.set(MEDIA_CONSOLE_HOST, &host);
         }
         if let Kind::Admin(api, ..) = &self.kind {
             dispatch(api, ctx);
