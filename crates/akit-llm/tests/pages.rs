@@ -11,7 +11,7 @@
 
 mod support;
 
-use std::io::{Read, Write};
+use std::io::{ErrorKind, Read, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::time::Duration;
 
@@ -190,10 +190,26 @@ fn a_nodes_pages() {
         status == 404 && body.contains(r#""code":3000"#),
         "{status} {body}"
     );
+    // The console goes with its role: a connection to it is closed, and the role has no console.
+    // (Its port, let go, may be another listener's by then, a test's of the same run: what
+    // connects there says nothing.)
+    let mut held = TcpStream::connect(addr).unwrap();
+    // Within the console's own timeout of a connection without a session (5 s), which would
+    // close it anyway.
+    held.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
     roles.roles.lock().unwrap().stop(Duration::ZERO);
+    match held.read(&mut [0u8; 1]) {
+        Ok(0) => {}
+        Err(e) if !matches!(e.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) => {}
+        r => panic!("the console outlived its role: {r:?}"),
+    }
     assert!(
-        TcpStream::connect(addr).is_err(),
-        "the console outlived its role"
+        roles
+            .roles
+            .lock()
+            .unwrap()
+            .console_addr("llm.node")
+            .is_none()
     );
 }
 

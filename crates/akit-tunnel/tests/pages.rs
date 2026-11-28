@@ -11,7 +11,7 @@
     clippy::arithmetic_side_effects
 )]
 
-use std::io::{Read, Write};
+use std::io::{ErrorKind, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -389,6 +389,12 @@ fn the_console_serves_the_hubs_module() {
     };
     *address = Value::String("localhost:0".to_owned());
     let doc = format!(r#"{{"tunnel": {{"hub": {}}}}}"#, moved.to_json());
+    // A connection to the old console, closed as it goes (its port, let go, may be another
+    // listener's by then, a test's of the same run: what connects there says nothing).
+    let mut held = TcpStream::connect(env.console).unwrap();
+    // Within the console's own timeout of a connection without a session (5 s), which would
+    // close it anyway.
+    held.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
     let next = {
         let mut roles = env.roles.lock().unwrap();
         apply(&mut roles, &doc);
@@ -397,7 +403,11 @@ fn the_console_serves_the_hubs_module() {
     assert_ne!(next, env.console);
     let pg2 = login(next);
     assert_eq!(pg2.get("/api/status").status, 200);
-    assert!(TcpStream::connect(env.console).is_err());
+    match held.read(&mut [0u8; 1]) {
+        Ok(0) => {}
+        Err(e) if !matches!(e.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) => {}
+        r => panic!("the old console outlived the move: {r:?}"),
+    }
 }
 
 /// fit's `TestPages`: what the hub's API refuses, and what it changes.
