@@ -700,18 +700,6 @@ fn patch(l: &Arc<Library>, ctx: &mut Context, id: &str) {
         }
     };
     let remaining = chunk.remaining();
-    let declared = ctx
-        .header("Content-Length")
-        .and_then(|v| v.trim().parse::<u64>().ok());
-    if declared.is_some_and(|n| n > remaining) {
-        chunk.abort(super::FileError::TooLarge(format!(
-            "the body is longer than the upload's {} bytes",
-            chunk.info().size
-        )));
-        return ctx.respond(file_error(&super::FileError::TooLarge(
-            "the body is longer than what the upload still takes".to_owned(),
-        )));
-    }
     let reads = ctx.body_reads();
     let Some(r) = reads.clone() else {
         // A body read whole, as a test's or a server's that buffers it.
@@ -737,11 +725,13 @@ fn patch(l: &Arc<Library>, ctx: &mut Context, id: &str) {
             ));
         }
     });
-    if !ctx.limit_body(remaining) {
-        return;
-    }
+    // A body longer than the upload is refused by `limit_body`, now for a declared length past
+    // it, or once it grows past it: its sink gives the upload up, and the write's end answers,
+    // once the upload's files are gone from the disk (fit removes them before it answers).
+    // Detached first, so that akio does not answer a body refused now at once, before them.
     let Some(det) = ctx.detach() else { return };
     chunk.set_hooks(hooks(det, Some(r)));
+    ctx.limit_body(remaining);
 }
 
 /// What a write tells its request: its reads held while a piece is written, its answer at the

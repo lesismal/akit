@@ -873,12 +873,18 @@ impl Chunk {
     }
 
     /// Ends a write before its body with `err`, and gives the upload up, its file removed: for a
-    /// body refused before it is read, as one longer than the upload.
+    /// body refused before it is read, as one longer than the upload. The write's end is told
+    /// once the files are gone, so that its answer comes after them.
     pub fn abort(self: &Arc<Self>, err: FileError) {
         let me = Arc::clone(self);
+        let me2 = Arc::clone(self);
         let l = Arc::clone(&self.l);
-        // Removing the files blocks: on the pool, or left to the next sweep.
-        if !l.submit(Box::new(move || me.fail(err, true)), None) {
+        // Removing the files blocks: on the pool. Refused there, or waiting past its timeout,
+        // the write ends busy and the upload stays, as it was before the write.
+        if !l.submit(
+            Box::new(move || me.fail(err, true)),
+            Some(Box::new(move || me2.fail(FileError::Busy, false))),
+        ) {
             self.fail(FileError::Busy, false);
         }
     }
@@ -1064,7 +1070,11 @@ impl Chunk {
             let (l, u) = (Arc::clone(&self.l), Arc::clone(&self.u));
             let l2 = Arc::clone(&self.l);
             let u2 = Arc::clone(&self.u);
-            if !self.l.submit(Box::new(move || l.remove_upload(&u)), None) {
+            let (l3, u3) = (Arc::clone(&self.l), Arc::clone(&self.u));
+            if !self.l.submit(
+                Box::new(move || l.remove_upload(&u)),
+                Some(Box::new(move || l3.drop_upload(&u3))),
+            ) {
                 l2.drop_upload(&u2);
             }
             if r.is_ok() {

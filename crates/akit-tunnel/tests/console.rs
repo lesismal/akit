@@ -20,17 +20,6 @@ use akit_roles::host::Manager;
 
 const HASH: &str = "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy";
 
-/// A port free now, for a listener of fit's binary, whose config must name it before it starts:
-/// another process may take it before fit binds it. akit's own listeners bind port 0 and are
-/// asked where they listen.
-fn free_port() -> u16 {
-    TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port()
-}
-
 /// A console that sends back what it gets.
 fn echo_console() -> u16 {
     let l = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -280,14 +269,42 @@ fn cut_connections() {
     assert_eq!(got, b"bye");
 }
 
-/// fit's binary running `doc` in a directory of its own, stopped when dropped.
-struct Fit(std::process::Child, std::path::PathBuf);
+/// fit's binary running `doc` in a directory of its own, stopped when dropped; the lines it
+/// logs, as they come.
+struct Fit {
+    child: std::process::Child,
+    dir: std::path::PathBuf,
+    lines: std::sync::mpsc::Receiver<String>,
+}
 
 impl Drop for Fit {
     fn drop(&mut self) {
-        let _ = self.0.kill();
-        let _ = self.0.wait();
-        let _ = std::fs::remove_dir_all(&self.1);
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+        let _ = std::fs::remove_dir_all(&self.dir);
+    }
+}
+
+impl Fit {
+    /// The address fit logs after `before` (as `ws://127.0.0.1:1234/` or `http://127.0.0.1:1234`)
+    /// once it listens there, within 15 s: its listeners bind port 0, as akit's do, so that no
+    /// other process takes a port between the test choosing it and fit binding it.
+    fn addr(&self, before: &str) -> String {
+        let deadline = Instant::now() + Duration::from_secs(15);
+        loop {
+            let left = deadline.saturating_duration_since(Instant::now());
+            let line = self
+                .lines
+                .recv_timeout(left)
+                .unwrap_or_else(|e| panic!("fit logged no {before:?}: {e}"));
+            if let Some((_, rest)) = line.split_once(before) {
+                return rest
+                    .split(|c: char| c == '/' || c.is_whitespace())
+                    .next()
+                    .unwrap()
+                    .to_owned();
+            }
+        }
     }
 }
 
@@ -296,28 +313,47 @@ fn fit(bin: &str, name: &str, doc: &str) -> Fit {
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("fit.json");
     std::fs::write(&path, doc).unwrap();
-    let log = std::fs::File::create(dir.join("fit.log")).unwrap();
-    let child = std::process::Command::new(bin)
+    let mut child = std::process::Command::new(bin)
         .args(["run", "-c"])
         .arg(&path)
         .current_dir(&dir)
-        .stdout(log.try_clone().unwrap())
-        .stderr(log)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::fs::File::create(dir.join("fit.err")).unwrap())
         .spawn()
         .unwrap();
-    Fit(child, dir)
+    let out = child.stdout.take().unwrap();
+    let (tx, lines) = std::sync::mpsc::channel();
+    let name = name.to_owned();
+    std::thread::spawn(move || {
+        use std::io::BufRead as _;
+        for line in std::io::BufReader::new(out).lines() {
+            let Ok(line) = line else { break };
+            eprintln!("fit {name}: {line}");
+            let _ = tx.send(line);
+        }
+    });
+    Fit { child, dir, lines }
+}
+
+/// A connection to `port` whose reads time out after `limit`, or `None` for a try that got
+/// nothing: refused, or closed already. Until fit's side is up, a web proxy closes what it
+/// accepts as its WebSocket's dial is refused, and on macOS a socket's options are refused
+/// (`EINVAL`) once its peer has closed it and reset what was sent after.
+fn connect_timed(port: u16, limit: Duration) -> Option<TcpStream> {
+    let s = TcpStream::connect(("127.0.0.1", port)).ok()?;
+    s.set_read_timeout(Some(limit)).ok()?;
+    Some(s)
 }
 
 /// Gets `path` through the web proxy on `port` until it answers, within 15 s.
 fn get_page(port: u16, path: &str) -> String {
     let deadline = Instant::now() + Duration::from_secs(15);
     loop {
-        if let Ok(mut s) = TcpStream::connect(("127.0.0.1", port)) {
+        if let Some(mut s) = connect_timed(port, Duration::from_secs(10)) {
             let _ = write!(
                 s,
                 "GET {path} HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n"
             );
-            s.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
             let mut got = Vec::new();
             let _ = s.read_to_end(&mut got);
             let got = String::from_utf8_lossy(&got).into_owned();
@@ -340,21 +376,21 @@ fn with_fits_hub_and_proxy() {
         return;
     };
     // fit's hub, akit's proxy.
-    let (con, sock) = (free_port(), free_port());
-    let _hub = fit(
+    let hub = fit(
         &bin,
         "hub",
         &format!(
-            r#"{{"tunnel": {{"hub": {{"name": "hub", "password": "pw", "console": {{"address": "127.0.0.1:{con}", "users": [{{"username": "admin", "password_hash": "{HASH}"}}]}},
-                 "console_socket": {{"address": "127.0.0.1:{sock}", "password": "sock"}}}}}}}}"#
+            r#"{{"tunnel": {{"hub": {{"name": "hub", "password": "pw", "console": {{"address": "127.0.0.1:0", "users": [{{"username": "admin", "password_hash": "{HASH}"}}]}},
+                 "console_socket": {{"address": "127.0.0.1:0", "password": "sock"}}}}}}}}"#
         ),
     );
+    let sock = hub.addr("console over an encrypted WebSocket on ws://");
     let engine = akio::Engine::builder().client_threads(2).build().unwrap();
     engine.start().unwrap();
     let engine = Arc::new(engine);
     let mut roles = Manager::new(&[akit_tunnel::PROXY], Arc::clone(&engine), None);
     let doc = format!(
-        r#"{{"tunnel": {{"proxy": {{"name": "me", "web_proxies": [{{"name": "hub", "listen": "127.0.0.1:0", "url": "ws://127.0.0.1:{sock}/", "password": "sock"}}]}}}}}}"#
+        r#"{{"tunnel": {{"proxy": {{"name": "me", "web_proxies": [{{"name": "hub", "listen": "127.0.0.1:0", "url": "ws://{sock}/", "password": "sock"}}]}}}}}}"#
     );
     apply(&mut roles, &doc);
     let web = web_port(&roles);
@@ -390,18 +426,21 @@ fn with_fits_hub_and_proxy() {
         .unwrap()
         .socket_addr()
         .unwrap();
-    let web = free_port();
-    let _proxy = fit(
+    let proxy = fit(
         &bin,
         "proxy",
         &format!(
-            r#"{{"tunnel": {{"proxy": {{"name": "fit", "web_proxies": [{{"name": "hub", "listen": "127.0.0.1:{web}", "url": "ws://{sock}/", "password": "sock"}}]}}}}}}"#
+            r#"{{"tunnel": {{"proxy": {{"name": "fit", "web_proxies": [{{"name": "hub", "listen": "127.0.0.1:0", "url": "ws://{sock}/", "password": "sock"}}]}}}}}}"#
         ),
     );
+    let web: u16 = proxy
+        .addr(" on http://")
+        .rsplit_once(':')
+        .and_then(|(_, p)| p.parse().ok())
+        .expect("the port of fit's web proxy");
     let deadline = Instant::now() + Duration::from_secs(15);
     let mut s = loop {
-        if let Ok(mut s) = TcpStream::connect(("127.0.0.1", web)) {
-            s.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+        if let Some(mut s) = connect_timed(web, Duration::from_secs(5)) {
             let _ = s.write_all(b"ping");
             let mut b = [0u8; 4];
             if s.read_exact(&mut b).is_ok() && &b == b"ping" {

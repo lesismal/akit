@@ -22,6 +22,32 @@
 
 ## 日志
 
+### 2026-11-28：两个只在负载下出现的失败：上传在文件删除前就被拒绝应答，以及 macOS 上被关闭的尝试
+
+- akit-media 的 `tests/uploads.rs` `uploads` 在负载下失败，`upload_dir` 里留下一个上传的 `.json`
+  （macOS，同时 6 份：240 次中 136 次失败；单独运行 50 次 0 次失败）。声明长度超过上传剩余字节的
+  `PATCH` 会立刻得到 413 应答，而被放弃的上传的文件是在库的池上删除的（先 `.part`，再 `.json`）：
+  应答之后马上列目录，可能看到还没删掉的文件。fit 在应答之前删除它们。现在请求在 `limit_body`
+  拒绝这样的请求体（声明长度超过，或分块请求体增长到超过）之前就 detach，请求体的 sink 放弃上传，
+  写入结束时在文件删除之后才应答。`Chunk::abort` 的删除被池拒绝或过期时，写入以 busy（503）结束、
+  上传保留；此前过期会让上传永远处于 busy。被取消的写入的删除过期时，像被拒绝时一样把上传移除。
+  测试 `refused_body_answered_after_its_files`：占住池唯一的 worker，文件还在时没有应答，之后是
+  413 且什么都不剩，声明长度和分块请求体两种情况（修复前，声明长度的情况立刻应答，两个文件都还在）。
+  修复后：同时 6 份，240 次 0 次失败，macOS 和 gpu51（epoll 和 io_uring；修复前在 gpu51 上分别为
+  240 次 56 次和 22 次）都是如此。
+- akit-tunnel 的 `tests/console.rs` `with_fits_hub_and_proxy`（设置了 `AKIT_FIT_BIN`）在 macOS
+  负载下于 `set_read_timeout(..).unwrap()` 处以 `EINVAL` 失败。fit 的 hub 起来之前，akit 的 web
+  proxy 因 WebSocket 拨号被拒而关闭它接受的连接；如果关闭先于测试的请求到达，请求会被 reset，而
+  macOS 在对端 reset 之后拒绝设置 socket 选项。与密封 WebSocket 发送被拒即结束（82e32ca2）、akio
+  的 A305、fit 忽略写错误都无关。测试的每次尝试先设置超时再写，设置被拒视为一次没有结果的尝试。
+  在 gpu51 上（io_uring，同时 6 份）它在 240 次中以另一种方式失败了 1 次："no page through the
+  web proxy"，fit 的 hub 一直没有监听测试为它选的端口：询问时空闲，fit 绑定之前被别的进程占用
+  （该主机的临时端口从 1024 开始）。现在 fit 的监听器像 akit 的一样绑定端口 0，测试从 fit 经管道
+  逐行输出的日志（`console over an encrypted WebSocket on ws://…`、`serving the console of … on
+  http://…`）读出地址；文件里不再有 `free_port`。macOS debug 构建，与其他 console 测试一起同时
+  16 份：修复前 96 次中 10 次失败，修复后 160 次 0 次失败；gpu51 同时 6 份：epoll 修复前后都是
+  240 次 0 次失败，io_uring 修复前 240 次 1 次、修复后 0 次；单独运行各 50 次 0 次失败。
+
 ### 2026-11-28：I139c，跨成员的指标、日志和证书，以及 `akit cluster`
 
 - akit 自身的日志在内存中保留最近 1,000 条消息（`akit_observe::logger::ring`，fit 的 `logs/ring.go`）：自 akit 启动起从 1 编号，

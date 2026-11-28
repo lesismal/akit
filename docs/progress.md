@@ -23,6 +23,38 @@ done and where the work differs from the plan.
 
 ## Log
 
+### 2026-11-28: two load-only failures: an upload refused before its files went, and a closed try on macOS
+
+- akit-media's `tests/uploads.rs` `uploads` failed under load with an upload's `.json` left in
+  `upload_dir` (macOS, 6 copies at once: 136 of 240 runs failed; alone 0 of 50). A `PATCH` whose
+  declared length is past what the upload still takes was answered 413 at once, while the upload
+  it gave up had its files removed on the library's pool (the `.part`, then the `.json`): a listing
+  right after the answer could find what was not removed yet. fit removes them before it answers.
+  Now the request is detached before `limit_body` refuses such a body (a declared length past it,
+  or a chunked body that grows past it), its sink gives the upload up, and the write's end answers
+  once the files are gone. `Chunk::abort` whose removal the pool refuses or lets expire ends the
+  write busy (503), the upload kept, where an expired one left the upload busy for good; a
+  cancelled write's removal that expires drops the upload as a refused one does. Test
+  `refused_body_answered_after_its_files`: the pool's one worker held, no answer comes while the
+  files are there, then 413 and nothing left, for a declared length and a chunked body (before,
+  the declared length was answered at once, both files still there). After: 0 of 240 with 6
+  copies at once, on macOS and on gpu51 (epoll and io_uring; before, 56 and 22 of 240 there).
+- akit-tunnel's `tests/console.rs` `with_fits_hub_and_proxy` (`AKIT_FIT_BIN` set) failed on macOS
+  under load in `set_read_timeout(..).unwrap()` with `EINVAL`. Until fit's hub is up, akit's web
+  proxy closes what it accepts as its WebSocket's dial is refused; when that came before the
+  test's request, the request was reset, and macOS refuses a socket's options once its peer has
+  reset it. Neither the sealed WebSocket ending on a refused send (82e32ca2), akio's A305, nor
+  fit's ignored write errors. The test's tries set their timeout before they write and count a
+  refused one as a try that got nothing. On gpu51 (io_uring, 6 copies at once) it failed once in
+  240 another way: "no page through the web proxy", fit's hub never listening on the port the
+  test had chosen for it, free when asked and taken before fit bound it (the host's ephemeral
+  ports start at 1024). fit's listeners now bind port 0, as akit's do, and the test reads where
+  from the lines fit logs (`console over an encrypted WebSocket on ws://…`, `serving the console
+  of … on http://…`), as they come on a pipe; `free_port` is gone from the file. macOS debug
+  build, 16 copies at once beside the other console tests: 10 of 96 failed before, 0 of 160 after;
+  gpu51, 6 copies at once: 0 of 240 before and after on epoll, 1 of 240 before and 0 of 240 after
+  on io_uring; alone 0 of 50 on each.
+
 ### 2026-11-28: I139c, metrics, logs and certificates across members, and `akit cluster`
 
 - akit's own log keeps its last 1,000 messages in memory (`akit_observe::logger::ring`, fit's

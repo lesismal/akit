@@ -180,6 +180,11 @@ fn scanned(l: &Library, after: u64) {
 }
 
 fn rig(max_upload: u64) -> Rig {
+    rig_with(max_upload, 0)
+}
+
+/// [`rig`], its library's pool of `workers` (0 for the default).
+fn rig_with(max_upload: u64, workers: usize) -> Rig {
     let root = copy_lib();
     let key = KEYS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     let conf = MediaLibrary {
@@ -187,6 +192,7 @@ fn rig(max_upload: u64) -> Rig {
         roots: vec![root.0.display().to_string()],
         upload_dir: root.0.join("uploads").display().to_string(),
         max_upload_bytes: max_upload,
+        file_workers: workers,
         ..MediaLibrary::default()
     };
     library::apply(key, std::slice::from_ref(&conf)).unwrap();
@@ -346,6 +352,81 @@ fn uploads() {
         (s(upv, "dir"), n(upv, "max_bytes")),
         ("uploads".into(), 1 << 20)
     );
+}
+
+/// What of an upload's files is left in `upload_dir`.
+fn upload_files(r: &Rig) -> Vec<String> {
+    std::fs::read_dir(r.root.0.join("uploads"))
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|n| n.starts_with(".akit-upload-"))
+        .collect()
+}
+
+/// A body longer than the upload, refused, is answered once the upload it gave up is gone from
+/// `upload_dir`, as fit answers it: with the pool that removes its files held, no answer comes;
+/// let go, the answer finds nothing of it left. Answered at once, a listing right after it found
+/// the `.json` still there now and then. Both a declared length past the upload and a chunked
+/// body that grows past it.
+#[test]
+fn refused_body_answered_after_its_files() {
+    let r = rig_with(1 << 20, 1);
+    for (name, framing, body) in [
+        ("b.mp4", "Content-Length: 11", &[0u8; 11][..]),
+        (
+            "c.mp4",
+            "Transfer-Encoding: chunked",
+            &b"b\r\n\0\0\0\0\0\0\0\0\0\0\0\r\n0\r\n\r\n"[..],
+        ),
+    ] {
+        let v = r.create(name, 10).json();
+        let up = format!("/media/library/films/uploads/{}", s(&v, "id"));
+        assert_eq!(upload_files(&r).len(), 2, "{name}: {:?}", upload_files(&r));
+        // The pool's one worker held.
+        let (go, gate) = std::sync::mpsc::channel::<()>();
+        let (held_tx, held) = std::sync::mpsc::channel::<()>();
+        assert!(r.lib.submit(
+            Box::new(move || {
+                held_tx.send(()).unwrap();
+                let _ = gate.recv_timeout(T);
+            }),
+            None,
+        ));
+        held.recv_timeout(T).unwrap();
+        let mut sock = TcpStream::connect(r.api).unwrap();
+        let head = format!(
+            "PATCH {up} HTTP/1.1\r\nHost: x\r\nUpload-Offset: 0\r\nContent-Type: application/offset+octet-stream\r\n{framing}\r\n\r\n"
+        );
+        sock.write_all(head.as_bytes()).unwrap();
+        sock.write_all(body).unwrap();
+        // The removal queued behind the held worker.
+        let deadline = std::time::Instant::now() + T;
+        while r.lib.pool().stats().queued == 0 {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "{name}: nothing queued"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        sock.set_read_timeout(Some(Duration::from_millis(300)))
+            .unwrap();
+        match sock.read(&mut [0u8; 1]) {
+            Err(e)
+                if matches!(
+                    e.kind(),
+                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                ) => {}
+            other => panic!(
+                "{name}: answered with its files still there: {other:?}, {:?}",
+                upload_files(&r)
+            ),
+        }
+        go.send(()).unwrap();
+        sock.set_read_timeout(Some(T)).unwrap();
+        assert_eq!(read_resp(sock, false).status, 413, "{name}");
+        assert_eq!(upload_files(&r), Vec::<String>::new(), "{name}");
+        assert_eq!(http(r.api, "GET", &up, &[], b"").status, 404, "{name}");
+    }
 }
 
 /// fit's `TestMediaUploadLarge`: a body of many pieces, written as it arrives, each piece on the
