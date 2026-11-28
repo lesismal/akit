@@ -545,6 +545,7 @@ dependencies = [
  "akit-config",
  "akit-observe",
  "akit-roles",
+ "akit-runtime",
 ]
 
 [[package]]
@@ -704,6 +705,7 @@ dependencies = [
  "akit-config",
  "akit-observe",
  "akit-roles",
+ "akit-runtime",
 ]
 
 [[package]]

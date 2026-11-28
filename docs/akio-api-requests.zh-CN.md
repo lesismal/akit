@@ -132,6 +132,7 @@
 | A277 | 客户端响应所在连接的对端证书链，以及能把被拒绝的证书留给调用方查看的客户端 TLS 校验 | I132 提出；有记录在案的权宜做法（探测成员的证书） | 1, 15 | I132–I139c |
 | A301 | `H2Client` 在引擎优雅关闭时结束其连接（`GOAWAY`；没有打开的流时立即关闭，否则在最后一个流结束后关闭），如同 HTTP/1 客户端关闭其空闲连接 | 已进入 akio 的 main 并锁定（自 `db34bfd7` 起）：`H2Acceptor::on_shutdown`；akit 的权宜做法（`EngineSlot::shutdown`）已去掉 | 4, 10 | I18, I18b |
 | A302 | io_uring 上的 `Conn::close` 像 epoll 上一样重置一个收到了未交付数据的 TCP 连接（或提供以重置方式关闭的 `Conn::abort`）：目前进行中的接收在 shutdown 之后取走数据，面对零窗口的对端永远收不到重置 | 已提出；没有权宜做法（其间 fastcgi.rs 的 `cut_connections` 在 io_uring 上会失败） | — | I75 |
+| A303 | 在工作窃取（ADR-104）下依然成立的联动背压：暂停的上游读取（akio-http 的 `ResponseBody::hold_reads`，akit 的 `Download::hold_reads` 在其上）与写满的下游（`BodyStream::queued_bytes`、`on_drain`）像在事件循环上一样限制流式转发占用的内存 | 已提出；权宜做法：akit 的 TCP 监听器选择 `Scheduling::EventLoops`（`akit_runtime::scheduled`，决定 91），除非设置了 `AKIO_DEFAULT_SCHEDULING` | 8, 11 | I16, I17, I18b |
 
 ## A1 运行中引擎上的 TCP 监听器
 
@@ -2520,3 +2521,25 @@ akit FastCGI 处理器的跟踪显示：在响应开始后 2 ms 内，h2 客户�
 
 **akit 如何使用。** 采用 (a)，akit 无需改动，`cut_connections` 在 io_uring 上通过。采用 (b)，FastCGI 处理器
 （以及代理的上游连接）对响应结束前放弃的连接执行中止而不是关闭（`Exchange::fail` 以不复用方式释放它时）。
+
+## A303 工作窃取下的联动背压
+
+**状态。** 已提出（2026-11-28）。akit 中的权宜做法：其 TCP 和 Unix 域流监听器选择 `Scheduling::EventLoops`
+（`akit_runtime::scheduled`），除非设置了 `AKIO_DEFAULT_SCHEDULING`，此时由 akio 决定（决定 91，记录在[进度](progress.zh-CN.md)中）。
+
+**问题。** akio `db34bfd7` 把工作窃取（ADR-104）设为 epoll/kqueue 上 TCP 监听器的默认调度。在它之下，akit 的联动背压不再限制流式
+转发占用的内存。akit-proxy 把响应流式发给慢速客户端，当客户端连接中等待的数据超过 `DOWNLOAD_PENDING` 时暂停上游连接的读取
+（akit 的 `Download::hold_reads`，基于 akio-http 的 `ResponseBody::hold_reads`），在客户端的 `on_drain` 中恢复：客户端在 TCP 中等待，而不是在 akit 的内存中（规则 8）。在工作窃取下，
+几乎整个响应体反而堆积在 akit 中。
+
+**证据。** gpu51（Linux，16 核），akit 锁定到 `db34bfd7`，epoll。`akit-proxy/tests/stream.rs` 的 `stream_download`（向限速的
+HTTP/1.1 客户端发送 64 MiB，采样进程的常驻内存，上限 `MAX_RISE` 16 MiB）在 `h2c=false length=true` 情形失败：传输 64 MiB 时
+“resident memory rose” 51–59 MiB。单独运行：在 akio 的默认（工作窃取）下 6 次中 6 次失败；设置 `AKIO_DEFAULT_SCHEDULING=event-loops`
+时 3 次中 3 次通过。在 io_uring（只有事件循环）上整个工作区通过。
+
+**建议的 API。** 不需要新 API：在工作窃取下，`Conn::hold_reads(true)`（以及 akio-http 客户端在其上构建的 `ResponseBody::hold_reads`）
+无论由哪个 worker 运行，都从下一轮起停止读取该连接；写入一侧的 `queued_bytes`/`on_drain` 像在事件循环上一样报告尚未写出的字节，
+使得从另一个连接的回调（客户端的连接，在另一个 worker 上）设置的暂停在下一次读取之前生效。akio 中一个在不同 worker 上的两个连接
+之间转发、内存有界的测试可以保持这一点。
+
+**akit 如何使用。** `akit_runtime::scheduled` 连同决定 91 一起去掉：akit 的监听器重新采用 akio 的默认调度，`stream_download` 在其下通过。

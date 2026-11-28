@@ -22,6 +22,23 @@ done and where the work differs from the plan.
 
 ## Log
 
+### 2026-11-28: akit's listeners on event loops until akio's A303
+
+- On gpu51's epoll run at the new pin, akit-proxy's `stream_download` failed ("resident memory
+  rose" 51–59 MiB moving 64 MiB to a paced client, over its 16 MiB bound): 6 of 6 runs alone under
+  akio's new default, work stealing; 3 of 3 passed with `AKIO_DEFAULT_SCHEDULING=event-loops`.
+  Under work stealing the upstream reads akit holds while the client's connection is full no
+  longer keep the body out of akit's memory.
+- `akit_runtime::scheduled` gives akit's TCP and Unix-domain stream listeners
+  `Scheduling::EventLoops`: the gateway's (akit-listener, those a reload adds too), the Admin
+  API's and the consoles', and the roles' (tunnel hub, node and proxy, the LLM proxy and wire,
+  streaming, TURN over TCP and TLS). With `AKIO_DEFAULT_SCHEDULING` set it chooses nothing and
+  akio's default follows the variable, so work stealing can still be tried. Test:
+  `akit-runtime/tests/scheduling.rs` (akio resizes the threads of the listener `scheduled`
+  returns, and refuses an unchosen one, which is on work stealing).
+- akio API request A303 asks for backpressure that holds under work stealing; decision 91 records
+  the choice, the other being to take work stealing now.
+
 ### 2026-11-28: the A301 stopgap removed
 
 - akio's h2 client ends its connections at the engine's graceful shutdown itself (A301, pinned

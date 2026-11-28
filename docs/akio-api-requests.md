@@ -133,6 +133,7 @@ first; its status here records the branch, then the akio commit akit pins.
 | A277 | A client response's peer certificate chain, and a client TLS verifier that keeps a certificate it refused for the caller to see | requested by I132; a recorded stopgap (a probe of the member's certificate) | 1, 15 | I132–I139c |
 | A301 | `H2Client` ends its connection at the engine's graceful shutdown (`GOAWAY`; closed now with no stream open, else after its last), as the HTTP/1 client closes its idle ones | on akio's main and pinned (since `db34bfd7`): `H2Acceptor::on_shutdown`; akit's stopgap (`EngineSlot::shutdown`) removed | 4, 10 | I18, I18b |
 | A302 | `Conn::close` on io_uring resets a TCP connection whose received data it did not deliver, as on epoll (or a `Conn::abort` that closes with a reset): today a receive in flight takes the data after the shutdown, so the peer, facing a zero window, is never reset | requested; no stopgap (fastcgi.rs `cut_connections` fails on io_uring meanwhile) | — | I75 |
+| A303 | Linked backpressure that holds under work stealing (ADR-104): a held upstream read (akio-http's `ResponseBody::hold_reads`, under akit's `Download::hold_reads`) and a full downstream write (`BodyStream::queued_bytes`, `on_drain`) bound what a streamed relay holds, as on event loops | requested; stopgap: akit's TCP listeners choose `Scheduling::EventLoops` (`akit_runtime::scheduled`, decision 91) unless `AKIO_DEFAULT_SCHEDULING` is set | 8, 11 | I16, I17, I18b |
 
 ## A1 TCP listeners on a running engine
 
@@ -3173,3 +3174,33 @@ does on epoll; (b) lets a proxy say it on purpose.
 **How akit would use it.** With (a), nothing changes in akit and `cut_connections` passes on
 io_uring. With (b), the FastCGI handler (and the proxy's upstream connections) abort, rather than
 close, a connection given up before its response ended (`Exchange::fail` releasing it unreused).
+
+## A303 Linked backpressure under work stealing
+
+**Status.** Requested (2026-11-28). Stopgap in akit: its TCP and Unix-domain stream listeners
+choose `Scheduling::EventLoops` (`akit_runtime::scheduled`), unless `AKIO_DEFAULT_SCHEDULING` is
+set, which leaves the choice to akio (decision 91, recorded in [progress](progress.md)).
+
+**Problem.** akio `db34bfd7` made work stealing (ADR-104) the default scheduling of TCP listeners
+on epoll/kqueue. With it, akit's linked backpressure no longer bounds the memory of a streamed
+relay. akit-proxy streams a response to a slow client and, while more than `DOWNLOAD_PENDING` of
+it waits in the client's connection, holds the upstream connection's reads (akit's
+`Download::hold_reads`, on akio-http's `ResponseBody::hold_reads`), resuming them on the
+client's `on_drain`: the client waits in TCP, not in akit's memory (rule 8). Under work stealing, nearly the whole body piles up in akit instead.
+
+**Evidence.** gpu51 (Linux, 16 cores), akit at the pin to `db34bfd7`, epoll.
+`akit-proxy/tests/stream.rs` `stream_download` (64 MiB to a paced HTTP/1.1 client, the process's
+resident memory sampled, bound `MAX_RISE` 16 MiB) fails in the case `h2c=false length=true`:
+"resident memory rose" 51–59 MiB moving 64 MiB. Alone: 6 of 6 runs fail under akio's default
+(work stealing); 3 of 3 pass with `AKIO_DEFAULT_SCHEDULING=event-loops`. On io_uring (event loops
+only) the whole workspace passes.
+
+**Suggested API.** No new API: under work stealing, `Conn::hold_reads(true)` (and what akio-http's
+client builds on it, `ResponseBody::hold_reads`) stops reading the connection from the next round on,
+whichever worker runs it, and `queued_bytes`/`on_drain` on the writing side report the bytes not
+yet written as on event loops, so that a hold set from another connection's callback (the
+client's connection, on another worker) takes effect before the next read. A test in akio of a
+relay between two connections on different workers, its memory bounded, would keep it so.
+
+**How akit would use it.** `akit_runtime::scheduled` goes, with decision 91: akit's listeners
+take akio's default scheduling again, and `stream_download` passes under it.

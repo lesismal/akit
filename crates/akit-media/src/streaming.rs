@@ -627,7 +627,7 @@ impl Server {
         let mut l = if udp {
             akio::Listener::udp(addr)
         } else {
-            akio::Listener::tcp(addr)
+            akit_runtime::scheduled(akio::Listener::tcp(addr))
         };
         l = build(l);
         if let Some(f) = self.filter() {

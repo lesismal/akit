@@ -21,6 +21,17 @@
 
 ## 日志
 
+### 2026-11-28：akio 的 A303 之前 akit 的监听器使用事件循环
+
+- 在新锁定版本下 gpu51 的 epoll 测试中，akit-proxy 的 `stream_download` 失败（向限速客户端传输 64 MiB 时“resident memory rose”
+  51–59 MiB，超过其 16 MiB 上限）：在 akio 新的默认工作窃取下单独运行 6 次中 6 次失败；设置 `AKIO_DEFAULT_SCHEDULING=event-loops`
+  时 3 次中 3 次通过。在工作窃取下，客户端连接写满时 akit 暂停的上游读取不再能把响应体挡在 akit 的内存之外。
+- `akit_runtime::scheduled` 让 akit 的 TCP 和 Unix 域流监听器使用 `Scheduling::EventLoops`：网关的（akit-listener，包括重载添加的）、
+  Admin API 和控制台的，以及各角色的（隧道的 hub、node 和 proxy，LLM 的 proxy 和 wire，streaming，基于 TCP 和 TLS 的 TURN）。
+  设置了 `AKIO_DEFAULT_SCHEDULING` 时它不做选择，akio 的默认随该变量，因此仍可试用工作窃取。测试：`akit-runtime/tests/scheduling.rs`
+  （akio 能调整 `scheduled` 返回的监听器的线程数，而拒绝未做选择的、运行在工作窃取上的监听器）。
+- akio API 请求 A303 要求背压在工作窃取下成立；决定 91 记录这一选择，另一选择是现在就采用工作窃取。
+
 ### 2026-11-28：去掉 A301 的权宜做法
 
 - akio 的 h2 客户端在引擎优雅关闭时自行结束其连接（A301，自 `db34bfd7` 起锁定），因此 akit 的权宜做法去掉：`EngineSlot::shutdown`、

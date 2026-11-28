@@ -23,6 +23,7 @@ akit-access = { workspace = true }
 akit-config = { workspace = true }
 akit-observe = { workspace = true }
 akit-roles = { workspace = true }
+akit-runtime = { workspace = true }
 
 [dev-dependencies]
 akio-crypto = { workspace = true }

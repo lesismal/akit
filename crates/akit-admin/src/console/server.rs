@@ -401,8 +401,8 @@ impl Console {
         };
         let listener = match &opts.console_access {
             // Refused at accept, before anything is read (fit's Binding.Filter).
-            Some(p) => Listener::tcp(addr).filter(super::accept_filter(p)),
-            None => Listener::tcp(addr),
+            Some(p) => akit_runtime::scheduled(Listener::tcp(addr)).filter(super::accept_filter(p)),
+            None => akit_runtime::scheduled(Listener::tcp(addr)),
         };
         // Counted as they are accepted, before TLS (akio's A232).
         let (a, b) = (Arc::clone(&conns), conns);

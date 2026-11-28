@@ -938,7 +938,8 @@ fn tcp_engine_listener(
     backend: Option<&Backend>,
     event_loops: usize,
 ) -> EngineListener {
-    let l = EngineListener::tcp(addr);
+    // akit's scheduling, event loops (A303).
+    let l = akit_runtime::scheduled(EngineListener::tcp(addr));
     // Named only when chosen: a backend named is final, while akio's default follows its
     // `AKIO_DEFAULT_BACKEND` (ADR-029), which is how `akit run` gets onto io_uring.
     let l = match backend {

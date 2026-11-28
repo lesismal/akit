@@ -473,7 +473,7 @@ impl Core {
             open: Mutex::new(HashMap::new()),
         });
         let (a, b) = (Arc::clone(&conns), Arc::clone(&conns));
-        let mut l = akio::Listener::tcp(addr)
+        let mut l = akit_runtime::scheduled(akio::Listener::tcp(addr))
             .threads(1)
             .on_accept(move |h| {
                 let mut g = lock(&a.open);

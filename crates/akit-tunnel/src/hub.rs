@@ -1279,10 +1279,14 @@ impl Hub {
                     }
                 });
             let mut el = match (l.protocol, tls) {
-                (TunnelProtocol::Tcp, _) => akio::Listener::tcp(addr).threads(1).serve(acceptor),
-                (TunnelProtocol::Tls, Some(cfg)) => akio::Listener::tcp(addr)
+                (TunnelProtocol::Tcp, _) => akit_runtime::scheduled(akio::Listener::tcp(addr))
                     .threads(1)
-                    .serve(akio::tls::Tls::server(cfg, acceptor)),
+                    .serve(acceptor),
+                (TunnelProtocol::Tls, Some(cfg)) => {
+                    akit_runtime::scheduled(akio::Listener::tcp(addr))
+                        .threads(1)
+                        .serve(akio::tls::Tls::server(cfg, acceptor))
+                }
                 (TunnelProtocol::Quic, Some(cfg)) => {
                     match self.bind_quic(&cfg, addr) {
                         Ok(b) => next.push(Open {
@@ -1294,16 +1298,14 @@ impl Hub {
                     }
                     continue;
                 }
-                (TunnelProtocol::Ws, _) => {
-                    akio::Listener::tcp(addr)
-                        .threads(1)
-                        .serve(akio_http::serve_with(
-                            crate::ws::http_config(),
-                            crate::ws::service(l.ws_path().to_owned(), self.ws_accept()),
-                        ))
-                }
+                (TunnelProtocol::Ws, _) => akit_runtime::scheduled(akio::Listener::tcp(addr))
+                    .threads(1)
+                    .serve(akio_http::serve_with(
+                        crate::ws::http_config(),
+                        crate::ws::service(l.ws_path().to_owned(), self.ws_accept()),
+                    )),
                 (TunnelProtocol::Wss, Some(cfg)) => {
-                    akio::Listener::tcp(addr)
+                    akit_runtime::scheduled(akio::Listener::tcp(addr))
                         .threads(1)
                         .serve(akio::tls::Tls::server(
                             cfg,

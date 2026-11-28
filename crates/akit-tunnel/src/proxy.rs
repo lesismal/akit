@@ -715,7 +715,7 @@ impl Proxy {
                 continue;
             };
             let me = c.me.clone();
-            let mut l = akio::Listener::tcp(addr)
+            let mut l = akit_runtime::scheduled(akio::Listener::tcp(addr))
                 .threads(1)
                 .serve(akio::fn_acceptor(
                     move |conn: &akio::Conn<EndHandler>| match me.upgrade() {
