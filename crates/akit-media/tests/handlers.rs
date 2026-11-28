@@ -313,8 +313,8 @@ fn no_role() {
 }
 
 /// `config` with `url_signing` (`signing`) on the policy `live`, and its secret.
-fn signed_config(rtmp: u16, signing: &str) -> String {
-    config(rtmp).replace(
+fn signed_config(signing: &str) -> String {
+    config().replace(
         r#""name": "live", "tokens""#,
         &format!(
             r#""name": "live", "secret": "a-secret-of-sixteen-bytes", "url_signing": {signing}, "tokens""#
@@ -343,8 +343,8 @@ fn unix_now() -> i64 {
 
 /// A stream published to akit over RTMP, with `url_signing` as `signing` writes it; `f` plays it.
 fn with_stream(signing: &str, f: impl FnOnce(&Akit)) {
-    let rtmp_port = free_port();
-    let akit = start(&signed_config(rtmp_port, signing), true);
+    let akit = start(&signed_config(signing), true);
+    let rtmp_port = bound(&akit.roles, "rtmp");
     let src = Hub::default();
     let stop = Arc::new(AtomicBool::new(false));
     let feeder = paced(&src, "src", Arc::clone(&stop));
@@ -475,6 +475,7 @@ fn told(akit: &Akit, path: &str) -> (std::sync::mpsc::Receiver<()>, akio_media::
     (rx, sub)
 }
 
+/// The push targets' server: RTMP and SRT on `rtmp` and `srt`, 0 for a port of its own.
 fn target_config(rtmp: u16, srt: u16) -> String {
     format!(
         r#"{{"listeners": [{{"name": "web", "address": "127.0.0.1:0"}}],
@@ -487,8 +488,8 @@ fn target_config(rtmp: u16, srt: u16) -> String {
 /// which receives it, and gets it back after the server starts again.
 #[test]
 fn push_targets() {
-    let (rp, sp) = (free_port(), free_port());
-    let target = start(&target_config(rp, sp), true);
+    let target = start(&target_config(0, 0), true);
+    let (rp, sp) = (bound(&target.roles, "rtmp"), bound(&target.roles, "srt"));
     let src = Hub::default();
     let stop = Arc::new(AtomicBool::new(false));
     let feeder = paced(&src, "live/cam", Arc::clone(&stop));
@@ -543,7 +544,9 @@ fn push_targets() {
         assert!(!format!("{st:?}").contains(TOKEN), "{st:?}");
     }
     assert!(m.push("srt").unwrap().status().bytes > 0);
-    // The server starts again: each push gets the stream back to it.
+    // The server starts again, at the same address, which the pushes' URLs name: its ports are
+    // named this time, free since the server before let them go (another process could take one
+    // in between, the one window left here).
     drop((_sa, _sb));
     drop(target);
     let target = start(&target_config(rp, sp), true);
