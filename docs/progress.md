@@ -131,7 +131,7 @@ done and where the work differs from the plan.
   files managed (I149). fit's I131, the MP4 reader fit asked fib for, is akio-media's `mp4` (akio
   ADR-097), and fit's fib request for encryption in live HLS (A69) is akio-media's `HlsEncryption`:
   what akio lacks is asked as A295–A300 when an iteration meets it. A row in the benchmark table
-  names what to measure. Built on the Streaming and media auth track (`claude/streaming`).
+  names what to measure. Built on the Streaming and media auth track (I120–I126, on main).
 
 ### 2026-11-28: a shutdown no longer waits for idle upstream connections
 
