@@ -136,13 +136,9 @@ pub(crate) fn valid_name(name: &str) -> bool {
         return false;
     }
     let u = stem.to_ascii_uppercase();
-    if u.len() == 4
+    !(u.len() == 4
         && (u.starts_with("COM") || u.starts_with("LPT"))
-        && u.as_bytes().get(3).is_some_and(u8::is_ascii_digit)
-    {
-        return false;
-    }
-    true
+        && u.as_bytes().get(3).is_some_and(u8::is_ascii_digit))
 }
 
 /// `p`, a slash path under a root the library writes, cleaned of a trailing '/' (fit's
