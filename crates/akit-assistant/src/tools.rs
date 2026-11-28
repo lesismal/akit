@@ -18,6 +18,10 @@ const DEFAULT_METRIC_LINES: u64 = 200;
 const MAX_DIFF_ENTRIES: usize = 400;
 /// The most bytes of text `config_validate` takes.
 const MAX_TOOL_TEXT_BYTES: usize = 1 << 20;
+/// The most lines `log_tail` and `access_log_sample` give.
+const MAX_LOG_LINES: u64 = 500;
+/// How much of the access log's file `access_log_sample` reads, from its end.
+const ACCESS_LOG_TAIL_BYTES: u64 = 512 << 10;
 /// The most buttons of `ask_user`.
 pub const MAX_ASK_OPTIONS: usize = 8;
 
@@ -105,6 +109,45 @@ pub fn read_tools() -> Vec<Tool> {
             "The response cache's zones: their sizes, entries and hit rates.",
             r#"{"type":"object","properties":{}}"#,
             cache_zones,
+        ),
+        Tool {
+            enabled: Some(|s| {
+                if s.data.send_logs {
+                    Ok(())
+                } else {
+                    Err("data.send_logs is off")
+                }
+            }),
+            ..t(
+                "log_tail",
+                "logs",
+                "The latest lines of akit's own log, from a bounded ring in memory, oldest first: by logger (server, tls, provider, engine and the like), least level and text. Secrets are redacted.",
+                r#"{"type":"object","properties":{"logger":{"type":"string"},"level":{"type":"string","enum":["debug","info","warn","error"]},"contains":{"type":"string"},"limit":{"type":"integer","description":"the most lines, 100 when left out, at most 500"}}}"#,
+                log_tail,
+            )
+        },
+        Tool {
+            enabled: Some(|s| {
+                if s.data.send_access_log {
+                    Ok(())
+                } else {
+                    Err("data.send_access_log is off")
+                }
+            }),
+            ..t(
+                "access_log_sample",
+                "logs",
+                "Recent lines of the access log's file matching a route, a status, a client address or text, newest last. Secrets are redacted.",
+                r#"{"type":"object","properties":{"route":{"type":"string"},"status":{"type":"integer"},"client":{"type":"string"},"contains":{"type":"string"},"limit":{"type":"integer","description":"the most lines, 50 when left out, at most 500"}}}"#,
+                access_log_sample,
+            )
+        },
+        t(
+            "adapt_convert",
+            "convert",
+            "Convert nginx or Caddyfile text to akit's config as `akit adapt` does: the JSON, and what it could not convert.",
+            r#"{"type":"object","properties":{"from":{"type":"string","enum":["nginx","caddyfile"]},"text":{"type":"string"}},"required":["from","text"]}"#,
+            adapt_convert,
         ),
         Tool {
             name: "ask_user",
@@ -664,6 +707,147 @@ fn cache_zones(c: &Call<'_>) -> Result<String, String> {
     c.a.api_json("GET", "/cache", Vec::new())
 }
 
+fn log_tail(c: &Call<'_>) -> Result<String, String> {
+    use akit_observe::logger::{Filter, Level};
+    let level = match c.str("level")?.as_str() {
+        "" => None,
+        "debug" => Some(Level::Debug),
+        "info" => Some(Level::Info),
+        "warn" => Some(Level::Warn),
+        "error" => Some(Level::Error),
+        l => return Err(format!("level is debug, info, warn or error, not {l:?}")),
+    };
+    let limit = usize::try_from(c.uint("limit")?.min(MAX_LOG_LINES)).unwrap_or(100);
+    // The ring the Admin API's GET /logs/recent answers too (I139c).
+    let Some(root) = akit_observe::logger::installed() else {
+        return Err("akit's log keeps no lines in memory here".to_owned());
+    };
+    let recs = root.recent(&Filter {
+        logger: c.str("logger")?,
+        level,
+        contains: c.str("contains")?,
+        limit,
+        after: 0,
+    });
+    if recs.is_empty() {
+        return Ok("no line matches".to_owned());
+    }
+    let mut b = String::new();
+    for r in recs {
+        let mut t = Vec::new();
+        akit_observe::time::rfc3339(&mut t, akit_observe::time::Stamp::of(r.time), 0);
+        let level = match r.level {
+            Level::Debug => "debug",
+            Level::Info => "info",
+            Level::Warn => "warn",
+            Level::Error => "error",
+        };
+        b.push_str(&format!(
+            "{} {level} {}: {}\n",
+            String::from_utf8_lossy(&t),
+            r.logger,
+            r.message
+        ));
+    }
+    Ok(b)
+}
+
+/// Whether `s` holds `w` apart from digits around it, as a status in a line.
+fn contains_word(s: &str, w: &str) -> bool {
+    let b = s.as_bytes();
+    s.match_indices(w).any(|(j, _)| {
+        let before = j == 0 || !b.get(j.saturating_sub(1)).is_some_and(u8::is_ascii_digit);
+        let end = j.saturating_add(w.len());
+        let after = end >= b.len() || !b.get(end).is_some_and(u8::is_ascii_digit);
+        before && after
+    })
+}
+
+/// The last `n` bytes of the file at `path`, from the start of a line. Reads a file: on the
+/// tools' pool.
+fn read_tail(path: &str, n: u64) -> std::io::Result<String> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut f = std::fs::File::open(path)?;
+    let size = f.metadata()?.len();
+    let off = size.saturating_sub(n);
+    f.seek(SeekFrom::Start(off))?;
+    let mut data = Vec::new();
+    f.take(n).read_to_end(&mut data)?;
+    if off > 0 {
+        if let Some(i) = data.iter().position(|b| *b == b'\n') {
+            data.drain(..=i);
+        }
+    }
+    Ok(String::from_utf8_lossy(&data).into_owned())
+}
+
+fn access_log_sample(c: &Call<'_>) -> Result<String, String> {
+    let (route, client, contains) = (c.str("route")?, c.str("client")?, c.str("contains")?);
+    let status = c.uint("status")?;
+    let mut limit = c.uint("limit")?;
+    if limit == 0 {
+        limit = 50;
+    }
+    let limit = usize::try_from(limit.min(MAX_LOG_LINES)).unwrap_or(50);
+    let cfg = config_json(c, "effective")?;
+    let out = cfg
+        .get("access_log")
+        .map(|a| json::str_of(a, "output").to_owned())
+        .unwrap_or_default();
+    if out.is_empty() || !akit_config::is_file_output(&out) {
+        return Err(
+            "the access log is not written to a file here, so there are no lines to read"
+                .to_owned(),
+        );
+    }
+    let tail = read_tail(&akit_config::output_path(&out), ACCESS_LOG_TAIL_BYTES)
+        .map_err(|e| format!("reading the access log: {e}"))?;
+    let status = if status == 0 {
+        String::new()
+    } else {
+        status.to_string()
+    };
+    let contains = contains.to_lowercase();
+    let lines: Vec<&str> = tail
+        .lines()
+        .filter(|l| {
+            !l.trim().is_empty()
+                && (route.is_empty() || l.contains(route.as_str()))
+                && (status.is_empty() || contains_word(l, &status))
+                && (client.is_empty() || l.contains(client.as_str()))
+                && (contains.is_empty() || l.to_lowercase().contains(&contains))
+        })
+        .collect();
+    let lines = lines
+        .get(lines.len().saturating_sub(limit)..)
+        .unwrap_or(&[]);
+    if lines.is_empty() {
+        return Ok("no line matches".to_owned());
+    }
+    Ok(lines.join("\n"))
+}
+
+fn adapt_convert(c: &Call<'_>) -> Result<String, String> {
+    let from = c.str("from")?;
+    let text = c.str("text")?;
+    if text.is_empty() || text.len() > MAX_TOOL_TEXT_BYTES {
+        return Err(format!("text is 1 to {MAX_TOOL_TEXT_BYTES} bytes"));
+    }
+    let r = match from.as_str() {
+        "nginx" => akit_config::convert::nginx(&text),
+        // Environment variables are not read: what the model sends is not this akit's.
+        "caddyfile" => akit_config::convert::caddyfile(&text, &|_| None),
+        f => return Err(format!("from is nginx or caddyfile, not {f:?}")),
+    }?;
+    let out = Obj::new()
+        .raw("config", r.json().trim())
+        .raw("warnings", &json::strings(r.warnings()))
+        .end();
+    c.a.redactor(c.settings)
+        .json_text(&out, &[])
+        .ok_or_else(|| "the converted config is not JSON".to_owned())
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used)]
@@ -692,6 +876,16 @@ mod tests {
             ]
         );
         assert_eq!(sample("up 1").0, "up");
+    }
+
+    #[test]
+    fn words_and_tails() {
+        assert!(contains_word("GET / 404 12", "404") && !contains_word("x 4040 y", "404"));
+        let p = std::env::temp_dir().join(format!("akit-assistant-tail-{}", std::process::id()));
+        std::fs::write(&p, "first line\nsecond\nthird\n").unwrap();
+        let t = read_tail(p.to_str().unwrap(), 12).unwrap();
+        assert_eq!(t, "third\n");
+        let _ = std::fs::remove_file(&p);
     }
 
     #[test]

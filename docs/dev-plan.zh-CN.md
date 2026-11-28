@@ -280,7 +280,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I160 | 助手 I：配置中的 `admin.assistant`、存储中的设置和密钥、模块 `ai` | I93c, I91 | done |
 | I161 | 助手 II：模型客户端和提供方测试 | I160, I107 | done |
 | I162 | 助手 III：对话和读取工具 | I161 | done |
-| I162b | 助手 III b：基于 akit 自身日志环的 `log_tail`、`access_log_sample`、`adapt_convert` | I162 | todo |
+| I162b | 助手 III b：基于 akit 自身日志环的 `log_tail`、`access_log_sample`、`adapt_convert` | I162 | done |
 | I163 | 助手 IV：提案、级别和审计日志 | I162 | todo |
 | I164 | 助手 V：技能 | I162 | todo |
 | I165 | 助手 VI：问 AI、迁移和审查 | I163, I164, I74 | todo |
@@ -2286,12 +2286,13 @@ fit 的 I124–I130 和 I152–I154（fit 的 [工作台中的 AI
 
 ### I162b 助手 III b：日志工具和转换器
 
-- **做什么**：fit 的 `log_tail`，基于 akit 自身日志的有界环（1000 条、每条 2 KiB，按日志器、级别和文本，受 `data.send_logs` 控制）；
+- **做什么**：fit 的 `log_tail`，基于 I139c 为 `GET /logs/recent` 保留的 akit 自身日志环（1000 条、每条 2 KiB，按日志器、级别和文本，
+  受 `data.send_logs` 控制）；
   `access_log_sample`，读访问日志文件的末尾（512 KiB，受 `data.send_access_log` 控制）；`adapt_convert`，经 `akit adapt` 的转换器。
 - **完成标准**：fit 这三个工具的测试移植后通过；相应设置关闭时日志的任何内容都不到达模型。
-- **涉及**：`akit-assistant`、`akit-observe`（日志环）、`akit-admin`、`docs`。
-- **fit**：`assistant/tools_read.go`、`logs/recent.go`；I125。
-- **状态**：todo。
+- **涉及**：`akit-assistant`、`akit-admin`、`docs`。
+- **fit**：`assistant/tools_read.go`、`logs/ring.go`；I125。
+- **状态**：done（2026-11-28），基于 I139c 的 `akit_observe::logger::ring`。见进展日志。
 
 ### I163 助手 IV：提案、级别和审计日志
 

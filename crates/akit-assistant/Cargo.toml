@@ -21,6 +21,8 @@ akio-crypto = { workspace = true }
 # The requests the console module answers.
 akio-http = { workspace = true }
 akit-config = { workspace = true }
+# akit's own log's latest messages, for log_tail (I162b).
+akit-observe = { workspace = true }
 # Secrets found in what the tools hand a model (fit's patterns), and data.redact's in Go's
 # syntax (akit-router's compiler, as the config checked them).
 akio-regex = { workspace = true }

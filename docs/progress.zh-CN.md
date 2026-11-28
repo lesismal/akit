@@ -18,9 +18,18 @@
 | akio 需求 | A1–A24、A29、A30、A32、A33、A35–A38、A45、A48、A49、A51–A54、A57、A58、A63–A66、A75、A78、A79、A90–A94、A105、A108、A109、A111–A113、A117、A132–A135、A148、A165–A172、A180、A200、A214、A215、A220、A230–A238、A245 和 A247–A249 已进入 akio 的 main 并锁定；A225（外部审查，L15）已提出（[akio API 请求](akio-api-requests.zh-CN.md)） |
 | 流媒体与媒体认证 | [I120–I126](dev-plan.zh-CN.md#流媒体与媒体认证)，fit 的 I115–I117（决定 040）：I120（配置中的 `media_auth` 和 `streaming`）、I121（策略、检查、`akit media-token`）I122（角色的媒体中心、RTMP、RTSP 和 SRT）、I123（`httpflv`、`hls`）、I124（WebRTC 端口、`stream_whip`、`stream_whep`）、I125（`media_pages`）和 I126（`whip`、`whep` 和 `webrtc_proxy` 上的 `auth`）已完成；媒体库的 `libraries`、`vod` 和 `channels` 等待其那条线；akio 请求 A263–A268 |
 | 媒体库与频道 | [I140–I149](dev-plan.zh-CN.md#媒体库与频道)，fit 的 I131–I139 和 I119（决定 043）：I140（配置中的 `media_library`）、I141（目录、角色 `media_library`、`/media/library`）、I142（`vod`）、I143（`keys`、`media_tokens`）、I144（`url_signing`）、I145（频道）、I146（推送目标）、I147（加密分片）、I148（视频网站）和 I149（控制台的媒体页面、文件管理）已完成：这条线已完成；akio 需求 A295–A298 |
-| AI 助手 | [I160–I169](dev-plan.zh-CN.md#ai-助手)，fit 的 I124–I130 和 I152–I154（决定 044）：I160（`admin.assistant`、模块 `ai`、存储中的设置和密钥）、I161（模型客户端、提供方测试）和 I162（对话和读取工具）已完成；下一个是 I162b |
+| AI 助手 | [I160–I169](dev-plan.zh-CN.md#ai-助手)，fit 的 I124–I130 和 I152–I154（决定 044）：I160（`admin.assistant`、模块 `ai`、存储中的设置和密钥）、I161（模型客户端、提供方测试）、I162（对话和读取工具）和 I162b（日志工具、转换器）已完成；下一个是 I163 |
 
 ## 日志
+
+### 2026-11-28：I162b，助手 III b：日志工具和转换器
+
+- `log_tail` 读取 I139c 保留的 akit 自身日志环（`akit_observe::logger::ring`，fit 的 `logs/ring.go`：1000 条、每条最多 2 KiB，
+  `GET /logs/recent` 也读取它），按日志器、最低级别和文本，最早的在前（受 `data.send_logs` 控制），`access_log_sample` 读取访问日志文件的
+  最后 512 KiB（受 `data.send_access_log` 控制；未写入文件的日志会说明），`adapt_convert` 用 `akit adapt` 的转换器转换 nginx 或
+  Caddyfile 文本（不读取环境变量）。设置关闭的工具不提供，功能页说明原因。
+- 核对：经控制台对脚本化的模型（`logs_and_converter`）：读回 `tls` 日志器的一条警告，只取访问日志中
+  401 的那一行，其中的 bearer 令牌被脱敏，转换一个 nginx server；设置关闭时告诉模型没有这个工具。下一个：I163。
 
 ### 2026-11-28：I162，助手 III：对话和读取工具
 

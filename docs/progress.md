@@ -19,9 +19,23 @@ done and where the work differs from the plan.
 | akio requests | A1–A24, A29, A30, A32, A33, A35–A38, A45, A48, A49, A51–A54, A57, A58, A63–A66, A75, A78, A79, A90–A94, A105, A108, A109, A111–A113, A117, A132–A135, A148, A165–A172, A180, A200, A214, A215, A220, A230–A238, A245 and A247–A249 on akio's main and pinned; A225 (an external review, L15) requested ([akio API requests](akio-api-requests.md)) |
 | Streaming and media auth | [I120–I126](dev-plan.md#streaming-and-media-auth), fit's I115–I117 (decision 040): I120 (`media_auth` and `streaming` in the config), I121 (the policies, the checks, `akit media-token`), I122 (the role's hub, RTMP, RTSP and SRT), I123 (`httpflv`, `hls`), I124 (the WebRTC port, `stream_whip`, `stream_whep`), I125 (`media_pages`) and I126 (`auth` on `whip`, `whep` and `webrtc_proxy`) done; the media library's `libraries`, `vod` and `channels` wait for its track; akio requests A263–A268 |
 | Media library and channels | [I140–I149](dev-plan.md#media-library-and-channels), fit's I131–I139 and I119 (decision 043): I140 (`media_library` in the config) I141 (the catalog, the role `media_library`, `/media/library`) I142 (`vod`), I143 (`keys`, `media_tokens`), I144 (`url_signing`), I145 (channels), I146 (push targets), I147 (encrypted segments), I148 (the video site) and I149 (the console's media pages, the files managed) done: the track is done; akio requests A295–A298 |
-| AI assistant | [I160–I169](dev-plan.md#ai-assistant), fit's I124–I130 and I152–I154 (decision 044): I160 (`admin.assistant`, the module `ai`, its settings and keys in the store) I161 (the model client, the provider test) and I162 (the chat and the read tools) done; I162b next |
+| AI assistant | [I160–I169](dev-plan.md#ai-assistant), fit's I124–I130 and I152–I154 (decision 044): I160 (`admin.assistant`, the module `ai`, its settings and keys in the store) I161 (the model client, the provider test) I162 (the chat and the read tools) and I162b (the logs' tools, the converter) done; I163 next |
 
 ## Log
+
+### 2026-11-28: I162b, the assistant III b: the logs' tools and the converter
+
+- `log_tail` reads the ring of akit's own log that I139c keeps (`akit_observe::logger::ring`, fit's
+  `logs/ring.go`: 1000 messages of at most 2 KiB, which `GET /logs/recent` answers too), by
+  logger, least level and text, oldest first (behind `data.send_logs`), `access_log_sample` reads the
+  last 512 KiB of the access log's file (behind `data.send_access_log`; a log not written to a file
+  says so), and `adapt_convert` converts nginx or Caddyfile text with `akit adapt`'s converters
+  (environment variables not read). A tool whose setting is off is not offered, and the Functions
+  page says why.
+- Checked: through the console against a scripted model
+  (`logs_and_converter`): a warning of the `tls` logger read back, the access log's 401 line
+  alone, a bearer token in it redacted, an nginx server converted; with the settings off the model
+  is told there is no such tool. Next: I163.
 
 ### 2026-11-28: I162, the assistant III: the chat and the read tools
 

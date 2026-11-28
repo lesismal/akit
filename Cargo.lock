@@ -427,6 +427,7 @@ dependencies = [
  "akio-http",
  "akio-regex",
  "akit-config",
+ "akit-observe",
  "akit-roles",
  "akit-router",
 ]

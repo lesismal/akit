@@ -70,11 +70,47 @@ fn start(model: &str, more: &str, store: Option<Arc<Sections>>) -> (Server, Sock
     start_with(model, r#"[{"name": "m"}]"#, more, store)
 }
 
+/// The access log's file of the config [`start_top`] gives, and akit's own log installed, once.
+fn logs() -> &'static std::path::Path {
+    static P: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+    P.get_or_init(|| {
+        let d = std::path::PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("assistant-chat");
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        let files = akit_observe::Files::new();
+        let c = akit_config::Log {
+            output: d.join("akit.log").to_string_lossy().into_owned(),
+            ..akit_config::Log::default()
+        };
+        let root =
+            akit_observe::logger::Root::new(Some(&c), akit_observe::Zone::utc(), &files).unwrap();
+        akit_observe::logger::install(Arc::new(root));
+        let access = d.join("access.log");
+        std::fs::write(
+            &access,
+            "127.0.0.1 - - \"GET /app HTTP/1.1\" 200 2 route=app\n10.0.0.9 - - \"GET /app HTTP/1.1\" 401 0 route=app authorization=Bearer abcdefgh123456\n",
+        )
+        .unwrap();
+        access
+    })
+}
+
 /// [`start`], the provider's models `models`.
 fn start_with(
     model: &str,
     models: &str,
     more: &str,
+    store: Option<Arc<Sections>>,
+) -> (Server, SocketAddr) {
+    start_top(model, models, more, "", store)
+}
+
+/// [`start_with`], `top` more top-level members of the config.
+fn start_top(
+    model: &str,
+    models: &str,
+    more: &str,
+    top: &str,
     store: Option<Arc<Sections>>,
 ) -> (Server, SocketAddr) {
     let hash = akio_crypto::bcrypt::hash(b"pw", akio_crypto::bcrypt::MIN_COST).unwrap();
@@ -83,7 +119,7 @@ fn start_with(
             "console": {{"address": "127.0.0.1:0", "users": [{{"username": "ada", "password_hash": "{hash}"}}, {{"username": "bob", "password_hash": "{hash}"}}]}},
             "assistant": {{"providers": [{{"name": "local", "kind": "openai_compatible", "base_url": "{model}/v1", "models": {models}}}],
               "users": [{{"username": "ada", "level": "apply"}}]{more}}}}},
-          "listeners": [{{"name": "web", "address": "127.0.0.1:0"}}],
+          "listeners": [{{"name": "web", "address": "127.0.0.1:0"}}],{top}
           "routes": [{{"name": "app", "match": {{"path": ["/app"]}},
             "middleware": [{{"module": "basic_auth", "params": {{"users": [{{"username": "u", "password_hash": "{ROUTE_PASSWORD_HASH}"}}]}}}}],
             "handler": {{"module": "respond", "params": {{"body": "ok"}}}}}}]}}"#
@@ -618,5 +654,86 @@ fn summarizes() {
         !second.contains("word one"),
         "the early turn was sent again"
     );
+    api.shutdown();
+}
+
+/// fit's `TestLogTools` (I162b): `log_tail` reads akit's own log's latest messages and
+/// `access_log_sample` the end of the access log's file, each only with its `data` setting on
+/// (without it the model is told there is no such tool), redacted; `adapt_convert` converts nginx.
+#[test]
+fn logs_and_converter() {
+    let access = logs();
+    akit_observe::logger::log(
+        akit_observe::logger::Logger::Tls,
+        akit_observe::logger::Level::Warn,
+        format_args!("chat-logs-test: certificate for a.example expires soon"),
+    );
+    let top = format!(
+        r#""access_log": {{"output": "{}", "format": "text"}},"#,
+        access.display()
+    );
+    let model = scripted(vec![
+        Turn::Tools(vec![
+            ("log_tail".into(), r#"{"contains": "chat-logs-test", "level": "warn"}"#.into()),
+            ("access_log_sample".into(), r#"{"status": 401}"#.into()),
+            (
+                "adapt_convert".into(),
+                r#"{"from": "nginx", "text": "http { server { listen 8080; location / { return 200 hi; } } }"}"#.into(),
+            ),
+        ]),
+        Turn::Text("Done.".into()),
+    ]);
+    let (api, addr) = start_top(
+        &model.url(),
+        r#"[{"name": "m"}]"#,
+        r#", "data": {"send_logs": true, "send_access_log": true}"#,
+        &top,
+        None,
+    );
+    let b = login(addr, "ada");
+    let evs = chat(&b, r#"{"message": "What went wrong?"}"#);
+    let result = |name: &str| {
+        evs.iter()
+            .find(|(_, v)| typ(v) == "tool_result" && s(v, "name") == name)
+            .map(|(_, v)| (s(v, "content").to_owned(), v.get("error").is_some()))
+            .unwrap()
+    };
+    let (logs, err) = result("log_tail");
+    assert!(
+        !err && logs.contains("warn tls: chat-logs-test: certificate"),
+        "{logs}"
+    );
+    let (lines, err) = result("access_log_sample");
+    assert!(
+        !err && lines.contains("10.0.0.9") && !lines.contains("127.0.0.1 -"),
+        "{lines}"
+    );
+    assert!(
+        !lines.contains("abcdefgh123456"),
+        "a token in the access log reached the model"
+    );
+    let (conv, err) = result("adapt_convert");
+    assert!(
+        !err && conv.contains("\"config\"") && conv.contains("8080"),
+        "{conv}"
+    );
+    api.shutdown();
+
+    // With the settings off, the tools are not offered.
+    let model = scripted(vec![
+        Turn::Tools(vec![("log_tail".into(), "{}".into())]),
+        Turn::Text("Done.".into()),
+    ]);
+    let (api, addr) = start_top(&model.url(), r#"[{"name": "m"}]"#, "", &top, None);
+    let b = login(addr, "ada");
+    let evs = chat(&b, r#"{"message": "Logs?"}"#);
+    let r = evs.iter().find(|(_, v)| typ(v) == "tool_result").unwrap();
+    assert!(
+        s(&r.1, "content").contains("there is no tool log_tail"),
+        "{:?}",
+        r.1
+    );
+    let (_, tools) = send(&b, "GET", "/api/m/ai/tools", None);
+    assert!(tools.contains("data.send_logs is off"), "{tools}");
     api.shutdown();
 }
