@@ -14,7 +14,7 @@ akit 配置的每个字段：配置的每一部分是做什么的、一个示例
 akit 与 fit 不同之处，在表格中以 **akit：** 标出。
 
 <!-- BEGIN GENERATED: summary -->
-fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **1307** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 195 个对象，下文各有一张表。
+fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **1312** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 195 个对象，下文各有一张表。
 <!-- END GENERATED -->
 
 字段说明来自 fit 代码中的 `doc` 标签，是英文的，所以每个字段的完整说明在[英文版](config.md)的同一张表中；本页的表格给出每个字段的
@@ -3167,8 +3167,8 @@ streaming {
 media_library` 列出 fit 的命名媒体库（[fit 的指南](https://github.com/lesismal/fit/blob/main/docs/media-library.zh-CN.md)）：
 扫描成条目目录的若干 MP4 文件（`.mp4`、`.m4v`、`.m4a`、`.mov`）所在目录，每个条目是一个标题及其版本、音频、字幕和海报，由
 `vod` 点播、由频道直播。akit 按 fit 的方式读取并检查媒体库（I140），并用 akio-media 的 MP4 读取器读取文件；`akit run` 扫描
-它们（I141），Admin API 在 `/media/library` 列出它们。尚未读取：上传的 `upload_dir`、`max_upload_bytes`、`max_uploads`、`min_free_bytes` 和 `upload_expiry`
-（I149）。
+它们（I141），Admin API 在 `/media/library` 列出它们；设置 `upload_dir` 后，可以从控制台或 Admin API 向媒体库上传文件，可续传，
+与 fit 相同（I149）。
 
 ```fit
 media_library films {
@@ -3202,14 +3202,14 @@ media_library films {
 | `max_sidecar_bytes` | 整数，0 到 1048576 | `65536` |  |
 | `max_subtitle_bytes` | 整数，≥ 0 | `2097152` |  |
 | `max_table_bytes` | 整数，≥ 0 | `134217728` | **akit：**akit 整个保留文件解析后的 `moov`（akio-media 的 `Movie`，含每条轨道的样本索引），而不是每条轨道一个表，上限相同（决定 043）。 |
-| `max_upload_bytes` | 整数，≥ 0 | `34359738368` | **尚不支持**（not supported yet）：按名称拒绝。 |
-| `max_uploads` | 整数，0 到 1024 | `4` | **尚不支持**（not supported yet）：按名称拒绝。 |
-| `min_free_bytes` | 整数，≥ 0 | `1073741824` | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `max_upload_bytes` | 整数，≥ 0 | `34359738368` |  |
+| `max_uploads` | 整数，0 到 1024 | `4` |  |
+| `min_free_bytes` | 整数，≥ 0 | `1073741824` |  |
 | `scan_interval` | 时长 | `"10m"` |  |
 | `secret` | 字符串 |  |  |
 | `secret_file` | 字符串 |  |  |
-| `upload_dir` | 字符串 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
-| `upload_expiry` | 时长 | `"24h"` | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `upload_dir` | 字符串 |  |  |
+| `upload_expiry` | 时长 | `"24h"` |  |
 <!-- END GENERATED -->
 
 ## BitTorrent

@@ -17,7 +17,7 @@ so in a note marked **akit:**; nine defaults that name the gateway are akit's, `
 say `fit` ([decision 037](../decisions/037-akit-names.md)).
 
 <!-- BEGIN GENERATED: summary -->
-akit reads **1307** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 195 objects akit reads, each has its table below.
+akit reads **1312** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 195 objects akit reads, each has its table below.
 <!-- END GENERATED -->
 
 How to read the tables:
@@ -3010,8 +3010,8 @@ edia_library` lists fit's named media libraries
 MP4 files (`.mp4`, `.m4v`, `.m4a`, `.mov`) scanned into a catalog of items, each a title with its
 renditions, audio, subtitles and poster, which `vod` serves on demand and channels play live. akit
 reads and checks the libraries as fit does (I140) and reads the files with akio-media's MP4 reader;
-`akit run` scans them (I141), and the Admin API lists them at `/media/library`. Not read yet: the uploads' `upload_dir`, `max_upload_bytes`,
-`max_uploads`, `min_free_bytes` and `upload_expiry` (I149).
+`akit run` scans them (I141), and the Admin API lists them at `/media/library`; with `upload_dir`,
+files are uploaded into the library from the console or the Admin API, resumable, as fit's (I149).
 
 ```fit
 media_library films {
@@ -3043,14 +3043,14 @@ media_library films {
 | `max_sidecar_bytes` | integer, 0 to 1048576 | `65536` | The largest sidecar, <name>.json, read; a larger one is reported and left out. At most 1 MiB. 64 KiB when left out or 0. |
 | `max_subtitle_bytes` | integer, 0 or more | `2097152` | The largest subtitle file served, .vtt or .srt turned into WebVTT; a larger one is listed with its error and not served. 2 MiB when left out or 0. |
 | `max_table_bytes` | integer, 0 or more | `134217728` | The most memory the sample tables read from the files take, kept for the files being served; past it the least recently used are dropped, and a table larger than all of it is refused. 128 MiB when left out or 0. **akit:** akit keeps a file's parsed `moov` whole (akio-media's `Movie`, every track's sample index) rather than a table a track, under the same bound (decision 043). |
-| `max_upload_bytes` | integer, 0 or more | `34359738368` | **Not supported yet**: refused by name. The largest file uploaded; a larger one is refused 413 before any of it is written. 32 GiB when left out or 0. |
-| `max_uploads` | integer, 0 to 1024 | `4` | **Not supported yet**: refused by name. The most uploads under way at once, begun and not yet whole; one more is refused 429 until one ends, or is cancelled, or expires. 4 when left out or 0. |
-| `min_free_bytes` | integer, 0 or more | `1073741824` | **Not supported yet**: refused by name. The disk space left free beside the uploads under way: an upload whose bytes, with those of the others still to come, would leave less free on upload_dir's disk is refused 507 before any of it is written. 1 GiB when left out or 0. |
+| `max_upload_bytes` | integer, 0 or more | `34359738368` | The largest file uploaded; a larger one is refused 413 before any of it is written. 32 GiB when left out or 0. |
+| `max_uploads` | integer, 0 to 1024 | `4` | The most uploads under way at once, begun and not yet whole; one more is refused 429 until one ends, or is cancelled, or expires. 4 when left out or 0. |
+| `min_free_bytes` | integer, 0 or more | `1073741824` | The disk space left free beside the uploads under way: an upload whose bytes, with those of the others still to come, would leave less free on upload_dir's disk is refused 507 before any of it is written. 1 GiB when left out or 0. |
 | `scan_interval` | duration | `"10m"` | How often the roots are scanned again, at least 10s; a scan also runs when the library is made, when the config changes its roots, patterns or bounds, and on the Admin API's POST /media/library/<name>/rescan. A file whose size and time are unchanged is not probed again. 10m when left out. |
 | `secret` | string |  | The secret, at least 16 bytes, the AES-128 keys of encrypted HLS are derived from: a key for each item of vod with encrypt, and for each channel with encrypt, rotated every key_rotation segments. Changing it changes every key, so that segments encrypted before, kept by a CDN, no longer play: purge them. Or secret_file, one of the two. None when left out: nothing of the library can be encrypted. |
 | `secret_file` | string |  | A file holding the secret the AES-128 keys of encrypted HLS are derived from, read each time the config is applied. At least 16 bytes, its line breaks at the end aside. Or secret, one of the two. None when left out. |
-| `upload_dir` | string |  | **Not supported yet**: refused by name. A directory inside one of the roots, or a root itself, that files uploaded from the workbench, or the Admin API's /media/library/<name>/uploads, are written into: in pieces, resumable after a cut connection, to a temporary file named .fit-upload-*, renamed into place once whole and probed by the scan that follows. Made when missing. None when left out: no uploads; the files of the library are still renamed, moved and deleted from the workbench. |
-| `upload_expiry` | duration | `"24h"` | **Not supported yet**: refused by name. How long an upload not written to is kept before it is given up and its temporary file removed, at the next scan; at least 1m. An upload is kept across restarts until then. 24h when left out. |
+| `upload_dir` | string |  | A directory inside one of the roots, or a root itself, that files uploaded from the workbench, or the Admin API's /media/library/<name>/uploads, are written into: in pieces, resumable after a cut connection, to a temporary file named .fit-upload-*, renamed into place once whole and probed by the scan that follows. Made when missing. None when left out: no uploads; the files of the library are still renamed, moved and deleted from the workbench. |
+| `upload_expiry` | duration | `"24h"` | How long an upload not written to is kept before it is given up and its temporary file removed, at the next scan; at least 1m. An upload is kept across restarts until then. 24h when left out. |
 <!-- END GENERATED -->
 
 ## BitTorrent

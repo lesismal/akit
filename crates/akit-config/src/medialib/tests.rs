@@ -1,5 +1,4 @@
-//! fit's `config/medialibrary_test.go`, ported (I140). The uploads' fields wait for I149 and are
-//! refused as not supported yet.
+//! fit's `config/medialibrary_test.go`, ported (I140, the uploads' fields from I149).
 
 use super::*;
 use crate::from_json;
@@ -35,6 +34,24 @@ fn media_library() {
     );
     assert!(m.follow_symlinks && m.files.len() == 2 && m.exclude.len() == 1);
     assert!(!m.encryptable());
+    // I149: the uploads' defaults, and upload_dir inside a root, or a root.
+    assert_eq!(
+        (m.upload_bytes(), m.uploads(), m.min_free(), m.expiry()),
+        (
+            DEFAULT_MAX_UPLOAD_BYTES,
+            DEFAULT_MAX_UPLOADS,
+            DEFAULT_MIN_FREE_BYTES,
+            DEFAULT_UPLOAD_EXPIRY
+        )
+    );
+    for ok in [r#""/a""#, r#""/a/up""#, r#""/b/x/../up""#] {
+        let doc = format!(
+            r#"[{{"name": "a", "roots": ["/a", "/b"], "upload_dir": {ok}, "max_uploads": 2, "upload_expiry": "1h"}}]"#
+        );
+        if let Err(e) = load(&doc) {
+            panic!("upload_dir {ok}: {e}");
+        }
+    }
     let with = |f: fn(&mut MediaLibrary)| {
         let mut m = MediaLibrary::default();
         f(&mut m);
@@ -99,26 +116,26 @@ fn media_library() {
             r#"[{"name": "a", "roots": ["/a"], "secret": "short"}]"#,
             "use at least 16",
         ),
-        // fit's checks of the uploads (I139) come with them, in I149.
+        // fit's checks of the uploads (I139, I149).
         (
-            r#"[{"name": "a", "roots": ["/a"], "upload_dir": "/a/up"}]"#,
-            "not supported yet",
+            r#"[{"name": "a", "roots": ["/a"], "upload_expiry": "1s"}]"#,
+            "at least 1m",
         ),
         (
-            r#"[{"name": "a", "roots": ["/a"], "max_uploads": 2}]"#,
-            "not supported yet",
+            r#"[{"name": "a", "roots": ["/a"], "upload_dir": "/b/up"}]"#,
+            "is not inside a root",
         ),
         (
-            r#"[{"name": "a", "roots": ["/a"], "upload_expiry": "1h"}]"#,
-            "not supported yet",
+            r#"[{"name": "a", "roots": ["/a"], "upload_dir": "/ab"}]"#,
+            "is not inside a root",
         ),
         (
-            r#"[{"name": "a", "roots": ["/a"], "max_upload_bytes": 1}]"#,
-            "not supported yet",
+            r#"[{"name": "a", "roots": ["/a"], "upload_dir": " "}]"#,
+            "is not inside a root",
         ),
         (
-            r#"[{"name": "a", "roots": ["/a"], "min_free_bytes": 1}]"#,
-            "not supported yet",
+            r#"[{"name": "a", "roots": ["/a"], "max_uploads": 2000}]"#,
+            "2000",
         ),
         (
             r#"[{"name": "a", "roots": ["/a"], "nope": 1}]"#,

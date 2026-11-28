@@ -1556,6 +1556,9 @@ fn run(args: &[String]) -> ExitCode {
                 .endpoints
                 .push(akit_bittorrent::admin::endpoint(roles.apis()));
             api_opts.streamed.push(akit_bittorrent::admin::PREFIX);
+            // A media library's uploads stream their bodies in, the reads held while each piece
+            // is written (I149); its other endpoints read theirs themselves.
+            api_opts.streamed.push(akit_media::library::admin::PREFIX);
             // What GET /node reads of the running akit (I131): the roles running, and whether
             // the running config counts requests.
             let (modules, graph) = (roles.modules(), cell.clone());

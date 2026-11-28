@@ -975,3 +975,8 @@ config	added	supported	streaming.channels[].key_rotation
 config	added	supported	routes[].handler<media_pages>.params.channels
 config	added	supported	routes[].handler<media_pages>.params.libraries
 config	added	supported	routes[].handler<media_pages>.params.vod
+config	added	supported	media_library[].max_upload_bytes
+config	added	supported	media_library[].max_uploads
+config	added	supported	media_library[].min_free_bytes
+config	added	supported	media_library[].upload_dir
+config	added	supported	media_library[].upload_expiry

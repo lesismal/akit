@@ -267,6 +267,35 @@ done and where the work differs from the plan.
   - On io_uring, `Engine::remove_listener` returns once the listener's accepts are cancelled, so a
     listener a reload removes takes no connection after it; `H3Upload::finish` is no longer
     refused by its own response; the pool pressure watcher samples every 500 ms (was 100 ms).
+### 2026-11-28: I149, the media libraries' uploads
+
+- **Built**: fit's uploads (`medialib/upload.go`, the upload endpoints of `admin/mediafiles.go`).
+  akit-config reads `media_library`'s `upload_dir` (inside a root, or a root), `max_upload_bytes`,
+  `max_uploads` (at most 1,024), `min_free_bytes` and `upload_expiry` (at least 1m), with fit's
+  checks and defaults. `akit_media::library::upload`: an upload begun with its path under
+  `upload_dir` and its size (refused for a path the library does not write or look at, past
+  `max_upload_bytes` 413, past `max_uploads` 429, a file there 409, a disk that would keep less
+  than `min_free_bytes` besides what the uploads under way still need 507), its bytes written at
+  its offset to `.fit-upload-<id>.part` beside a `.json` that keeps it across restarts, synced and
+  renamed into place once whole, and probed by the scan it asks for; written only inside its root,
+  links resolved. The Admin API's `/media/library/{name}/uploads` (`GET`, `POST`) and
+  `/uploads/{id}` (`GET`, `HEAD`, `PATCH` at `Upload-Offset`, `DELETE`), tus's headers. A
+  `PATCH` streams in (the Admin API's `streamed` prefixes, the console's too): its pieces are
+  gathered and written on the library's pool, 512 KiB at a time, the body's reads held meanwhile
+  (akio's `BodyReads`), so an upload of any size takes a bounded buffer; a body cut short leaves
+  what was written, to go on from. An upload not written to for `upload_expiry` is given up at the
+  start of a scan, which also reads back the uploads a restart left; no timer runs.
+  `GET /media/library` lists a library's `upload` settings and its uploads under way.
+- **Checked**: `tests/uploads.rs` ports fit's `TestMediaUploads`, `TestMediaUploadLarge` and
+  `TestUploadRestart` against a server that streams the bodies in, as the Admin API does: an upload
+  begun, cut short by its client and resumed from what was written, refused at another offset,
+  whole, in place and probed; the bounds; given up; 9 MiB in one body, in pieces; one read back
+  after the library starts again, and finished. Every wait is on the library's status or its
+  uploads' (`Library::wait_upload`). `akit-config`'s tests take fit's upload checks. Against `akit
+  run`, logged in to the console: a 20 MiB file uploaded in two 8 MiB-and-more pieces through the
+  console's API, byte for byte.
+- **Next**: I149's rename, move, delete and sidecars.
+
 ### 2026-11-28: I149, the console's media pages: the read side
 
 - **Built**: the Admin API's endpoints behind the console's media library pages, which are fit's,

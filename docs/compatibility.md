@@ -398,7 +398,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-3821 fields in 121 sections, at fit `7daee573`; 1307 supported.
+3821 fields in 121 sections, at fit `7daee573`; 1312 supported.
 
 | Section | Fields | Supported | Not supported yet |
 | --- | --- | --- | --- |
@@ -448,7 +448,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`llm`](#fields-llm) | 218 | 215 | 3 |
 | [`log`](#fields-log) | 24 | 24 | 0 |
 | [`media_auth`](#fields-media-auth) | 34 | 34 | 0 |
-| [`media_library`](#fields-media-library) | 24 | 19 | 5 |
+| [`media_library`](#fields-media-library) | 24 | 24 | 0 |
 | [`metrics`](#fields-metrics) | 1 | 1 | 0 |
 | [`pprof`](#fields-pprof) | 4 | 0 | 4 |
 | [`providers`](#fields-providers) | 60 | 59 | 1 |
@@ -523,7 +523,7 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | [`tunnel`](#fields-tunnel) | 164 | 161 | 3 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 76 | 0 |
-| **Total** | 3821 | 1307 | 2514 |
+| **Total** | 3821 | 1312 | 2509 |
 
 <a id="fields-access"></a>
 
@@ -1848,16 +1848,16 @@ of memory such as `"50%"`; `enum(…)` lists the choices; `module` is the module
 | `media_library[].max_sidecar_bytes` | `integer` | supported |
 | `media_library[].max_subtitle_bytes` | `integer` | supported |
 | `media_library[].max_table_bytes` | `integer` | supported |
-| `media_library[].max_upload_bytes` | `integer` | not supported yet |
-| `media_library[].max_uploads` | `integer` | not supported yet |
-| `media_library[].min_free_bytes` | `integer` | not supported yet |
+| `media_library[].max_upload_bytes` | `integer` | supported |
+| `media_library[].max_uploads` | `integer` | supported |
+| `media_library[].min_free_bytes` | `integer` | supported |
 | `media_library[].name` | `string, required` | supported |
 | `media_library[].roots` | `array<string>, required` | supported |
 | `media_library[].scan_interval` | `duration` | supported |
 | `media_library[].secret` | `string` | supported |
 | `media_library[].secret_file` | `string` | supported |
-| `media_library[].upload_dir` | `string` | not supported yet |
-| `media_library[].upload_expiry` | `duration` | not supported yet |
+| `media_library[].upload_dir` | `string` | supported |
+| `media_library[].upload_expiry` | `duration` | supported |
 
 <a id="fields-metrics"></a>
 

@@ -26,14 +26,14 @@ pub const MAX_DEPTH: usize = 32;
 const HEAD_READ: usize = 64 << 10;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Kind {
+pub(crate) enum Kind {
     Media,
     Subtitle,
     Image,
     Sidecar,
 }
 
-fn kind_of_name(name: &str) -> Option<Kind> {
+pub(crate) fn kind_of_name(name: &str) -> Option<Kind> {
     let ext = Path::new(name)
         .extension()
         .and_then(|e| e.to_str())

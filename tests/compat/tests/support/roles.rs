@@ -1779,6 +1779,12 @@ fn media_library(out: &mut Vec<(String, String, Read)>) {
             f("file_timeout", q("1s"), q("2s")),
             f("secret", q("0123456789abcdef"), q("0123456789abcdeg")),
             f("secret_file", q("a"), q("b")),
+            // I149: the uploads.
+            f("upload_dir", q("/srv/a/up"), q("/srv/a/in")),
+            f("max_upload_bytes", "1", "2"),
+            f("max_uploads", "1", "2"),
+            f("min_free_bytes", "1", "2"),
+            f("upload_expiry", q("1h"), q("2h")),
         ],
     );
 }

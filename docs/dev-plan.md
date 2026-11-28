@@ -2320,8 +2320,8 @@ is asked as akio A295–A300. Names akit shows are akit's (decision 037), format
   against a running akit.
 - **Touches**: `akit-media` (`library`), `akit-admin`.
 - **fit**: `medialib/upload.go`, `medialib/manage.go`, the workbench's `gw.medialib`; I138, I139.
-- **Status**: in progress (2026-11-28): the pages' read side and its endpoints done; uploads, then
-  rename, move, delete and sidecars to come. See the progress log.
+- **Status**: in progress (2026-11-28): the pages' read side and its endpoints, and the uploads,
+  done; rename, move, delete and sidecars to come. See the progress log.
 
 ### BitTorrent
 

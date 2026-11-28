@@ -1322,9 +1322,9 @@ bittorrent.tracker.access.deny_files
 # I151: the bt_tracker handler (akit-bittorrent's module), which takes no params.
 routes[].handler<bt_tracker>
 routes[].handler<bt_tracker>.params
-# I140: fit's media libraries (akit-config's medialib module). The uploads' fields (upload_dir,
-# max_upload_bytes, max_uploads, min_free_bytes, upload_expiry) wait for the media files managed
-# (I149) and are refused as not supported yet. akit run runs the libraries from I141.
+# I140: fit's media libraries (akit-config's medialib module); the uploads' fields (upload_dir,
+# max_upload_bytes, max_uploads, min_free_bytes, upload_expiry) from I149. akit run runs the
+# libraries from I141.
 media_library
 media_library[].name
 media_library[].roots
@@ -1344,6 +1344,11 @@ media_library[].file_queue
 media_library[].file_timeout
 media_library[].secret
 media_library[].secret_file
+media_library[].upload_dir
+media_library[].max_upload_bytes
+media_library[].max_uploads
+media_library[].min_free_bytes
+media_library[].upload_expiry
 # I142: the vod handler (akit-media's vod), its params as fit's; encrypt from I147.
 routes[].handler<media_tokens>
 routes[].handler<media_tokens>.params

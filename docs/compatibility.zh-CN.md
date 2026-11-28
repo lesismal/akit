@@ -328,7 +328,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 
 <!-- BEGIN GENERATED: tools/compat-inventory.py; do not edit -->
 
-共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 1307 个。
+共 3821 个字段，分属 121 个部分，对应 fit `7daee573`；已支持 1312 个。
 
 | 部分 | 字段 | 已支持 | 尚不支持 |
 | --- | --- | --- | --- |
@@ -378,7 +378,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`llm`](#fields-llm) | 218 | 215 | 3 |
 | [`log`](#fields-log) | 24 | 24 | 0 |
 | [`media_auth`](#fields-media-auth) | 34 | 34 | 0 |
-| [`media_library`](#fields-media-library) | 24 | 19 | 5 |
+| [`media_library`](#fields-media-library) | 24 | 24 | 0 |
 | [`metrics`](#fields-metrics) | 1 | 1 | 0 |
 | [`pprof`](#fields-pprof) | 4 | 0 | 4 |
 | [`providers`](#fields-providers) | 60 | 59 | 1 |
@@ -453,7 +453,7 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | [`tunnel`](#fields-tunnel) | 164 | 161 | 3 |
 | [`upstreams`](#fields-upstreams) | 38 | 37 | 1 |
 | [`webrtc`](#fields-webrtc) | 76 | 76 | 0 |
-| **合计** | 3821 | 1307 | 2514 |
+| **合计** | 3821 | 1312 | 2509 |
 
 <a id="fields-access"></a>
 
@@ -1778,16 +1778,16 @@ sync codec）在每一处都会列出。类型：`duration` 是形如 `"1.5s"` �
 | `media_library[].max_sidecar_bytes` | `integer` | 已支持 |
 | `media_library[].max_subtitle_bytes` | `integer` | 已支持 |
 | `media_library[].max_table_bytes` | `integer` | 已支持 |
-| `media_library[].max_upload_bytes` | `integer` | 尚不支持（not supported yet） |
-| `media_library[].max_uploads` | `integer` | 尚不支持（not supported yet） |
-| `media_library[].min_free_bytes` | `integer` | 尚不支持（not supported yet） |
+| `media_library[].max_upload_bytes` | `integer` | 已支持 |
+| `media_library[].max_uploads` | `integer` | 已支持 |
+| `media_library[].min_free_bytes` | `integer` | 已支持 |
 | `media_library[].name` | `string, required` | 已支持 |
 | `media_library[].roots` | `array<string>, required` | 已支持 |
 | `media_library[].scan_interval` | `duration` | 已支持 |
 | `media_library[].secret` | `string` | 已支持 |
 | `media_library[].secret_file` | `string` | 已支持 |
-| `media_library[].upload_dir` | `string` | 尚不支持（not supported yet） |
-| `media_library[].upload_expiry` | `duration` | 尚不支持（not supported yet） |
+| `media_library[].upload_dir` | `string` | 已支持 |
+| `media_library[].upload_expiry` | `duration` | 已支持 |
 
 <a id="fields-metrics"></a>
 

@@ -4,7 +4,7 @@
 //!
 //! What is left out is kept empty, zero or false; the methods give fit's defaults for it. The
 //! uploads' fields (`upload_dir`, `max_upload_bytes`, `max_uploads`, `min_free_bytes`,
-//! `upload_expiry`) are refused as not supported yet until the media files are managed (I149).
+//! `upload_expiry`) are read from I149, with fit's checks.
 //!
 //! The patterns are Go's `path.Match` patterns split at '/', `**` spanning directories:
 //! [`path_match`] is Go's matcher, so that a pattern fit takes matches the same names here.
@@ -44,6 +44,18 @@ pub const DEFAULT_FILE_TIMEOUT: Duration = Duration::from_secs(10);
 /// The fewest file workers by default, and how many a CPU.
 const MIN_FILE_WORKERS: usize = 16;
 const FILE_WORKERS_PER_CPU: usize = 4;
+/// fit's `DefaultMediaMaxUploadBytes`.
+pub const DEFAULT_MAX_UPLOAD_BYTES: u64 = 32 << 30;
+/// fit's `DefaultMediaMaxUploads`.
+pub const DEFAULT_MAX_UPLOADS: usize = 4;
+/// The most `max_uploads` may be.
+pub const MAX_UPLOADS: usize = 1024;
+/// fit's `DefaultMediaMinFreeBytes`.
+pub const DEFAULT_MIN_FREE_BYTES: u64 = 1 << 30;
+/// fit's `DefaultMediaUploadExpiry`.
+pub const DEFAULT_UPLOAD_EXPIRY: Duration = Duration::from_secs(24 * 3600);
+/// The shortest `upload_expiry` may be.
+pub const MIN_UPLOAD_EXPIRY: Duration = Duration::from_secs(60);
 /// The fewest bytes a library's secret may have (fit's `MinMediaSecret`).
 pub const MIN_SECRET: usize = 16;
 
@@ -86,6 +98,17 @@ pub struct MediaLibrary {
     pub secret: String,
     /// `secret_file`: a file holding it, read each time the config is applied; empty for none.
     pub secret_file: String,
+    /// `upload_dir` (I149): a directory inside a root, or a root, that uploads are written
+    /// into; empty for no uploads.
+    pub upload_dir: String,
+    /// `max_upload_bytes`: [`DEFAULT_MAX_UPLOAD_BYTES`] when 0.
+    pub max_upload_bytes: u64,
+    /// `max_uploads`: [`DEFAULT_MAX_UPLOADS`] when 0.
+    pub max_uploads: usize,
+    /// `min_free_bytes`: [`DEFAULT_MIN_FREE_BYTES`] when 0.
+    pub min_free_bytes: u64,
+    /// `upload_expiry`: [`DEFAULT_UPLOAD_EXPIRY`] when zero.
+    pub upload_expiry: Duration,
 }
 
 fn or<T: PartialEq + Default>(v: T, def: T) -> T {
@@ -93,6 +116,30 @@ fn or<T: PartialEq + Default>(v: T, def: T) -> T {
 }
 
 impl MediaLibrary {
+    /// `max_upload_bytes`, or its default.
+    #[must_use]
+    pub fn upload_bytes(&self) -> u64 {
+        or(self.max_upload_bytes, DEFAULT_MAX_UPLOAD_BYTES)
+    }
+
+    /// `max_uploads`, or its default.
+    #[must_use]
+    pub fn uploads(&self) -> usize {
+        or(self.max_uploads, DEFAULT_MAX_UPLOADS)
+    }
+
+    /// `min_free_bytes`, or its default.
+    #[must_use]
+    pub fn min_free(&self) -> u64 {
+        or(self.min_free_bytes, DEFAULT_MIN_FREE_BYTES)
+    }
+
+    /// `upload_expiry`, or its default.
+    #[must_use]
+    pub fn expiry(&self) -> Duration {
+        or(self.upload_expiry, DEFAULT_UPLOAD_EXPIRY)
+    }
+
     /// `scan_interval`, or its default.
     #[must_use]
     pub fn interval(&self) -> Duration {
@@ -189,15 +236,13 @@ const MEDIA_LIBRARY_FIELDS: &[&str] = &[
     "file_timeout",
     "secret",
     "secret_file",
-];
-// The uploads: the media files managed (I149).
-const MEDIA_LIBRARY_FIT_ONLY: &[&str] = &[
     "upload_dir",
     "max_upload_bytes",
     "max_uploads",
     "min_free_bytes",
     "upload_expiry",
 ];
+const MEDIA_LIBRARY_FIT_ONLY: &[&str] = &[];
 
 /// Decodes `media_library`, fit's checks of each library with it (`checkMediaLibrary`).
 pub(crate) fn media_library(d: &mut Decoder<'_>, n: &Node, path: &str) -> Vec<MediaLibrary> {
@@ -236,6 +281,7 @@ fn library(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<MediaLibrary> {
             );
         }
     }
+    let mut roots_clean: Vec<PathBuf> = Vec::new();
     if let Some(v) = o.require(d, "roots") {
         let p = o.at("roots");
         let roots = d.strings(v, &p);
@@ -264,6 +310,7 @@ fn library(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<MediaLibrary> {
             }
             clean.push(Some((c, r.as_str())));
         }
+        roots_clean = clean.into_iter().flatten().map(|(c, _)| c).collect();
         m.roots = roots.into_iter().map(|(_, r)| r).collect();
     }
     for (key, slot) in [("files", &mut m.files), ("exclude", &mut m.exclude)] {
@@ -339,6 +386,49 @@ fn library(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<MediaLibrary> {
                 m.secret.len()
             ),
         );
+    }
+    // I149: the uploads, with fit's checks.
+    m.max_upload_bytes = bytes(d, &mut o, "max_upload_bytes");
+    if let Some(v) = o.take("max_uploads") {
+        let max = i64::try_from(MAX_UPLOADS).unwrap_or(i64::MAX);
+        m.max_uploads = d
+            .int(v, &o.at("max_uploads"), 0, max)
+            .and_then(|n| usize::try_from(n).ok())
+            .unwrap_or(0);
+    }
+    m.min_free_bytes = bytes(d, &mut o, "min_free_bytes");
+    if let Some(v) = o.take("upload_expiry") {
+        if let Some(t) = d.duration(v, &o.at("upload_expiry")) {
+            if !t.is_zero() && t < MIN_UPLOAD_EXPIRY {
+                d.error(
+                    v.off,
+                    &o.at("upload_expiry"),
+                    format!(
+                        "upload_expiry is {}: at least {}",
+                        crate::duration::format(t),
+                        crate::duration::format(MIN_UPLOAD_EXPIRY)
+                    ),
+                );
+            }
+            m.upload_expiry = t;
+        }
+    }
+    if let Some((dir, off)) = text_at(d, &mut o, "upload_dir") {
+        if !dir.is_empty() {
+            let abs = absolute(&dir);
+            let inside =
+                !dir.trim().is_empty() && roots_clean.iter().any(|r| *r == abs || within(r, &abs));
+            if !inside {
+                d.error(
+                    off,
+                    &o.at("upload_dir"),
+                    format!(
+                        "{dir:?} is not inside a root of the library: uploads are written into one of its roots"
+                    ),
+                );
+            }
+        }
+        m.upload_dir = dir;
     }
     o.finish(d, MEDIA_LIBRARY_FIELDS, MEDIA_LIBRARY_FIT_ONLY);
     Some(m)

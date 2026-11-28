@@ -19,11 +19,13 @@ pub mod catalog;
 pub mod files;
 pub mod keys;
 pub mod notice;
+mod paths;
 pub mod pool;
 mod scan;
 mod tables;
 #[cfg(test)]
 mod tests;
+mod upload;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
@@ -38,9 +40,11 @@ use akit_roles::host::{Host, Info, MetricsFn, Role};
 
 pub use catalog::{Catalog, File, Item, Problem, Rendition, Subtitle, Track};
 pub use files::{Handle, to_webvtt};
+pub use paths::FileError;
 pub use pool::{Pool, PoolStats};
 pub use scan::MAX_DEPTH;
 pub use tables::{MAX_WAITERS, MovieResult, TableStats};
+pub use upload::{Chunk, ChunkHooks, UploadInfo, UploadSpec};
 
 use crate::swap::Swap;
 
@@ -158,6 +162,8 @@ pub(crate) struct Settings {
     pub(crate) timeout: Duration,
     /// The keys of encrypted HLS (I147), derived from `secret` or `secret_file`.
     pub(crate) keys: Option<Arc<keys::Keys>>,
+    /// `upload_dir` and the bounds of its uploads (I149).
+    pub(crate) up: Option<upload::UploadDir>,
 }
 
 impl Settings {
@@ -182,6 +188,7 @@ impl Settings {
             queue: c.queue(),
             timeout: c.timeout(),
             keys: keys::Keys::of(c)?.map(Arc::new),
+            up: None,
         };
         for r in &c.roots {
             if r.trim().is_empty() {
@@ -200,6 +207,7 @@ impl Settings {
                 to.push(Pattern::new(p));
             }
         }
+        s.up = upload::UploadDir::compile(c, &s.roots)?;
         Ok(s)
     }
 
@@ -317,6 +325,13 @@ pub struct Library {
     room: Arc<notice::Notice>,
     /// Fired when a scan replaces the catalog, and when the library is removed.
     replaced: notice::Notice,
+    /// The uploads under way (I149).
+    uploads: Mutex<upload::Uploads>,
+    /// Told when an upload changes, for [`Library::wait_upload`].
+    upload_changed: Condvar,
+    /// Held while a change of the library's files, or an upload put in place, runs: one at a
+    /// time (fit's `fileMu`).
+    pub(crate) file_ops: Mutex<()>,
 }
 
 impl std::fmt::Debug for Library {
@@ -359,6 +374,9 @@ impl Library {
             scanned: Mutex::new(Vec::new()),
             room,
             replaced: notice::Notice::default(),
+            uploads: Mutex::new(upload::Uploads::default()),
+            upload_changed: Condvar::new(),
+            file_ops: Mutex::new(()),
         });
         l.set.set(Some(Arc::new(s)));
         l.cat.set(Some(Arc::new(Catalog::default())));
@@ -550,6 +568,7 @@ impl Library {
                 queue: 1,
                 timeout: Duration::ZERO,
                 keys: None,
+                up: None,
             })
         })
     }
@@ -610,6 +629,8 @@ impl Library {
             };
             self.changed.notify_all();
         }
+        // The uploads: those a restart left read back, those idle past upload_expiry given up.
+        self.sweep_uploads(s.up.as_ref());
         let edits = lock(&self.edits).0;
         let prev = self.catalog();
         let cat = scan::Scanner::new(self, &s).run(&prev);
@@ -703,6 +724,7 @@ impl Library {
         self.tell();
         self.pool().close();
         self.tables.clear();
+        self.close_uploads();
         self.tell_scanned();
         self.room.fire();
         self.replaced.fire();

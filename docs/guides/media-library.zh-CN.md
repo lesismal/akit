@@ -29,8 +29,10 @@ akit 按文件存储的原样提供其编码：H.264、H.265 和 AV1 视频，AA
 ## 控制台页面
 
 设置 `admin.console` 后，控制台的 **媒体库** 页面浏览各媒体库的条目，通过为当前登录用户签名的地址播放预览，在时间线上编辑频道，
-签发测试地址，列出并结束播放会话，轮换保存在文件中的密钥，并绘制所提供内容的图表。它们背后是 Admin API 的
-`POST /media/preview`、`GET /media/auth`（以及策略的 `/sessions`、`/sessions/end`、`/rotate` 和 `/urls`）和 `GET /media/stats`。
+签发测试地址，列出并结束播放会话，轮换保存在文件中的密钥，绘制所提供内容的图表，并向媒体库的 `upload_dir` 上传文件，连接断开后
+可续传（受 `max_upload_bytes`、`max_uploads`、`min_free_bytes` 和 `upload_expiry` 限制）。它们背后是 Admin API 的
+`POST /media/preview`、`GET /media/auth`（以及策略的 `/sessions`、`/sessions/end`、`/rotate` 和 `/urls`）、`GET /media/stats`，
+以及媒体库的 `/media/library/<name>/uploads`，其 `PATCH` 按 tus 的方式在 `Upload-Offset` 处写入一块。
 
 ## 点播
 

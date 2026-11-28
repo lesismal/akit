@@ -195,6 +195,26 @@
     它对吞吐的影响留给基准任务测量（规则 30）。
   - 在 io_uring 上，`Engine::remove_listener` 在监听器的 accept 取消完成后才返回，重载移除的监听器此后不再接受连接；`H3Upload::finish`
     不再被其自身的响应拒绝；池压力监视器每 500 ms 采样一次（原为 100 ms）。
+### 2026-11-28：I149，媒体库的上传
+
+- **构建**：fit 的上传（`medialib/upload.go`，`admin/mediafiles.go` 的上传端点）。akit-config 读取 `media_library` 的
+  `upload_dir`（位于某个根目录内或就是根目录）、`max_upload_bytes`、`max_uploads`（最多 1024）、`min_free_bytes` 和
+  `upload_expiry`（至少 1m），检查和默认值与 fit 相同。`akit_media::library::upload`：上传以其在 `upload_dir` 下的路径和大小开始
+  （媒体库不写入或不查看的路径被拒绝，超过 `max_upload_bytes` 为 413，超过 `max_uploads` 为 429，文件已存在为 409，磁盘在
+  进行中的上传仍需的空间之外会剩下少于 `min_free_bytes` 时为 507），其字节按偏移写入 `.fit-upload-<id>.part`，旁边的 `.json`
+  使其跨重启保留，完整后同步并改名到位，并由它请求的扫描探测；只写入其根目录之内，符号链接解析之后也是如此。Admin API 的
+  `/media/library/{name}/uploads`（`GET`、`POST`）和 `/uploads/{id}`（`GET`、`HEAD`、在 `Upload-Offset` 处的 `PATCH`、
+  `DELETE`），使用 tus 的头字段。`PATCH` 以流方式读入（Admin API 的 `streamed` 前缀，控制台也是）：其分块被收集并在媒体库的池上
+  写入，每次 512 KiB，其间暂停读取请求体（akio 的 `BodyReads`），因此任意大小的上传只占有限的缓冲；被截断的请求体保留已写入的
+  部分，可以从那里继续。超过 `upload_expiry` 未写入的上传在扫描开始时被放弃，扫描也读回重启留下的上传；不运行计时器。
+  `GET /media/library` 列出媒体库的 `upload` 设置和进行中的上传。
+- **验证**：`tests/uploads.rs` 针对以流方式读入请求体的服务器（与 Admin API 相同）移植 fit 的 `TestMediaUploads`、
+  `TestMediaUploadLarge` 和 `TestUploadRestart`：上传开始，被客户端截断，从已写入处续传，在其他偏移处被拒绝，完整、到位并被探测；
+  各项限制；放弃；一个请求体中的 9 MiB 分块写入；媒体库重新启动后读回并完成的上传。每次等待都基于媒体库的状态或其上传的状态
+  （`Library::wait_upload`）。`akit-config` 的测试覆盖 fit 的上传检查。对 `akit run` 登录控制台：通过控制台的 API 以两块
+  （8 MiB 及以上）上传 20 MiB 文件，逐字节一致。
+- **下一步**：I149 的重命名、移动、删除和补充说明文件。
+
 ### 2026-11-28：I149，控制台的媒体页面：只读部分
 
 - **构建**：控制台媒体库页面背后的 Admin API 端点，页面是 fit 的，已在钉住的版本复制（`akit_media::workbench`，fit 的
