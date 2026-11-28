@@ -116,6 +116,14 @@
     它对吞吐的影响留给基准任务测量（规则 30）。
   - 在 io_uring 上，`Engine::remove_listener` 在监听器的 accept 取消完成后才返回，重载移除的监听器此后不再接受连接；`H3Upload::finish`
     不再被其自身的响应拒绝；池压力监视器每 500 ms 采样一次（原为 100 ms）。
+### 2026-11-28：频道不靠计时器等待其媒体库
+
+- **改动**：在媒体库首次扫描结束前创建的频道不再像 fit 那样每 200 ms 重新选择条目：媒体库记下等待者（`Library::when_scanned`），
+  在首个目录就位时或被移除时通知它们，频道届时选择条目（决定 043）。此期间的播放器与之前一样得到 “stream not found”，或等待
+  `play_wait`。
+- **验证**：`channels::tests::waits_for_the_first_scan` 阻住首次扫描的探测，创建频道，再放开探测，看到频道在假时钟未前进的情况下
+  加载其条目，并在时钟前进后播放。
+
 ### 2026-11-28：I148，视频网站
 
 - **构建**：fit 的 I137。akit-config 读取 `media_pages` 的 `libraries`、`vod` 和 `channels`，检查与 fit 相同（最多 16 个媒体库，

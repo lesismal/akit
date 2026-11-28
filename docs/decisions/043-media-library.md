@@ -151,6 +151,10 @@ not supported yet for this track.
   tested on the test's time, waiting for the library's pool to be idle, never for wall time.
 - **The media libraries apply before the streaming role**, so that a channel finds its library at
   its first item.
+- **A channel waits for its library's first scan untimed**: where fit chooses the item again
+  every 200 ms until the scan ends, the library tells the channels waiting for it once its first
+  catalog is in place, or once it is removed (`Library::when_scanned`), and they choose their item
+  then. akit's timers are for what is about time, never a retry (rules.md).
 
 ## I146: push targets
 

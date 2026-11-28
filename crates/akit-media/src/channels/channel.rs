@@ -51,6 +51,8 @@ const MIN_GAP: Time = MS;
 const SLOT_SLACK: Time = 50 * MS;
 /// No time: a wall time before any.
 const NEVER: i64 = i64::MIN;
+/// A `wait_until` no time reaches: the channel waits until its library tells it.
+const UNTIL_TOLD: i64 = i64::MAX;
 
 /// The errors of the Admin API's actions on a channel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -522,11 +524,18 @@ impl Channel {
         let src = match self.library(st) {
             None => Err(SourceError::NoLibrary),
             Some(l) => {
-                if l.catalog().scanned.is_none() {
-                    // The first scan has not ended: the item is chosen again then.
+                let (me, epoch) = (self.me.clone(), st.epoch);
+                let told = Box::new(move || {
+                    if let Some(c) = me.upgrade() {
+                        c.library_scanned(epoch);
+                    }
+                });
+                if !l.when_scanned(told) {
+                    // The first scan has not ended: the item is chosen again once it has, when
+                    // the library tells the channel, never by a timer.
                     st.list.undo(&ch);
                     st.last_err = SourceError::NotReady.to_string();
-                    self.wait(st, now.saturating_add(RETRY_BUSY));
+                    st.wait_until = UNTIL_TOLD;
                     return;
                 }
                 match l.item(&ch.item) {
@@ -566,6 +575,19 @@ impl Channel {
         }
         let join = st.now.is_none() && st.queue.is_empty();
         self.advance(st, now, join);
+    }
+
+    /// The library the channel waited for has scanned, or gone: the channel chooses its item
+    /// again, unless it was stopped or started again since.
+    pub(crate) fn library_scanned(&self, epoch: u64) {
+        self.locked(|c, st| {
+            if epoch != st.epoch || !st.running || st.wait_until != UNTIL_TOLD {
+                return;
+            }
+            st.wait_until = NEVER;
+            let now = c.now();
+            c.tick(st, now);
+        });
     }
 
     /// Places `src` on the timeline once its movies are read, queues its start and reads it.

@@ -280,6 +280,14 @@ struct Wake {
 /// A hook a test runs before each probe.
 pub(crate) type Hook = Arc<dyn Fn() + Send + Sync>;
 
+#[cfg(test)]
+thread_local! {
+    /// The probe hook of the next library this thread makes, set before its first scan starts:
+    /// for tests that hold a first scan.
+    pub(crate) static NEW_PROBE_HOOK: std::cell::RefCell<Option<Hook>> =
+        const { std::cell::RefCell::new(None) };
+}
+
 /// A named media library: its roots, scanned into a [`Catalog`], and the file pool its files
 /// are read on. Its methods never block.
 pub struct Library {
@@ -300,6 +308,9 @@ pub struct Library {
     pub(crate) counters: Counters,
     hook: Mutex<Option<Hook>>,
     scanner: Mutex<Option<std::thread::JoinHandle<()>>>,
+    /// Told once the first scan has put its catalog in place, or the library is removed: the
+    /// channels waiting for its items ([`Library::when_scanned`]).
+    scanned: Mutex<Vec<Box<dyn FnOnce() + Send>>>,
 }
 
 impl std::fmt::Debug for Library {
@@ -332,9 +343,14 @@ impl Library {
             counters: Counters::default(),
             hook: Mutex::new(None),
             scanner: Mutex::new(None),
+            scanned: Mutex::new(Vec::new()),
         });
         l.set.set(Some(Arc::new(s)));
         l.cat.set(Some(Arc::new(Catalog::default())));
+        #[cfg(test)]
+        if let Some(h) = NEW_PROBE_HOOK.with(|c| c.borrow_mut().take()) {
+            *lock(&l.hook) = Some(h);
+        }
         let me = Arc::clone(&l);
         let spawned = std::thread::Builder::new()
             .name(format!("akit-medialib-{}", short(name)))
@@ -425,6 +441,29 @@ impl Library {
         self.woken.notify_all();
         self.tell();
         true
+    }
+
+    /// Whether the library's first scan has put its catalog in place; when it has not, `tell` is
+    /// kept and called once it has, or once the library is removed, on the thread that did it and
+    /// with none of the library's locks held. No timer polls the library: what waits for its
+    /// items is told.
+    pub fn when_scanned(&self, tell: Box<dyn FnOnce() + Send>) -> bool {
+        let mut w = lock(&self.scanned);
+        // The catalog is set before the waiters are taken, under this lock: a waiter kept here is
+        // told, and one that comes after sees the catalog.
+        if self.catalog().scanned.is_some() || self.removed.load(SeqCst) {
+            return true;
+        }
+        w.push(tell);
+        false
+    }
+
+    /// Tells those [`Library::when_scanned`] kept.
+    fn tell_scanned(&self) {
+        let waiters = std::mem::take(&mut *lock(&self.scanned));
+        for t in waiters {
+            t();
+        }
     }
 
     /// Tells those waiting for the status that it changed.
@@ -569,6 +608,7 @@ impl Library {
             }
             self.cat.set(Some(Arc::new(cat)));
         }
+        self.tell_scanned();
         let cat = self.catalog();
         let keep: HashSet<tables::Key> = cat
             .items
@@ -626,6 +666,7 @@ impl Library {
         self.tell();
         self.pool().close();
         self.tables.clear();
+        self.tell_scanned();
     }
 
     /// Waits for the scanner of a removed library to end, and its pool's threads, `limit` at

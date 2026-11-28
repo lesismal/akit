@@ -340,6 +340,78 @@ fn check_paced(recs: &[Rec], gap: Time) {
 const GAP: Time = 50 * MS;
 
 /// fit's `TestBackToBack`.
+/// A channel made before its library's first scan ends waits for it untimed: the library tells
+/// it once its catalog is in place, and it loads its item then, the clock never moved.
+#[test]
+fn waits_for_the_first_scan() {
+    let key = KEYS.fetch_add(1, SeqCst);
+    // The first scan's probes wait until the test opens the gate.
+    let gate = Arc::new((Mutex::new(false), std::sync::Condvar::new()));
+    let g = Arc::clone(&gate);
+    library::NEW_PROBE_HOOK.with(|c| {
+        *c.borrow_mut() = Some(Arc::new(move || {
+            let (m, cv) = &*g;
+            let mut open = m.lock().unwrap();
+            while !*open {
+                open = cv.wait(open).unwrap();
+            }
+        }));
+    });
+    library::apply(
+        key,
+        &[MediaLibrary {
+            name: "lib".into(),
+            roots: vec![data()],
+            ..MediaLibrary::default()
+        }],
+    )
+    .unwrap();
+    let lib = library::lookup(key, "lib").unwrap();
+    lib.wait_status(WAIT, |s| s.scanning)
+        .expect("the first scan under way");
+    let hub = Hub::new(HubConfig::default());
+    let clock = FakeClock::new(t0());
+    let m = Arc::new(Manager::new(Options {
+        hub: hub.clone(),
+        libraries: key,
+        clock: Some(Arc::clone(&clock) as Arc<dyn Clock>),
+        seed: 7,
+        dial: None,
+    }));
+    let r = Rig {
+        key,
+        lib,
+        hub,
+        clock,
+        m,
+    };
+    r.m.apply(&[ch("tv/a", &["films/bbb"])], &[]).unwrap();
+    let st = r.status("tv/a");
+    assert_eq!(st.error, "the library has not been scanned yet", "{st:?}");
+    assert_eq!(st.state, "idle");
+    {
+        let (m, cv) = &*gate;
+        *m.lock().unwrap() = true;
+        cv.notify_all();
+    }
+    r.lib
+        .wait_status(WAIT, |s| s.scans >= 1 && !s.scanning)
+        .expect("the first scan");
+    r.lib.set_probe_hook(None);
+    // Told by the library, the channel loads its item: no timer ran, the clock is where it was.
+    r.settle();
+    assert_eq!(r.clock.now(), t0());
+    let st = r.status("tv/a");
+    assert_eq!(st.state, "loading", "{st:?}");
+    assert_eq!(st.next.as_ref().map(|n| n.item.as_str()), Some("films/bbb"));
+    // And plays it once its time comes.
+    let (rec, _sub) = r.play("tv/a");
+    r.run(200 * MS);
+    assert!(!rec.all().is_empty(), "nothing played");
+    let st = r.status("tv/a");
+    assert_eq!((st.state, st.error.as_str()), ("playing", ""), "{st:?}");
+}
+
 #[test]
 fn back_to_back() {
     let r = rig();

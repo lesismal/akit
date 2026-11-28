@@ -165,6 +165,17 @@ done and where the work differs from the plan.
   - On io_uring, `Engine::remove_listener` returns once the listener's accepts are cancelled, so a
     listener a reload removes takes no connection after it; `H3Upload::finish` is no longer
     refused by its own response; the pool pressure watcher samples every 500 ms (was 100 ms).
+### 2026-11-28: a channel waits for its library untimed
+
+- **Changed**: a channel made before its library's first scan ends no longer chooses its item again
+  every 200 ms, as fit's does: the library keeps those waiting (`Library::when_scanned`) and tells
+  them once its first catalog is in place, or once it is removed, and the channel chooses its item
+  then (decision 043). A player in that window gets "stream not found", or waits `play_wait`, as
+  before.
+- **Checked**: `channels::tests::waits_for_the_first_scan` holds the first scan's probes, makes
+  the channel, opens them, and sees the channel load its item with the fake clock not moved, then
+  play once it moves.
+
 ### 2026-11-28: I148, the video site
 
 - **Built**: fit's I137. akit-config reads `media_pages`' `libraries`, `vod` and `channels`, with
