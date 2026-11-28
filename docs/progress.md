@@ -22,6 +22,21 @@ done and where the work differs from the plan.
 
 ## Log
 
+### 2026-11-28: the A303 stopgap removed: akit's listeners on akio's default scheduling
+
+- akio's A303 is fixed (pinned since `2575a253`), so `akit_runtime::scheduled` goes, with its
+  test (`akit-runtime/tests/scheduling.rs`) and every call: the gateway's listeners
+  (akit-listener), the Admin API's and the consoles' (akit-admin), the tunnel's hub, node and
+  proxy (akit-tunnel), the LLM proxy and wire (akit-llm), the streaming role's (akit-media) and
+  TURN over TCP and TLS (akit-webrtc). akit's TCP and Unix-domain stream listeners take akio's
+  default scheduling again: work stealing on epoll and kqueue (ADR-104), event loops on io_uring;
+  `AKIO_DEFAULT_SCHEDULING=event-loops` still chooses event loops for a whole process. akit-llm
+  and akit-tunnel no longer depend on akit-runtime, and akit-admin takes it as a dev-dependency
+  again, as before the stopgap.
+- akit-proxy's `stream_download` under work stealing on gpu51's epoll: 10 of 10 alone (before
+  akio's fix, 6 of 6 failed, "resident memory rose" 51–59 MiB).
+- Decision 91 resolved: superseded by akio's fix; akit follows akio's default.
+
 ### 2026-11-28: akio pinned at `2575a253`: A305 and A303
 
 - akio: `2575a253` on akio's main (from `5893a0ed`). akit's `rev` and `akit_runtime::AKIO_REV` move

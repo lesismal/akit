@@ -610,8 +610,8 @@ impl Turn {
                 };
                 let mut l = match (kind, &tls) {
                     (0, _) => crate::udp_listener(addr, self.event_loops).serve(server.clone()),
-                    (1, _) => akit_runtime::scheduled(Listener::tcp(addr)).serve(server.stream()),
-                    (_, Some(t)) => akit_runtime::scheduled(Listener::tcp(addr))
+                    (1, _) => Listener::tcp(addr).serve(server.stream()),
+                    (_, Some(t)) => Listener::tcp(addr)
                         .serve(akio::tls::Tls::server(t.clone(), server.stream())),
                     (_, None) => continue,
                 };

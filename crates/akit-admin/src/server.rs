@@ -636,12 +636,10 @@ impl Server {
         cfg.max_connections = settings.max_conns;
         cfg.shutdown_timeout = Duration::from_secs(1);
         let listener = match (&unix, &opts.access) {
-            (Some(path), _) => akit_runtime::scheduled(Listener::unix(path)).unix_mode(0o600),
+            (Some(path), _) => Listener::unix(path).unix_mode(0o600),
             // Refused at accept, before anything is read (I87, akio's A3).
-            (None, Some(p)) => {
-                akit_runtime::scheduled(Listener::tcp(addr)).filter(accept_filter(p))
-            }
-            (None, None) => akit_runtime::scheduled(Listener::tcp(addr)),
+            (None, Some(p)) => Listener::tcp(addr).filter(accept_filter(p)),
+            (None, None) => Listener::tcp(addr),
         };
         let service = akio_http::serve_with(http, api);
         // Over TLS with cert_file (I92), client certificates asked for with client_ca_file; the

@@ -23,8 +23,6 @@ akit-observe = { workspace = true }
 akit-provider = { workspace = true }
 # The link tokens of the tunnel's hub and the LLM roles (I100): their management and views.
 akit-roles = { workspace = true }
-# Its listeners' scheduling (A303).
-akit-runtime = { workspace = true }
 akit-tls = { workspace = true }
 
 [dev-dependencies]
@@ -33,6 +31,7 @@ akit-handler = { workspace = true }
 akit-listener = { workspace = true }
 # The media libraries' endpoints, as akit run registers them (I141).
 akit-media = { workspace = true }
+akit-runtime = { workspace = true }
 
 [lints]
 workspace = true

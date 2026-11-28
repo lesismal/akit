@@ -21,6 +21,17 @@
 
 ## 日志
 
+### 2026-11-28：去掉 A303 的权宜做法：akit 的监听器回到 akio 的默认调度
+
+- akio 的 A303 已修复（自 `2575a253` 起锁定），因此 `akit_runtime::scheduled` 连同其测试（`akit-runtime/tests/scheduling.rs`）和
+  所有调用一起去掉：网关的监听器（akit-listener）、Admin API 与控制台的（akit-admin）、隧道的 hub、node 和 proxy（akit-tunnel）、
+  LLM 的 proxy 和 wire（akit-llm）、streaming 角色的（akit-media）以及基于 TCP 和 TLS 的 TURN（akit-webrtc）。akit 的 TCP 和 Unix 域流
+  监听器重新采用 akio 的默认调度：epoll 和 kqueue 上为工作窃取（ADR-104），io_uring 上为事件循环；`AKIO_DEFAULT_SCHEDULING=event-loops`
+  仍可为整个进程选择事件循环。akit-llm 和 akit-tunnel 不再依赖 akit-runtime，akit-admin 重新把它作为开发依赖，与权宜做法之前相同。
+- akit-proxy 的 `stream_download` 在 gpu51 的 epoll 上、工作窃取下单独运行 10 次中 10 次通过（akio 修复之前 6 次中 6 次失败，
+  “resident memory rose” 51–59 MiB）。
+- 决定 91 已解决：被 akio 的修复取代；akit 跟随 akio 的默认。
+
 ### 2026-11-28：akio 锁定在 `2575a253`：A305 与 A303
 
 - akio：akio main 上的 `2575a253`（自 `5893a0ed` 起）。akit 的 `rev` 与 `akit_runtime::AKIO_REV` 随之移动；akit 无需改动即可构建。

@@ -537,7 +537,7 @@ impl Listener {
         http.max_body_bytes = 0;
         http.head_timeout = Some(HANDSHAKE_TIMEOUT);
         let service = akio_http::serve_with(http, Service(Arc::clone(&self.0)));
-        let mut l = akit_runtime::scheduled(akio::Listener::tcp(addr)).threads(1);
+        let mut l = akio::Listener::tcp(addr).threads(1);
         if let Some(f) = filter {
             l = l.filter(move |a: &SocketAddr| f(a));
         }

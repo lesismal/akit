@@ -130,17 +130,15 @@ impl WebProxy {
                 None => err = "not an address to listen on".to_owned(),
                 Some(at) => {
                     let me = me.clone();
-                    let mut l = akit_runtime::scheduled(akio::Listener::tcp(at))
-                        .threads(1)
-                        .serve(akio::fn_acceptor(
-                            move |c: &akio::Conn<LocalHandler>| match me.upgrade() {
-                                Some(p) => p.accepted(c),
-                                None => {
-                                    c.close();
-                                    LocalHandler(None)
-                                }
-                            },
-                        ));
+                    let mut l = akio::Listener::tcp(at).threads(1).serve(akio::fn_acceptor(
+                        move |c: &akio::Conn<LocalHandler>| match me.upgrade() {
+                            Some(p) => p.accepted(c),
+                            None => {
+                                c.close();
+                                LocalHandler(None)
+                            }
+                        },
+                    ));
                     if let Some(p) = access.cloned() {
                         l = l.filter(move |peer: &SocketAddr| p.allows(peer.ip()));
                     }

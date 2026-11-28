@@ -496,7 +496,7 @@ impl HubCore {
         };
         let state = SocketState::new(self.me.clone(), w.conns());
         state.set(&password, w.conns());
-        let mut l = akit_runtime::scheduled(akio::Listener::tcp(addr))
+        let mut l = akio::Listener::tcp(addr)
             .threads(1)
             .serve(akio_http::serve_with(
                 crate::ws::http_config(),

@@ -137,7 +137,7 @@ first; its status here records the branch, then the akio commit akit pins.
 | A298 | akio-media's RTMP and SRT clients tell their owner when a session goes live and ends, with what it sent | requested; stopgap: an RTMP push retried by its client's `Reconnect` and restarted by a watch of its stream; an SRT push dialed with a session handler of akit's own | 1 | I146 |
 | A301 | `H2Client` ends its connection at the engine's graceful shutdown (`GOAWAY`; closed now with no stream open, else after its last), as the HTTP/1 client closes its idle ones | on akio's main and pinned (since `db34bfd7`): `H2Acceptor::on_shutdown`; akit's stopgap (`EngineSlot::shutdown`) removed | 4, 10 | I18, I18b |
 | A302 | `Conn::close` on io_uring resets a TCP connection whose received data it did not deliver, as on epoll (or a `Conn::abort` that closes with a reset): today a receive in flight takes the data after the shutdown, so the peer, facing a zero window, is never reset | on akio's main and pinned (since `5893a0ed`): suggestion (a), akio's ADR-188 (`SO_LINGER` 0 when input was not delivered; `akio_sys::reset_on_close`); fastcgi.rs `cut_connections` passes on io_uring | — | I75 |
-| A303 | Linked backpressure that holds under work stealing (ADR-104): a held upstream read (akio-http's `ResponseBody::hold_reads`, under akit's `Download::hold_reads`) and a full downstream write (`BodyStream::queued_bytes`, `on_drain`) bound what a streamed relay holds, as on event loops | on akio's main and pinned (since `2575a253`): not backpressure but akio-buf's per-thread caches, now at most 256 KiB of a size class a thread (akio's ADR-190); akit's stopgap (`akit_runtime::scheduled`, decision 91) still in place | 8, 11 | I16, I17, I18b |
+| A303 | Linked backpressure that holds under work stealing (ADR-104): a held upstream read (akio-http's `ResponseBody::hold_reads`, under akit's `Download::hold_reads`) and a full downstream write (`BodyStream::queued_bytes`, `on_drain`) bound what a streamed relay holds, as on event loops | on akio's main and pinned (since `2575a253`): not backpressure but akio-buf's per-thread caches, now at most 256 KiB of a size class a thread (akio's ADR-190); akit's stopgap (`akit_runtime::scheduled`, decision 91) removed: akit's listeners take akio's default scheduling | 8, 11 | I16, I17, I18b |
 | A305 | A plain WebSocket's late queue (what other threads send while its handler's batch is open) counted in `WsSender::queued_bytes` and waited for by `on_drain`, bounded by the connection's `max_queued_bytes` rather than a fixed 4 MiB, and never dropped silently when the batch ends | on akio's main and pinned (since `2575a253`): akio's ADR-189; `large_transfers_both_ways` passes under load; a sealed WebSocket still ends on a refused send | 8, 9 | I103b |
 
 ## A1 TCP listeners on a running engine
@@ -3245,11 +3245,13 @@ thread now keeps at most 256 KiB of a size class (64 buffers of 512 B and 4 KiB,
 64 KiB, 1 of 256 KiB; about 1 MiB a thread in all), with no API change; akio's
 `tests/relay_memory.rs` keeps a relay through 16 threads bounded. With akit's listeners left to
 akio's default (work stealing, the next change), akit-proxy's `stream_download` passes alone on
-gpu51's epoll 10 of 10. akit's stopgap goes in that change.
+gpu51's epoll 10 of 10. akit's stopgap is gone: `akit_runtime::scheduled` and its calls removed,
+decision 91 resolved, akit's listeners on akio's default scheduling again.
 
-**Status.** Requested (2026-11-28). Stopgap in akit: its TCP and Unix-domain stream listeners
-choose `Scheduling::EventLoops` (`akit_runtime::scheduled`), unless `AKIO_DEFAULT_SCHEDULING` is
-set, which leaves the choice to akio (decision 91, recorded in [progress](progress.md)).
+**Status.** Requested (2026-11-28). Stopgap in akit until the fix: its TCP and Unix-domain stream
+listeners chose `Scheduling::EventLoops` (`akit_runtime::scheduled`), unless
+`AKIO_DEFAULT_SCHEDULING` was set, which left the choice to akio (decision 91, recorded in
+[progress](progress.md)).
 
 **Problem.** akio `db34bfd7` made work stealing (ADR-104) the default scheduling of TCP listeners
 on epoll/kqueue. With it, akit's linked backpressure no longer bounds the memory of a streamed

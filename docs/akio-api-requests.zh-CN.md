@@ -136,7 +136,7 @@
 | A298 | akio-media 的 RTMP 和 SRT 客户端在会话上线和结束时告诉其所有者，并给出其发送量 | 已提出；权宜做法：RTMP 推流由其客户端的 `Reconnect` 重试，并由对其流的监视重启；SRT 推流用 akit 自己的会话处理器拨号 | 1 | I146 |
 | A301 | `H2Client` 在引擎优雅关闭时结束其连接（`GOAWAY`；没有打开的流时立即关闭，否则在最后一个流结束后关闭），如同 HTTP/1 客户端关闭其空闲连接 | 已进入 akio 的 main 并锁定（自 `db34bfd7` 起）：`H2Acceptor::on_shutdown`；akit 的权宜做法（`EngineSlot::shutdown`）已去掉 | 4, 10 | I18, I18b |
 | A302 | io_uring 上的 `Conn::close` 像 epoll 上一样重置一个收到了未交付数据的 TCP 连接（或提供以重置方式关闭的 `Conn::abort`）：目前进行中的接收在 shutdown 之后取走数据，面对零窗口的对端永远收不到重置 | 已进入 akio 的 main 并锁定（自 `5893a0ed` 起）：建议 (a)，akio 的 ADR-188（未交付输入时以 `SO_LINGER` 0 关闭；`akio_sys::reset_on_close`）；fastcgi.rs 的 `cut_connections` 在 io_uring 上通过 | — | I75 |
-| A303 | 在工作窃取（ADR-104）下依然成立的联动背压：暂停的上游读取（akio-http 的 `ResponseBody::hold_reads`，akit 的 `Download::hold_reads` 在其上）与写满的下游（`BodyStream::queued_bytes`、`on_drain`）像在事件循环上一样限制流式转发占用的内存 | 已进入 akio 的 main 并锁定（自 `2575a253` 起）：原因不是背压，而是 akio-buf 的每线程缓存，现在每个线程每个大小类最多保留 256 KiB（akio 的 ADR-190）；akit 的权宜做法（`akit_runtime::scheduled`，决定 91）仍在 | 8, 11 | I16, I17, I18b |
+| A303 | 在工作窃取（ADR-104）下依然成立的联动背压：暂停的上游读取（akio-http 的 `ResponseBody::hold_reads`，akit 的 `Download::hold_reads` 在其上）与写满的下游（`BodyStream::queued_bytes`、`on_drain`）像在事件循环上一样限制流式转发占用的内存 | 已进入 akio 的 main 并锁定（自 `2575a253` 起）：原因不是背压，而是 akio-buf 的每线程缓存，现在每个线程每个大小类最多保留 256 KiB（akio 的 ADR-190）；akit 的权宜做法（`akit_runtime::scheduled`，决定 91）已去掉：akit 的监听器采用 akio 的默认调度 | 8, 11 | I16, I17, I18b |
 | A305 | 普通（plain）WebSocket 的迟到队列（其处理器的批次打开期间其他线程发送的内容）计入 `WsSender::queued_bytes` 并由 `on_drain` 等待，以连接的 `max_queued_bytes` 而不是固定的 4 MiB 为上限，并且在批次结束时绝不静默丢弃 | 已进入 akio 的 main 并锁定（自 `2575a253` 起）：akio 的 ADR-189；`large_transfers_both_ways` 在负载下通过；加密的 WebSocket 在发送被拒时仍会结束 | 8, 9 | I103b |
 
 ## A1 运行中引擎上的 TCP 监听器
@@ -2576,9 +2576,9 @@ akio 验证了 `hold_reads`、`queued_bytes` 和 `on_drain` 无论由哪个 work
 片段的转发中，每个片段被释放它的线程放进池里；在工作窃取下 16 个 worker 都运行两个连接的轮次，每个最多保留 4 MiB，
 16 × 4 MiB = 64 MiB。现在一个线程每个大小类最多保留 256 KiB（512 B 和 4 KiB 各 64 个，16 KiB 16 个，64 KiB 4 个，256 KiB 1 个；
 每个线程合计约 1 MiB），没有 API 变化；akio 的 `tests/relay_memory.rs` 保证经 16 个线程的转发内存有界。akit 的监听器交给 akio 的默认
-（工作窃取，下一个改动）时，akit-proxy 的 `stream_download` 在 gpu51 的 epoll 上单独运行 10 次中 10 次通过。akit 的权宜做法在那个改动中去掉。
+（工作窃取，下一个改动）时，akit-proxy 的 `stream_download` 在 gpu51 的 epoll 上单独运行 10 次中 10 次通过。akit 的权宜做法已去掉：`akit_runtime::scheduled` 及其调用删除，决定 91 已解决，akit 的监听器重新采用 akio 的默认调度。
 
-**状态。** 已提出（2026-11-28）。akit 中的权宜做法：其 TCP 和 Unix 域流监听器选择 `Scheduling::EventLoops`
+**状态。** 已提出（2026-11-28）。修复之前 akit 中的权宜做法：其 TCP 和 Unix 域流监听器选择 `Scheduling::EventLoops`
 （`akit_runtime::scheduled`），除非设置了 `AKIO_DEFAULT_SCHEDULING`，此时由 akio 决定（决定 91，记录在[进度](progress.zh-CN.md)中）。
 
 **问题。** akio `db34bfd7` 把工作窃取（ADR-104）设为 epoll/kqueue 上 TCP 监听器的默认调度。在它之下，akit 的联动背压不再限制流式
