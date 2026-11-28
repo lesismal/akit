@@ -30,7 +30,17 @@ const OLD: &str = "the media tokens' first secret, 32 bytes or more";
 
 struct Resp {
     status: u16,
+    headers: Vec<(String, String)>,
     body: String,
+}
+
+impl Resp {
+    fn header(&self, name: &str) -> Option<&str> {
+        self.headers
+            .iter()
+            .find(|(n, _)| n.eq_ignore_ascii_case(name))
+            .map(|(_, v)| v.as_str())
+    }
 }
 
 fn post(addr: SocketAddr, path: &str, body: &str, auth: bool) -> Resp {
@@ -55,6 +65,7 @@ fn request(addr: SocketAddr, method: &str, path: &str, body: &str, auth: bool) -
     r.read_line(&mut line).unwrap();
     let status = line.split(' ').nth(1).unwrap().parse().unwrap();
     let mut len = 0usize;
+    let mut headers = Vec::new();
     loop {
         let mut l = String::new();
         r.read_line(&mut l).unwrap();
@@ -66,12 +77,14 @@ fn request(addr: SocketAddr, method: &str, path: &str, body: &str, auth: bool) -
             if n.eq_ignore_ascii_case("content-length") {
                 len = v.trim().parse().unwrap();
             }
+            headers.push((n.to_owned(), v.trim().to_owned()));
         }
     }
     let mut b = vec![0; len];
     r.read_exact(&mut b).unwrap();
     Resp {
         status,
+        headers,
         body: String::from_utf8(b).unwrap(),
     }
 }
@@ -420,11 +433,231 @@ fn route_and_policy_checks() {
     );
     let e = akit_config::from_json(&ring, None).unwrap_err().to_string();
     assert!(e.contains(r#"key "a" has none"#), "{e}");
-    let e = akit_config::from_json(
-        &config(r#""secret_file": "/tmp/x""#, r#", "url_base": "https://a""#),
-        None,
+    // fit's `TestURLsProvision`.
+    for params in [
+        r#", "url_base": "ftp://x""#,
+        r#", "url_base": "https://""#,
+        r#", "url_base": "https://x/?a""#,
+        r#", "url_base": "https://u@x""#,
+        r#", "url_base": "::""#,
+        r#", "url_prefixes": ["vod/"]"#,
+        r#", "url_prefixes": ["/a/../b"]"#,
+        r#", "url_prefixes": ["/a b"]"#,
+    ] {
+        let e = akit_config::from_json(
+            &config(r#""secret_file": "/tmp/x", "url_signing": {}"#, params),
+            None,
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(e.contains("url_"), "{params}: {e}");
+    }
+}
+
+/// A keyring k1, k2 in files of `d`.
+fn ring(d: &Dir) -> String {
+    let f1 = d.0.join("k1");
+    let f2 = d.0.join("k2");
+    std::fs::write(&f1, "the first key's secret, 16+").unwrap();
+    std::fs::write(&f2, "the second key's secret, 16+").unwrap();
+    format!(
+        r#""keys": [{{"key": "k1", "secret_file": "{}"}}, {{"key": "k2", "secret_file": "{}"}}]"#,
+        f1.display(),
+        f2.display()
     )
-    .unwrap_err()
-    .to_string();
-    assert!(e.contains("not supported yet"), "{e}");
+}
+
+/// A single secret in a file of `d`.
+fn single(d: &Dir) -> String {
+    let f = d.0.join("secret");
+    std::fs::write(&f, OLD).unwrap();
+    format!(r#""secret_file": "{}""#, f.display())
+}
+
+/// The URLs of a `/urls` answer.
+fn urls_of(body: &str) -> Vec<String> {
+    let list = &body[body.find("\"urls\":[").unwrap() + 8..];
+    let list = &list[..list.find(']').unwrap()];
+    list.split(',')
+        .map(|u| u.trim_matches('"').to_owned())
+        .collect()
+}
+
+fn now() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64
+}
+
+/// fit's `TestURLs`: URLs signed whole for a viewer, each for its own resource, bound to the
+/// address and session asked for, with the key asked for; each is the query the policy signs
+/// for the same viewer and expiry.
+#[test]
+fn urls() {
+    let d = dir();
+    let a = start(&config(
+        &format!(
+            r#"{}, "url_signing": {{"ttl": "5m", "bind_address": "subnet"}}"#,
+            ring(&d)
+        ),
+        r#", "url_base": "https://media.example.com/", "url_prefixes": ["/vod/", "/live/"], "max_ttl": "1h""#,
+    ));
+    let h = a.http;
+    let before = now();
+    let r = post(
+        h,
+        "/media-tokens/urls",
+        r#"{"subject": "user-1", "address": "203.0.113.7", "session": "tab-1", "key": "k2",
+            "paths": ["/vod/films/films/bbb/index.m3u8", "/live/cam.flv"]}"#,
+        true,
+    );
+    assert_eq!(r.status, 200, "{}", r.body);
+    assert_eq!(
+        (field(&r.body, "subject"), field(&r.body, "session")),
+        ("user-1".to_owned(), "tab-1".to_owned())
+    );
+    assert_eq!(field(&r.body, "key"), "k2");
+    let exp: i64 = field(&r.body, "expires").parse().unwrap();
+    assert!((exp - (before + 300)).abs() <= 5, "{exp}");
+    let list = urls_of(&r.body);
+    let p = registry::lookup(registry::key(&a.engine), "live").unwrap();
+    let viewer = akit_media::auth::Viewer {
+        subject: "user-1".into(),
+        address: Some("203.0.113.7".parse().unwrap()),
+        session: "tab-1".into(),
+    };
+    for (u, (path, res)) in list.iter().zip([
+        (
+            "https://media.example.com/vod/films/films/bbb/index.m3u8",
+            "/vod/films/films/bbb/",
+        ),
+        ("https://media.example.com/live/cam.flv", "/live/cam/"),
+    ]) {
+        let (base, q) = u.split_once('?').unwrap();
+        assert_eq!(base, path);
+        assert!(
+            q.contains("kid=k2") && q.contains("ip=203.0.113.0/24") && q.contains("sid=tab-1"),
+            "{u}"
+        );
+        assert_eq!(q, p.sign_url(res, &viewer, exp, "k2").unwrap());
+    }
+    // No session asked for: a new one each time; the ttl asked for; the ring's first key; no
+    // address.
+    let one = |body: &str| {
+        let r = post(h, "/media-tokens/urls", body, true);
+        assert_eq!(r.status, 200, "{}", r.body);
+        assert_eq!(r.header("cache-control"), Some("no-store"));
+        r.body
+    };
+    let x = one(r#"{"subject": "user-1", "ttl": "10m", "paths": ["/vod/films/a/index.m3u8"]}"#);
+    let y = one(r#"{"subject": "user-1", "paths": ["/vod/films/a/index.m3u8"]}"#);
+    assert_ne!(field(&x, "session"), field(&y, "session"));
+    assert_eq!(field(&x, "session").len(), 16);
+    assert_eq!(field(&x, "key"), "k1");
+    assert!(!urls_of(&x)[0].contains("ip="));
+    let exp: i64 = field(&x, "expires").parse().unwrap();
+    assert!((exp - (now() + 600)).abs() <= 5, "{exp}");
+}
+
+/// fit's `TestURLsValidation`.
+#[test]
+fn urls_validation() {
+    let d = dir();
+    let a = start(&config(
+        &format!(r#"{}, "url_signing": {{}}"#, ring(&d)),
+        r#", "url_prefixes": ["/vod/"], "max_ttl": "1h", "max_tokens": 2"#,
+    ));
+    let h = a.http;
+    for (body, want) in [
+        ("nonsense", "must be JSON"),
+        (r#"{"subject": "u", "paths": []}"#, "paths is empty"),
+        (
+            r#"{"subject": "u", "paths": ["/vod/a/x", "/vod/a/y", "/vod/a/z"]}"#,
+            "at most 2",
+        ),
+        (r#"{"paths": ["/vod/a/x"]}"#, "not a subject"),
+        (
+            r#"{"subject": "a\u0001", "paths": ["/vod/a/x"]}"#,
+            "not a subject",
+        ),
+        (
+            r#"{"subject": "u", "session": "a b", "paths": ["/vod/a/x"]}"#,
+            "not a session",
+        ),
+        (
+            r#"{"subject": "u", "address": "nope", "paths": ["/vod/a/x"]}"#,
+            "not an IP address",
+        ),
+        (
+            r#"{"subject": "u", "ttl": "nope", "paths": ["/vod/a/x"]}"#,
+            "not a duration",
+        ),
+        (
+            r#"{"subject": "u", "ttl": "2h", "paths": ["/vod/a/x"]}"#,
+            "longer than max_ttl",
+        ),
+        (
+            r#"{"subject": "u", "key": "k9", "paths": ["/vod/a/x"]}"#,
+            "no key named",
+        ),
+        (
+            r#"{"subject": "u", "paths": ["/vod/../x"]}"#,
+            "not a path a URL is signed for",
+        ),
+        (
+            r#"{"subject": "u", "paths": ["/live/a/index.m3u8"]}"#,
+            "none of the url_prefixes",
+        ),
+    ] {
+        let r = post(h, "/media-tokens/urls", body, true);
+        assert!(
+            r.status == 400 && r.body.contains(want),
+            "{body}: {} {}",
+            r.status,
+            r.body
+        );
+    }
+    let r = request(h, "GET", "/media-tokens/urls", "", true);
+    assert_eq!((r.status, r.header("allow")), (405, Some("POST")));
+    assert_eq!(post(h, "/media-tokens/urls", "{}", false).status, 401);
+    drop(a);
+
+    // A key asked of a policy with one secret; its URLs name no key.
+    let g = start(&config(
+        &format!(r#"{}, "url_signing": {{}}"#, single(&d)),
+        "",
+    ));
+    let r = post(
+        g.http,
+        "/media-tokens/urls",
+        r#"{"subject": "u", "key": "k1", "paths": ["/vod/a/x"]}"#,
+        true,
+    );
+    assert!(r.status == 400 && r.body.contains("one key"), "{}", r.body);
+    let r = post(
+        g.http,
+        "/media-tokens/urls",
+        r#"{"subject": "u", "paths": ["/vod/a/x"]}"#,
+        true,
+    );
+    assert_eq!(r.status, 200, "{}", r.body);
+    assert!(!r.body.contains("\"key\""), "{}", r.body);
+    let u = &urls_of(&r.body)[0];
+    assert!(u.starts_with("/vod/a/x?exp=") && !u.contains("kid="), "{u}");
+    drop(g);
+
+    // A policy without url_signing.
+    let n = start(&config(&single(&d), ""));
+    let r = post(
+        n.http,
+        "/media-tokens/urls",
+        r#"{"subject": "u", "paths": ["/vod/a/x"]}"#,
+        true,
+    );
+    assert!(
+        r.status == 404 && r.body.contains("no url_signing"),
+        "{}",
+        r.body
+    );
 }

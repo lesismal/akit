@@ -18,11 +18,12 @@
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock, PoisonError};
+use std::time::Duration;
 
 use akio_http::{Context, Response, Service};
 use akio_media::hls::{Hls as AkioHls, HlsConfig, SegmentFormat};
 use akio_media::httpflv::{HttpFlv as AkioFlv, HttpFlvConfig};
-use akit_config::media::{HlsFormat, MediaAction as Action};
+use akit_config::media::HlsFormat;
 use akit_runtime::{
     Handler, HandlerParams, Info, Provision, ProvisionError, Provisioned, set_request_path,
 };
@@ -203,10 +204,13 @@ impl Service for Flv {
         let flv = self.service(hub_no, &hub);
         let unprefixed = self.base.prefix != "/";
         let checked = stream.clone();
-        self.base.auth.guard(
+        // The stream's resource, as a signed URL is signed for: /live/cam/ for /live/cam.flv.
+        let path = ctx.path();
+        let resource = format!("{}/", path.strip_suffix(".flv").unwrap_or(path));
+        self.base.auth.guard_resource(
             ctx,
-            Action::Play,
             &checked,
+            &resource,
             &self.base.cors,
             move |ctx, _: Access| {
                 if unprefixed {
@@ -431,10 +435,17 @@ impl Service for HlsHandler {
         };
         let unprefixed = self.base.prefix != "/";
         let checked = stream.clone();
-        self.base.auth.guard(
+        // The stream's resource, as a signed URL is signed for: the path up to the playlist's or
+        // segment's name.
+        let resource = path
+            .rfind('/')
+            .and_then(|i| path.get(..=i))
+            .unwrap_or("/")
+            .to_owned();
+        self.base.auth.guard_resource(
             ctx,
-            Action::Play,
             &checked,
+            &resource,
             &self.base.cors,
             move |ctx, access: Access| {
                 let (fmp4, ts) = sh.services(hub_no, &hub);
@@ -452,14 +463,25 @@ impl Service for HlsHandler {
                 } else {
                     sh.def
                 };
-                // A playlist fetched with a token hands it on to what it names.
-                if playlist && !access.query_token.is_empty() {
-                    let query = format!("token={}", query_escape(&access.query_token));
+                // A playlist fetched with a token hands it on to what it names; one fetched with a
+                // signed URL, a grant that lives play_grace past the URL.
+                let (query, cookie) = if playlist {
+                    access.pass_on(Duration::ZERO)
+                } else {
+                    (String::new(), String::new())
+                };
+                if !query.is_empty() || !cookie.is_empty() {
                     ctx.add_response_filter(move |resp, _| {
-                        if resp.status == 200 {
+                        if resp.status != 200 {
+                            return;
+                        }
+                        if !query.is_empty() {
                             if let Ok(body) = std::str::from_utf8(&resp.body) {
                                 resp.body = with_query(body, &query).into_bytes();
                             }
+                        }
+                        if !cookie.is_empty() {
+                            resp.headers.append("Set-Cookie", &cookie);
                         }
                     });
                 }

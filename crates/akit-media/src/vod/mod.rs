@@ -34,7 +34,7 @@ use akio_http::{Context, Method, Response, Service, Suspended};
 use akio_media::av::{Time, Track};
 use akio_media::mp4::{Movie, Plan};
 use akio_media::{fmp4, mpegts};
-use akit_config::media::MediaAction as Action;
+
 use akit_config::medialib::Container;
 use akit_runtime::{Handler, HandlerParams, Provision, ProvisionError, Provisioned};
 
@@ -344,8 +344,8 @@ fn fail(ctx: &mut Context, st: &Store, f: Option<&library::File>, e: &Error) {
 }
 
 impl Store {
-    /// Sends `b`, or 304 to a request whose `If-None-Match` names it.
-    fn send(&self, ctx: &mut Context, b: &Blob, private: bool) {
+    /// Sends `b`, or 304 to a request whose `If-None-Match` names it, with `own`'s header.
+    fn send(&self, ctx: &mut Context, b: &Blob, own: &Own) {
         let matches = ctx
             .header("If-None-Match")
             .is_some_and(|v| v.split(',').any(|t| t.trim() == b.etag || t.trim() == "*"));
@@ -358,7 +358,10 @@ impl Store {
             r = r.header("ETag", &b.etag);
         }
         r = r.header("Last-Modified", http_date(b.modified));
-        if private {
+        if !own.cookie.is_empty() {
+            r = r.header("Set-Cookie", &own.cookie);
+        }
+        if own.private {
             r = r.header("Cache-Control", "private, no-store");
         } else if !self.key.cache_control.is_empty() {
             r = r.header("Cache-Control", &self.key.cache_control);
@@ -474,6 +477,9 @@ impl Service for Vod {
         };
         drop(cat);
         let stream = format!("vod/{}/{id}", self.library);
+        // The item's resource, as a signed URL is signed for: the path up to and with the '/'
+        // after its ID.
+        let resource = format!("{}{id}/", self.prefix);
         let req = Req {
             st,
             l,
@@ -483,10 +489,10 @@ impl Service for Vod {
             timeout: self.timeout,
             cors: self.cors.clone(),
         };
-        self.auth.guard(
+        self.auth.guard_resource(
             ctx,
-            Action::Play,
             &stream,
+            &resource,
             &self.cors,
             move |ctx, a: Access| {
                 req.serve(ctx, &a);
@@ -506,13 +512,21 @@ struct Req {
     cors: String,
 }
 
-/// The query a playlist's URIs carry: the request's token, when it came in the query.
-fn pass_on(a: &Access) -> String {
-    if a.query_token.is_empty() {
-        String::new()
-    } else {
-        format!("token={}", crate::handlers::query_escape(&a.query_token))
-    }
+/// What a response's header says of the viewer: a playlist that names a token or a grant, or
+/// sets a grant's cookie, is the viewer's own, which no shared cache may keep (fit's `personal`).
+#[derive(Debug, Clone, Default)]
+struct Own {
+    private: bool,
+    /// A `Set-Cookie` field's value, or empty.
+    cookie: String,
+}
+
+/// The query a playlist of an item `length` long hands the URIs it names, and its header: the
+/// request's token, when it came in the query; with a signed URL, the grant it hands on.
+fn pass_on(a: &Access, length: Duration) -> (String, Own) {
+    let (query, cookie) = a.pass_on(length);
+    let private = a.by_url() || !query.is_empty();
+    (query, Own { private, cookie })
 }
 
 /// The rendition or audio file `(audio, i)` of `it` that may be played in `c`.
@@ -532,10 +546,9 @@ fn ext_of(path: &str) -> String {
 
 impl Req {
     fn serve(self, ctx: &mut Context, a: &Access) {
-        let query = pass_on(a);
-        let private = !query.is_empty();
         match self.nm.kind {
             Kind::Master => {
+                let (query, own) = pass_on(a, self.it.duration);
                 let c = self.nm.c.unwrap_or(self.container);
                 match playlist::render_master(&self.it, c, &query) {
                     Some(b) => {
@@ -545,7 +558,7 @@ impl Req {
                             etag: String::new(),
                             modified: self.it.modified,
                         };
-                        self.st.send(ctx, &blob, private);
+                        self.st.send(ctx, &blob, &own);
                     }
                     None => text(
                         ctx,
@@ -570,12 +583,18 @@ impl Req {
                         &[],
                     );
                 }
-                self.serve_built(ctx, r, c, query);
+                let (query, own) = if self.nm.kind == Kind::Media {
+                    pass_on(a, r.duration)
+                } else {
+                    (String::new(), Own::default())
+                };
+                self.serve_built(ctx, r, c, query, own);
             }
             Kind::Subtitles => {
                 let Some(s) = self.subtitle() else {
                     return text(ctx, 404, "no such subtitle", &self.cors, &[]);
                 };
+                let (query, own) = pass_on(a, self.it.duration);
                 let blob = Blob {
                     data: playlist::render_subtitles(self.nm.i, self.it.duration, &query)
                         .into_bytes(),
@@ -583,7 +602,7 @@ impl Req {
                     etag: String::new(),
                     modified: s.file.modified,
                 };
-                self.st.send(ctx, &blob, private);
+                self.st.send(ctx, &blob, &own);
             }
             Kind::Vtt => {
                 let Some(s) = self.subtitle().cloned() else {
@@ -649,14 +668,14 @@ impl Req {
             what: What::Vtt,
         };
         if let Some(Val::Blob(b)) = self.st.cache.peek(&k) {
-            return self.st.send(ctx, &b, false);
+            return self.st.send(ctx, &b, &Own::default());
         }
         let Some(w) = Waiter::new(ctx, self.timeout, &self.cors) else {
             return text(ctx, 503, "the media library is busy", &self.cors, &[]);
         };
         let st = Arc::clone(&self.st);
         let file = s.file.clone();
-        let reply = waiter_reply(w, Arc::clone(&st), Some(file.clone()), false);
+        let reply = waiter_reply(w, Arc::clone(&st), Some(file.clone()), Own::default());
         match self.st.cache.begin(&k, reply) {
             Begin::Kept(v, reply) => reply(Ok(v)),
             Begin::Refused(reply) => reply(Err(Error::Busy)),
@@ -680,7 +699,7 @@ impl Req {
     }
 
     /// Serves the media playlist, the initialization section or a segment of `r` in `c`.
-    fn serve_built(self, ctx: &mut Context, r: Rendition, c: C, query: String) {
+    fn serve_built(self, ctx: &mut Context, r: Rendition, c: C, query: String, own: Own) {
         let file = FileKey::of(&r.file);
         let kind = self.nm.kind;
         let (audio, i, n) = (self.nm.audio, self.nm.i, self.nm.n);
@@ -698,7 +717,7 @@ impl Req {
                 what,
             };
             if let Some(Val::Blob(b)) = self.st.cache.peek(&k) {
-                return self.st.send(ctx, &b, false);
+                return self.st.send(ctx, &b, &own);
             }
         }
         if kind == Kind::Media {
@@ -707,7 +726,7 @@ impl Req {
                 what: What::Plan,
             }) {
                 let b = self.media_blob(&p, &r, c, &query);
-                return self.st.send(ctx, &b, !query.is_empty());
+                return self.st.send(ctx, &b, &own);
             }
         }
         let Some(w) = Waiter::new(ctx, self.timeout, &self.cors) else {
@@ -729,9 +748,8 @@ impl Req {
             Arc::clone(&me).with_plan(&r2, &m2, w, move |me, w, plan| match kind {
                 Kind::Media => {
                     let b = me.media_blob(&plan, &rr, c, &query);
-                    let private = !query.is_empty();
                     let st = Arc::clone(&me.st);
-                    w.answer(move |ctx| st.send(ctx, &b, private));
+                    w.answer(move |ctx| st.send(ctx, &b, &own));
                 }
                 Kind::Init => me.init(&rr, &movie, w),
                 _ => me.segment(&rr, &movie, &plan, audio, i, n, c, w),
@@ -854,7 +872,7 @@ impl Req {
             .cache
             .put(&k, Val::Blob(Arc::clone(&b)), b.data.len() as u64);
         let st = Arc::clone(&self.st);
-        w.answer(move |ctx| st.send(ctx, &b, false));
+        w.answer(move |ctx| st.send(ctx, &b, &Own::default()));
     }
 
     /// Segment `n` of `r` in `c`, from the cache or built on the library's pool.
@@ -879,7 +897,12 @@ impl Req {
             file: FileKey::of(&r.file),
             what: What::Segment(c, u32::try_from(n).unwrap_or(u32::MAX)),
         };
-        let reply = waiter_reply(w, Arc::clone(&self.st), Some(r.file.clone()), false);
+        let reply = waiter_reply(
+            w,
+            Arc::clone(&self.st),
+            Some(r.file.clone()),
+            Own::default(),
+        );
         let b = match self.st.cache.begin(&k, reply) {
             Begin::Kept(v, reply) => return reply(Ok(v)),
             Begin::Refused(reply) => return reply(Err(Error::Busy)),
@@ -937,10 +960,10 @@ fn waiter_reply(
     w: Waiter,
     st: Arc<Store>,
     f: Option<library::File>,
-    private: bool,
+    own: Own,
 ) -> cache::Waiter<Val> {
     Box::new(move |v| match v {
-        Ok(Val::Blob(b)) => w.answer(move |ctx| st.send(ctx, &b, private)),
+        Ok(Val::Blob(b)) => w.answer(move |ctx| st.send(ctx, &b, &own)),
         Ok(Val::Plan(_)) => w.answer(move |ctx| fail(ctx, &st, f.as_ref(), &Error::NotServed)),
         Err(e) => w.answer(move |ctx| fail(ctx, &st, f.as_ref(), &e)),
     })

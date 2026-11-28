@@ -1,5 +1,5 @@
-//! fit's `config/mediaauth_test.go` and `config/streaming_test.go`, ported (I120). What fit reads
-//! there and akit does not yet (a policy's `keys` and `url_signing`, the role's `channels` and
+//! fit's `config/mediaauth_test.go` and `config/streaming_test.go`, ported (I120; a policy's
+//! `url_signing`, I144). What fit reads there and akit does not yet (the role's `channels` and
 //! `push`, RTSP's `auth_methods` and `realm`) is refused as not supported yet.
 
 use super::*;
@@ -120,18 +120,92 @@ fn media_auth() {
             r#"{"name": "a", "users": [{"name": "u", "password_hash": "plain"}]}"#,
             "not a bcrypt hash",
         ),
-        // fit's I119 and the media library's track.
+        // url_signing (I144).
         (
-            r#"{"name": "a", "keys": [{"key": "k1", "secret": "0123456789abcdef"}]}"#,
-            "not supported yet",
+            r#"{"name": "a", "public": ["publish"], "url_signing": {}}"#,
+            "url_signing needs a key",
         ),
         (
-            r#"{"name": "a", "secret": "0123456789abcdef", "url_signing": {}}"#,
-            "not supported yet",
+            r#"{"name": "a", "secret": "0123456789abcdef", "url_signing": {"bind_address": "host"}}"#,
+            r#""host" is not one of"#,
+        ),
+        (
+            r#"{"name": "a", "secret": "0123456789abcdef", "url_signing": {"on_limit": "wait"}}"#,
+            r#""wait" is not one of"#,
+        ),
+        (
+            r#"{"name": "a", "secret": "0123456789abcdef", "url_signing": {"max_sessions": -1}}"#,
+            "max_sessions",
+        ),
+        (
+            r#"{"name": "a", "secret": "0123456789abcdef", "url_signing": {"max_tracked_sessions": -1}}"#,
+            "max_tracked_sessions",
+        ),
+        (
+            r#"{"name": "a", "secret": "0123456789abcdef", "url_signing": {"play_grace": "-1s"}}"#,
+            "play_grace",
+        ),
+        (
+            r#"{"name": "a", "secret": "0123456789abcdef", "url_signing": {"referers": ["example.com"]}}"#,
+            "not an origin",
+        ),
+        (
+            r#"{"name": "a", "secret": "0123456789abcdef", "url_signing": {"origins": ["https://a b"]}}"#,
+            "not an origin",
+        ),
+        (
+            r#"{"name": "a", "secret": "0123456789abcdef", "url_signing": {"trusted_proxies": ["x"]}}"#,
+            "not an IP address",
+        ),
+        (
+            r#"{"name": "a", "secret": "0123456789abcdef", "url_signing": {"wait": 1}}"#,
+            "wait",
         ),
     ] {
         refused(&doc(bad), want);
     }
+    let many = format!(
+        r#"{{"name": "a", "secret": "0123456789abcdef", "url_signing": {{"referers": [{}"https://a"]}}}}"#,
+        r#""https://a","#.repeat(256)
+    );
+    refused(&doc(&many), "at most 256");
+}
+
+/// fit's `TestURLSigning`: `url_signing` and its defaults.
+#[test]
+fn url_signing() {
+    let c = loads(
+        r#"{"listeners": [{"name": "w", "address": ":8080"}], "media_auth": [
+		{"name": "a", "secret": "0123456789abcdef", "url_signing": {"ttl": "1m", "play_grace": "5m", "session_idle": "30s",
+		 "max_tracked_sessions": 10, "max_sessions": 2, "on_limit": "end_oldest", "bind_address": "subnet", "cookie": true,
+		 "referers": ["https://*.Example.com"], "origins": ["http://localhost:8080"], "trusted_proxies": ["10.0.0.0/8", "::1"]}},
+		{"name": "b", "secret": "0123456789abcdef", "url_signing": {}}]}"#,
+    );
+    let u = c.media_auth[0].url_signing.as_ref().unwrap();
+    assert_eq!(u.url_ttl(), Duration::from_secs(60));
+    assert_eq!(u.grace(), Duration::from_secs(300));
+    assert_eq!(u.idle(), Duration::from_secs(30));
+    assert_eq!(u.tracked(), 10);
+    assert!(u.cookie && u.subnet && u.end_oldest && u.max_sessions == 2);
+    assert_eq!(u.referers, ["https://*.example.com"]);
+    assert_eq!(u.trusted_proxies, ["10.0.0.0/8", "::1"]);
+    let d = c.media_auth[1].url_signing.as_ref().unwrap();
+    assert_eq!(
+        (d.url_ttl(), d.grace(), d.idle(), d.tracked()),
+        (
+            DEFAULT_URL_TTL,
+            DEFAULT_PLAY_GRACE,
+            DEFAULT_SESSION_IDLE,
+            DEFAULT_TRACKED_SESSIONS
+        )
+    );
+    assert!(valid_origin_pattern("https://[::1]:8080"));
+    assert!(!valid_origin_pattern("ftp://a") && !valid_origin_pattern("https://"));
+    assert_eq!(
+        addr_or_prefix("10.0.0.0/8"),
+        Some(("10.0.0.0".parse().unwrap(), 8))
+    );
+    assert_eq!(addr_or_prefix("10.0.0.0/33"), None);
 }
 
 /// fit's `TestStreaming`.

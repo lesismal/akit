@@ -3366,7 +3366,7 @@ fn akit_config_lists_match_the_inventory() {
     };
     // Each object akit-config reads: its inventory path, the list of fields it reads, and the
     // list of fields it refuses as not supported yet.
-    let objects: [(&str, &str, Option<&str>); 189] = [
+    let objects: [(&str, &str, Option<&str>); 190] = [
         ("", "CONFIG_FIELDS", Some("CONFIG_FIT_ONLY")),
         (
             "providers[].kubernetes",
@@ -3733,6 +3733,7 @@ fn akit_config_lists_match_the_inventory() {
             Some("MEDIA_AUTH_FIT_ONLY"),
         ),
         ("media_auth[].keys[]", "MEDIA_KEY_FIELDS", None),
+        ("media_auth[].url_signing", "URL_SIGNING_FIELDS", None),
         (
             "routes[].handler<media_tokens>.params",
             "MEDIA_TOKENS_FIELDS",

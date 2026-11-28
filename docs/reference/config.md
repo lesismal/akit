@@ -17,7 +17,7 @@ so in a note marked **akit:**; nine defaults that name the gateway are akit's, `
 say `fit` ([decision 037](../decisions/037-akit-names.md)).
 
 <!-- BEGIN GENERATED: summary -->
-akit reads **1260** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 190 objects akit reads, each has its table below.
+akit reads **1274** of the 3821 fields of fit's config (fit `7daee573`, counted as [the compatibility page](../compatibility.md) counts them), refuses the rest by name as not supported yet, and adds **1** of its own. Of the 191 objects akit reads, each has its table below.
 <!-- END GENERATED -->
 
 How to read the tables:
@@ -2677,7 +2677,7 @@ webrtc {
 `akit media-token` issues, and the actions anyone may take. The streaming role's listeners and the
 media handlers name a policy with `auth`, checked by the stream's path. akit reads and checks the
 policies as fit does (I120), and `akit run` applies them (I121). A policy's `keys` are read since I143,
-when `media_tokens` came; `url_signing` (I144) is not read yet.
+when `media_tokens` came, and its `url_signing` since I144.
 
 ```fit
 media_auth live {
@@ -2703,7 +2703,7 @@ media_auth live {
 | `secret_file` | string |  | A file holding the secret tokens are signed with, read each time the config is applied: the handler media_tokens rotates it, and every token signed before is refused. At least 16 bytes, its line breaks at the end aside. Or secret, one of the two, or keys. None when left out: a random key of the process's signs, which a restart forgets. |
 | `token_ttl` | duration | `"12h"` | How long a token akit issues is good for, unless akit media-token's -ttl says otherwise. 12h when left out. |
 | `tokens` | list of [object](#cfg-media-auth-tokens) |  | Static bearer tokens, each with the streams it may publish and play: sent as Authorization: Bearer, a token query parameter or the fit_media_token cookie. |
-| `url_signing` | object |  | **Not supported yet**: refused by name. Turns on playback URLs that expire: URLs signed for one viewer and one resource (an item of vod, a stream of hls or httpflv) with the policy's secret or a key of its keys, as media_tokens' /urls issues them, and checked by those handlers on every playlist, segment and subtitle, at once and without a callback. Needs secret, secret_file or keys. Off when left out. |
+| `url_signing` | [object](#cfg-media-auth-url-signing) |  | Turns on playback URLs that expire: URLs signed for one viewer and one resource (an item of vod, a stream of hls or httpflv) with the policy's secret or a key of its keys, as media_tokens' /urls issues them, and checked by those handlers on every playlist, segment and subtitle, at once and without a callback. Needs secret, secret_file or keys. Off when left out. **akit:** Checked on the I/O thread with no callback (I144): the MAC, the expiry, the address, `Referer` and `Origin`, then the session's entry in a table of the policy's own, kept across reloads. A URL fit signs plays on akit, and one akit signs on fit, given the same secret, keys and policy name (decision 043). A refusal is 403 `the playback URL is refused: <reason>`, a new session past `max_tracked_sessions` 503. |
 | `users` | list of [object](#cfg-media-auth-users) |  | Users with a password, each with the streams they may publish and play: sent as Authorization: Basic, as user and pass query parameters where a protocol has no header (RTMP, SRT), or RTSP's Digest. They also log in to akit's media pages, which hand out tokens signed with secret. |
 <!-- END GENERATED -->
 
@@ -2745,6 +2745,32 @@ media_auth live {
 | `key` | string | required | The key's name: 1 to 64 letters, digits, '_', '.', '~' and '-', which a media_tokens request names to sign with it, and a revoke to rotate it. |
 | `secret` | string |  | The key's secret, at least 16 bytes. Or secret_file, one of the two. |
 | `secret_file` | string |  | A file holding the key's secret, read each time the config is applied; the handler media_tokens rotates this file to refuse just the tokens this key signed. At least 16 bytes, its line breaks at the end aside. Or secret, one of the two. |
+<!-- END GENERATED -->
+
+### `media_auth[].url_signing`
+
+Playback URLs that expire (I144): the site's backend, or `media_tokens`' `POST <prefix>/urls`, signs
+a URL for one viewer and one resource, the path prefix of an item of `vod` or of a stream of `hls` or
+`httpflv`; a playlist fetched with it hands what it names a grant of its own, in the query of every
+URI or as the cookie `akit_media_grant`. The URLs are fit's byte for byte (decision 043): one fit
+signs plays on akit given the same secret and policy name, and the other way round.
+
+<!-- BEGIN GENERATED: media_auth[].url_signing -->
+<a id="cfg-media-auth-url-signing"></a>
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `bind_address` | string: `ip`, `subnet` | `"ip"` | How a URL issued for a viewer's address is bound to it: ip, to that address alone, or subnet, to its /24 for IPv4 and its /64 for IPv6, for viewers whose address changes within their network. A URL issued without an address is good from anywhere. ip when left out. |
+| `cookie` | boolean |  | Hands the grant on as the cookie fit_media_grant, on the resource's path and HttpOnly, rather than in the query of every URI a playlist names, for players that drop a playlist's query parameters. The URL the player starts from keeps its query. Off when left out. **akit:** The cookie is `akit_media_grant` (fit's `fit_media_grant`, decision 037); the URLs and grants themselves are fit's, byte for byte (decision 043). |
+| `max_sessions` | integer, 0 or more |  | The most playback sessions one subject may have at once, a session being a URL's sid, playing while it fetches within session_idle; past it, on_limit says what happens. No cap when left out or 0. |
+| `max_tracked_sessions` | integer, 0 or more | `100000` | The most sessions the policy keeps track of, of all its subjects; a new session past it is answered 503. 100000 when left out or 0. |
+| `on_limit` | string: `refuse`, `end_oldest` | `"refuse"` | What a new session past max_sessions does: refuse, answered 403, or end_oldest, which ends the subject's session that started first, whose next request is answered 403. refuse when left out. |
+| `origins` | list of string |  | The origins whose scripts may fetch the URLs, as referers lists them, matched against a request's Origin: a request with another Origin is answered 403, one without any let through. Any when left out. |
+| `play_grace` | duration | `"30m"` | How long the grant a playlist hands its segments, init segments, keys and subtitles lives past the later of the URL's expiry and the item's end, played from when the playlist is fetched: so that a film does not stop halfway, nor after a pause, while the URL itself dies soon. A live stream's grant lives this long past the URL's expiry. 30m when left out. |
+| `referers` | list of string |  | The origins of the pages that may play the URLs, as https://www.example.com or https://*.example.com, * matching any run of characters, matched against the origin of a request's Referer: a request with another Referer is answered 403, one without any let through. Any when left out. |
+| `session_idle` | duration | `"2m"` | How long a session may go without a request and still count as playing. 2m when left out. |
+| `trusted_proxies` | list of string |  | The addresses ("10.0.0.1") and networks ("10.0.0.0/8") of proxies in front of akit, whose X-Forwarded-For is believed when a URL bound to an address is checked: the viewer is the last address in it that is not one of them. None when left out: the viewer is the connection's peer. |
+| `ttl` | duration | `"10m"` | How long a URL media_tokens' /urls issues is good for when the request names no ttl, and at most the route's max_ttl. 10m when left out. |
 <!-- END GENERATED -->
 
 ## Streaming
@@ -3569,7 +3595,8 @@ A route a site's backend calls, behind a middleware that authenticates it (`jwt`
 (`POST <prefix>`, with `key` naming a key of the policy's keyring) and to revoke the tokens of the
 policy's secret, of one key or of all keys (`POST <prefix>/revoke`), a new secret written to its
 `secret_file` first (I143). The policy needs `secret_file`, or a keyring whose keys each have one.
-`url_base` and `url_prefixes` (signed URLs, I144) are not read yet.
+Since I144 it signs playback URLs too (`POST <prefix>/urls`, with `url_base` and `url_prefixes`), for a
+policy with `url_signing`.
 
 ```fit
 listener web :8080
@@ -3594,8 +3621,8 @@ route tokens {
 | `prefix` | string | `"/media-tokens"` | The path the route serves under: the route must match it and what is below it, as /media-tokens and /media-tokens/*; a request outside it gets 404. /media-tokens when left out. |
 | `prefixes` | list of string |  | The stream-name prefixes this route may sign for: every publish and play pattern of a request must start with one of them, so that a token cannot be signed for a stream outside them, as mtg- for mtg-42-*. Any valid pattern when left out. |
 | `revoke_timeout` | duration | `"10s"` | How long a revoke may wait for the secret file's write before it is answered 504; the write, one at a time on a pool of its own, never blocks a worker. 10s when left out. |
-| `url_base` | string |  | **Not supported yet**: refused by name. What the URLs <prefix>/urls answers start with, before their paths: the scheme and host viewers reach fit's vod, hls and httpflv routes at, as https://media.example.com. The paths and their queries alone when left out. |
-| `url_prefixes` | list of string |  | **Not supported yet**: refused by name. The path prefixes <prefix>/urls may sign URLs for: every path of a request must start with one of them, as /vod/films/, so that a URL cannot be signed for a resource outside them. Any path when left out. |
+| `url_base` | string |  | What the URLs <prefix>/urls answers start with, before their paths: the scheme and host viewers reach akit's vod, hls and httpflv routes at, as https://media.example.com. The paths and their queries alone when left out. |
+| `url_prefixes` | list of string |  | The path prefixes <prefix>/urls may sign URLs for: every path of a request must start with one of them, as /vod/films/, so that a URL cannot be signed for a resource outside them. Any path when left out. |
 <!-- END GENERATED -->
 
 ### `vod`

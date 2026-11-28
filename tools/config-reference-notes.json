@@ -297,6 +297,14 @@
     "routes[].handler<vod>.params.timeout": {
       "en": "Timed by a thread of akit-media's own until akio gives handlers a timer (akio A296).",
       "zh": "在 akio 为处理器提供定时器（akio A296）之前，由 akit-media 自己的一个线程计时。"
+    },
+    "media_auth[].url_signing.cookie": {
+      "en": "The cookie is `akit_media_grant` (fit's `fit_media_grant`, decision 037); the URLs and grants themselves are fit's, byte for byte (decision 043).",
+      "zh": "cookie 为 `akit_media_grant`（fit 的 `fit_media_grant`，决定 037）；URL 和授权本身与 fit 的逐字节相同（决定 043）。"
+    },
+    "media_auth[].url_signing": {
+      "en": "Checked on the I/O thread with no callback (I144): the MAC, the expiry, the address, `Referer` and `Origin`, then the session's entry in a table of the policy's own, kept across reloads. A URL fit signs plays on akit, and one akit signs on fit, given the same secret, keys and policy name (decision 043). A refusal is 403 `the playback URL is refused: <reason>`, a new session past `max_tracked_sessions` 503.",
+      "zh": "在 I/O 线程上检查，没有回调（I144）：MAC、过期时间、地址、`Referer` 和 `Origin`，然后是会话在策略自己的表中的条目，跨重载保留。同一密钥、密钥环和策略名下，fit 签发的 URL 能在 akit 上播放，akit 签发的也能在 fit 上播放（决定 043）。拒绝为 403 `the playback URL is refused: <reason>`，超过 `max_tracked_sessions` 的新会话为 503。"
     }
   }
 }

@@ -33,6 +33,8 @@ struct Tokens {
     max_tokens: usize,
     max_body: usize,
     revoke_timeout: Duration,
+    url_base: String,
+    url_prefixes: Vec<String>,
     auth: HandlerAuth,
     pool: Arc<RevokePool>,
 }
@@ -55,6 +57,8 @@ pub(crate) fn new_tokens(
         max_tokens: t.tokens(),
         max_body: t.body_bytes(),
         revoke_timeout: t.revoke(),
+        url_base: t.url_base.clone(),
+        url_prefixes: t.url_prefixes.clone(),
         auth: HandlerAuth::new(p.env().engine(), &t.auth, t.policy.as_ref()),
         pool,
     }) as Arc<dyn Handler>)
@@ -111,6 +115,13 @@ impl Service for Tokens {
                 ctx,
                 405,
                 "the revoke endpoint takes POST",
+                &[("Allow", "POST")],
+            ),
+            Some("/urls") if post => self.urls(ctx),
+            Some("/urls") => plain(
+                ctx,
+                405,
+                "the urls endpoint takes POST",
                 &[("Allow", "POST")],
             ),
             _ => plain(ctx, 404, "not found", &[]),
@@ -194,6 +205,46 @@ fn issue_request(body: &[u8]) -> Option<(String, Vec<TokenRequest>)> {
         }
     }
     Some((key, tokens))
+}
+
+/// What `<prefix>/urls` is asked for: the viewer, the paths to sign URLs of, and their lifetime
+/// and key.
+#[derive(Default)]
+struct UrlsRequest {
+    subject: String,
+    address: String,
+    session: String,
+    ttl: String,
+    key: String,
+    paths: Vec<String>,
+}
+
+fn urls_request(body: &[u8]) -> Option<UrlsRequest> {
+    let mut r = UrlsRequest::default();
+    for (k, v) in object(body)? {
+        match k.as_str() {
+            "subject" => r.subject = string_of(&v)?,
+            "address" => r.address = string_of(&v)?,
+            "session" => r.session = string_of(&v)?,
+            "ttl" => r.ttl = string_of(&v)?,
+            "key" => r.key = string_of(&v)?,
+            "paths" => r.paths = strings_of(&v)?,
+            _ => {}
+        }
+    }
+    Some(r)
+}
+
+/// A new playback session's ID: 12 random bytes in base64url.
+fn new_session() -> String {
+    let mut b = [0u8; 12];
+    if akio_crypto::rand::fill_random(&mut b).is_err() {
+        let t = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |d| d.as_nanos());
+        b.copy_from_slice(t.to_be_bytes().get(4..).unwrap_or(&[0; 12]));
+    }
+    akio_crypto::base64::URL_SAFE_NO_PAD.encode(b)
 }
 
 /// The request's body, within `limit`; otherwise answered 413.
@@ -364,6 +415,157 @@ impl Tokens {
             }
             _ => Err(format!("{:?} is not a positive duration, as 2h", r.ttl)),
         }
+    }
+
+    /// Playback URLs signed (`url_signing`) for one viewer (fit's `urls`): each path's resource,
+    /// as [`crate::urlsign::resource_of`] gives it, for the subject, bound to the address when
+    /// one is named, in the session named or a new one; all or none, as a batch of tokens.
+    fn urls(&self, ctx: &mut Context) {
+        let Some(b) = body(ctx, self.max_body) else {
+            return;
+        };
+        let Some(p) = self.policy(ctx) else { return };
+        if !p.url_signing() {
+            return plain(ctx, 404, "the media_auth policy has no url_signing", &[]);
+        }
+        let Some(r) = urls_request(&b) else {
+            return plain(
+                ctx,
+                400,
+                "the body must be JSON: {\"subject\": \"...\", \"paths\": [...]}",
+                &[],
+            );
+        };
+        match self.sign_urls(&p, r) {
+            Ok(body) => ctx.respond(json(body)),
+            Err((status, msg)) => {
+                let extra: &[(&str, &str)] = if status == 503 {
+                    &[("Retry-After", "1")]
+                } else {
+                    &[]
+                };
+                plain(ctx, status, &msg, extra);
+            }
+        }
+    }
+
+    fn sign_urls(&self, p: &Policy, r: UrlsRequest) -> Result<String, (u16, String)> {
+        let bad = |m: String| (400, m);
+        if r.paths.is_empty() {
+            return Err(bad("paths is empty: ask for at least one URL".into()));
+        }
+        if r.paths.len() > self.max_tokens {
+            return Err(bad(format!(
+                "paths has {} paths: at most {} a request",
+                r.paths.len(),
+                self.max_tokens
+            )));
+        }
+        if !crate::urlsign::valid_subject(&r.subject) {
+            return Err(bad(format!(
+                "{:?} is not a subject: 1 to {MAX_SUBJECT_BYTES} bytes with no control characters",
+                r.subject
+            )));
+        }
+        if !r.session.is_empty() && !crate::urlsign::valid_session(&r.session) {
+            return Err(bad(format!(
+                "{:?} is not a session: 1 to {} letters, digits, '.', '_', '~' and '-'",
+                r.session,
+                crate::urlsign::MAX_SESSION_BYTES
+            )));
+        }
+        let mut v = crate::auth::Viewer {
+            subject: r.subject.clone(),
+            address: None,
+            session: r.session.clone(),
+        };
+        if !r.address.is_empty() {
+            match r.address.parse::<std::net::IpAddr>() {
+                Ok(a) => v.address = Some(a),
+                Err(_) => return Err(bad(format!("{:?} is not an IP address", r.address))),
+            }
+        }
+        if v.session.is_empty() {
+            v.session = new_session();
+        }
+        let mut ttl = p.url_ttl().min(self.max_ttl);
+        if !r.ttl.is_empty() {
+            match akit_config::duration::parse(&r.ttl) {
+                Some(Ok(d)) if d >= Duration::from_secs(1) => {
+                    if d > self.max_ttl {
+                        return Err(bad(format!(
+                            "the lifetime {} is longer than max_ttl {}",
+                            akit_config::duration::format(d),
+                            akit_config::duration::format(self.max_ttl)
+                        )));
+                    }
+                    ttl = d;
+                }
+                _ => {
+                    return Err(bad(format!(
+                        "{:?} is not a duration of a second or more, as 10m",
+                        r.ttl
+                    )));
+                }
+            }
+        }
+        let ring = !p.keys().is_empty();
+        let key = if !r.key.is_empty() {
+            if !ring {
+                return Err(bad(
+                    "the policy has one key: leave key out of the request".into()
+                ));
+            }
+            if p.key_file(&r.key).is_none() {
+                return Err(bad(format!("no key named {:?}", r.key)));
+            }
+            r.key.clone()
+        } else if ring {
+            p.default_key().unwrap_or_default()
+        } else {
+            String::new()
+        };
+        let expiry = crate::urlsign::now_secs()
+            .saturating_add(i64::try_from(ttl.as_secs()).unwrap_or(i64::MAX));
+        let mut urls = Vec::with_capacity(r.paths.len());
+        for (i, path) in r.paths.iter().enumerate() {
+            let Some(res) = crate::urlsign::resource_of(path) else {
+                return Err(bad(format!(
+                    "paths[{i}]: {path:?} is not a path a URL is signed for, as /vod/films/films/bbb/index.m3u8 or /live/cam.flv"
+                )));
+            };
+            if !self.url_prefixes.is_empty()
+                && !self
+                    .url_prefixes
+                    .iter()
+                    .any(|x| path.starts_with(x.as_str()))
+            {
+                return Err(bad(format!(
+                    "paths[{i}]: {path:?} starts with none of the url_prefixes this route may sign for: {}",
+                    self.url_prefixes.join(", ")
+                )));
+            }
+            // What the request holds is checked above: an error is a policy removed, or one that
+            // lost url_signing, by a reload under way.
+            let q = p.sign_url(&res, &v, expiry, &key).map_err(|_| {
+                (
+                    503,
+                    "the media_auth policy is not loaded with url_signing".to_owned(),
+                )
+            })?;
+            urls.push(quote(&format!("{}{path}?{q}", self.url_base)));
+        }
+        let k = if key.is_empty() {
+            String::new()
+        } else {
+            format!(",\"key\":{}", quote(&key))
+        };
+        Ok(format!(
+            "{{\"subject\":{},\"session\":{},\"expires\":{expiry}{k},\"urls\":[{}]}}",
+            quote(&r.subject),
+            quote(&v.session),
+            urls.join(",")
+        ))
     }
 
     /// A revoke: the policy's secret, one key of its keyring, or all of them, rotated, its new

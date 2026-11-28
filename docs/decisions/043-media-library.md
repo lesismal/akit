@@ -111,3 +111,22 @@ not supported yet for this track.
   the secret file, mode 0600, synced, then renamed over it, on a thread of the handler's own with
   a queue of one; the request is suspended and answered from there, or 504 past
   `revoke_timeout` by akit-media's deadline thread until akio's A296.
+
+## I144: playback URLs that expire
+
+- **The URLs and grants are fit's byte for byte**: the key `HMAC-SHA256(sign key, "fit media
+  url\0")`, the MAC over `fit-url-1`, the resource and the fields, its first 16 bytes in
+  base64url, the query's order and escapes. A URL fit signs plays on akit and one akit signs on
+  fit, given the same secret or keys and policy name; a unit test holds the query fit's `SignURL`
+  gives. The cookie a grant goes in is `akit_media_grant` (decision 037), so a player that keeps
+  cookies does not carry a grant from one gateway to the other on the same host.
+- **A check is on the I/O thread with no callback**, as fit's: the MAC, the expiry, the address,
+  `Referer` and `Origin`, then the session's entry under its shard's lock. It allocates a little
+  (the query copied before the target is redacted, the grant's fields); fit's allocates nothing.
+- **Tests name the time** rather than move a clock: the policy's checks and sessions take the
+  time as an argument (`let_in`, `pass_on_at`, `sessions_at`), which the handlers give from the
+  clock; the handlers' tests sign URLs already expired, or good for an hour.
+- **A playlist that hands on a grant or a token is the viewer's own** (`private, no-store`), the
+  media playlist the cache keeps sent with the grant's cookie when `cookie` is on, as fit's.
+- **The Admin API's sessions and refusal counts** (fit's `admin/media.go`) come with the console's
+  pages (I149); the policy has them now (`sessions`, `end_session`, `url_refusals`).

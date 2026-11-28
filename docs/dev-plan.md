@@ -258,7 +258,7 @@ Tunnel and LLM track; I110–I114 are the WebRTC track, and I115–I119 are rese
 | I141 | Media library II: the catalog: scans, items, probes on akio-media's `mp4`, the file pool, the parsed movies kept; the role `media_library`; the Admin API's `/media/library` | I140, I100 | done |
 | I142 | Video on demand: `vod`, HLS from the sample tables, the file with ranges | I141, I121 | done |
 | I143 | Media tokens: `media_auth`'s `keys` and `media_tokens` (fit's I119) | I121 | done |
-| I144 | Playback URLs that expire: `url_signing`, sessions, `media_tokens`' `/urls` | I142, I143 | todo |
+| I144 | Playback URLs that expire: `url_signing`, sessions, `media_tokens`' `/urls` | I142, I143 | done |
 | I145 | Channels: library items played as live streams, `streaming.channels` | I141, I123 | todo |
 | I146 | Push targets: `streaming.push` and a channel's `push` | I145 | todo |
 | I147 | Encrypted segments: `encrypt` on `vod` and on channels' HLS | I144, I145 | todo |
@@ -2242,7 +2242,7 @@ is asked as akio A295–A300. Names akit shows are akit's (decision 037), format
   token fit signs with a named key is taken by akit, and the other way.
 - **Touches**: `akit-config` (`media`), `akit-media` (`auth`, `tokens`).
 - **fit**: `handler/mediatokens`, `mediaauth/manage.go`; I119.
-- **Status**: done (2026-11-28); `url_base` and `url_prefixes` wait for I144. See the progress log.
+- **Status**: done (2026-11-28); `url_base` and `url_prefixes` came with I144. See the progress log.
 
 ### I144 Playback URLs that expire: `url_signing`
 
@@ -2256,7 +2256,8 @@ is asked as akio A295–A300. Names akit shows are akit's (decision 037), format
   ported; a URL fit signs plays on akit and one akit signs on fit, for the same key and resource.
 - **Touches**: `akit-config`, `akit-media`.
 - **fit**: `mediaauth/urlsign.go`, `sessions.go`, `viewer.go`, `handler/mediatokens/urls.go`; I135.
-- **Status**: todo.
+- **Status**: done (2026-11-28); the Admin API's sessions and refusals come with the console's
+  pages (I149). See the progress log.
 
 ### I145 Channels: files played as live streams
 

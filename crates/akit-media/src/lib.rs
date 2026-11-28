@@ -21,6 +21,7 @@ mod rtc;
 pub mod streaming;
 mod swap;
 mod tokens;
+pub mod urlsign;
 pub mod vod;
 
 pub use handlers::MODULES;

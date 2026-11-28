@@ -307,3 +307,135 @@ fn no_role() {
     );
     assert_eq!(r.status, 503);
 }
+
+/// `config` with `url_signing` (`signing`) on the policy `live`, and its secret.
+fn signed_config(rtmp: u16, signing: &str) -> String {
+    config(rtmp).replace(
+        r#""name": "live", "tokens""#,
+        &format!(
+            r#""name": "live", "secret": "a-secret-of-sixteen-bytes", "url_signing": {signing}, "tokens""#
+        ),
+    )
+}
+
+/// The URL of `path` for `subject`, signed by the policy `live` of `a`, good until `exp`.
+fn sign_for(a: &Akit, path: &str, subject: &str, exp: i64) -> String {
+    let p = akit_media::auth::registry::lookup(akit_media::auth::registry::key(&a.engine), "live")
+        .unwrap();
+    let res = akit_media::urlsign::resource_of(path).unwrap();
+    let v = akit_media::auth::Viewer {
+        subject: subject.into(),
+        ..akit_media::auth::Viewer::default()
+    };
+    format!("{path}?{}", p.sign_url(&res, &v, exp, "").unwrap())
+}
+
+fn unix_now() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64
+}
+
+/// A stream published to akit over RTMP, with `url_signing` as `signing` writes it; `f` plays it.
+fn with_stream(signing: &str, f: impl FnOnce(&Akit)) {
+    let rtmp_port = free_port();
+    let akit = start(&signed_config(rtmp_port, signing), true);
+    let src = Hub::default();
+    let stop = Arc::new(AtomicBool::new(false));
+    let feeder = paced(&src, "src", Arc::clone(&stop));
+    let pusher = rtmp::push(
+        &akit.clients,
+        &format!("rtmp://127.0.0.1:{rtmp_port}/live/cam?token={TOKEN}"),
+        &src,
+        "src",
+        RtmpClientConfig::default(),
+    )
+    .unwrap();
+    wait_for("the push streaming", || {
+        assert!(!pusher.is_closed(), "{:?}", pusher.error());
+        pusher.state() == ClientState::Streaming
+    });
+    f(&akit);
+    stop.store(true, Ordering::SeqCst);
+    feeder.join().unwrap();
+    pusher.close();
+}
+
+/// fit's `TestSignedURLStreams` (I144): a stream plays over HLS and HTTP-FLV through a signed
+/// URL; its playlist hands every URI a grant; the URL opens no other stream, and is refused once
+/// expired.
+#[test]
+fn signed_url_streams() {
+    with_stream("{}", |akit| {
+        let a = akit.http;
+        let exp = unix_now() + 3600;
+        let u = sign_for(akit, "/hls/live/cam/index.m3u8", "viewer-9", exp);
+        let r = get(a, &u, &[], 0);
+        assert_eq!(r.status, 200, "{}", String::from_utf8_lossy(&r.body));
+        let pl = String::from_utf8(r.body).unwrap();
+        let seg = pl
+            .lines()
+            .find(|l| l.starts_with("seg-"))
+            .unwrap_or_else(|| panic!("{pl}"))
+            .to_owned();
+        assert!(
+            seg.contains("&g=1&") && seg.contains("sub=viewer-9"),
+            "{seg}"
+        );
+        assert!(
+            pl.contains("init-0.mp4?exp="),
+            "the init section without the grant:\n{pl}"
+        );
+        let r = get(a, &format!("/hls/live/cam/{seg}"), &[], 0);
+        assert_eq!(r.status, 200);
+        let q = u.split_once('?').unwrap().1;
+        assert_eq!(
+            get(a, &format!("/hls/live/other/index.m3u8?{q}"), &[], 0).status,
+            403
+        );
+        let old = sign_for(akit, "/hls/live/cam/index.m3u8", "viewer-9", unix_now() - 1);
+        let r = get(a, &old, &[], 0);
+        assert_eq!(r.status, 403);
+        assert!(String::from_utf8_lossy(&r.body).contains("expired"));
+        // HTTP-FLV.
+        let r = get(a, &sign_for(akit, "/live/cam.flv", "viewer-9", exp), &[], 3);
+        assert_eq!((r.status, r.body.as_slice()), (200, b"FLV".as_slice()));
+        let q = sign_for(akit, "/live/cam.flv", "v", exp);
+        let q = q.split_once('?').unwrap().1;
+        let r = get(a, &format!("/live/other.flv?{q}"), &[], 0);
+        assert_eq!(r.status, 403);
+        assert_eq!(r.header("access-control-allow-origin"), Some("*"));
+        // A token still plays.
+        let r = get(a, &format!("/live/cam.flv?token={TOKEN}"), &[], 3);
+        assert_eq!(r.body, b"FLV");
+    });
+}
+
+/// fit's `TestSignedURLStreamCookie`: with `cookie`, an HLS playlist sets its grant as a cookie
+/// on the stream's path and names its URIs without it.
+#[test]
+fn signed_url_stream_cookie() {
+    with_stream(r#"{"cookie": true}"#, |akit| {
+        let a = akit.http;
+        let u = sign_for(akit, "/hls/live/cam/index.m3u8", "v", unix_now() + 3600);
+        let r = get(a, &u, &[], 0);
+        assert_eq!(r.status, 200);
+        let set = r.header("set-cookie").unwrap().to_owned();
+        assert!(
+            set.starts_with("akit_media_grant=") && set.contains("; Path=/hls/live/cam/;"),
+            "{set}"
+        );
+        let pl = String::from_utf8(r.body).unwrap();
+        assert!(!pl.contains("sig="), "{pl}");
+        let seg = pl
+            .lines()
+            .find(|l| l.starts_with("seg-"))
+            .unwrap_or_else(|| panic!("{pl}"))
+            .to_owned();
+        let cookie = set.split(';').next().unwrap();
+        let r = get(a, &format!("/hls/live/cam/{seg}"), &[("Cookie", cookie)], 0);
+        assert_eq!(r.status, 200);
+        assert_eq!(get(a, &format!("/hls/live/cam/{seg}"), &[], 0).status, 401);
+    });
+}

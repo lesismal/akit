@@ -1589,7 +1589,8 @@ pub(crate) fn samples() -> Vec<(String, String, Read)> {
     out
 }
 
-/// `media_auth`'s `keys` and the `media_tokens` handler's params (I143).
+/// `media_auth`'s `keys` and the `media_tokens` handler's params (I143), and `url_signing`
+/// (I144).
 fn media_tokens(out: &mut Vec<(String, String, Read)>) {
     let kw = |m: &str| format!(r#"{{"media_auth": [{{"name": "p", "keys": [{m}]}}]}}"#);
     out.push((
@@ -1640,6 +1641,53 @@ fn media_tokens(out: &mut Vec<(String, String, Read)>) {
             f("max_tokens", "1", "2"),
             f("max_body_bytes", "256", "512"),
             f("revoke_timeout", q("1s"), q("2s")),
+            f(
+                "url_base",
+                q("https://a.example.com"),
+                q("https://b.example.com"),
+            ),
+            f("url_prefixes", r#"["/a/"]"#, r#"["/b/"]"#),
+        ],
+    );
+    // I144: url_signing.
+    out.push((
+        "media_auth[].url_signing".into(),
+        r#"{"media_auth": [{"name": "p", "secret": "0123456789abcdef"}]}"#.into(),
+        Read::Differs(
+            r#"{"media_auth": [{"name": "p", "secret": "0123456789abcdef", "url_signing": {}}]}"#
+                .into(),
+        ),
+    ));
+    let u = |m: &str| {
+        format!(
+            r#"{{"media_auth": [{{"name": "p", "secret": "0123456789abcdef", "url_signing": {m}}}]}}"#
+        )
+    };
+    emit(
+        out,
+        "media_auth[].url_signing",
+        &u,
+        &[],
+        vec![
+            f("ttl", q("1m"), q("2m")),
+            f("bind_address", q("ip"), q("subnet")),
+            f("play_grace", q("1m"), q("2m")),
+            f("cookie", "true", "false"),
+            f("max_sessions", "1", "2"),
+            f("on_limit", q("refuse"), q("end_oldest")),
+            f("session_idle", q("1m"), q("2m")),
+            f("max_tracked_sessions", "1", "2"),
+            f(
+                "referers",
+                r#"["https://a.example.com"]"#,
+                r#"["https://b.example.com"]"#,
+            ),
+            f(
+                "origins",
+                r#"["https://a.example.com"]"#,
+                r#"["https://b.example.com"]"#,
+            ),
+            f("trusted_proxies", r#"["10.0.0.1"]"#, r#"["10.0.0.2"]"#),
         ],
     );
 }

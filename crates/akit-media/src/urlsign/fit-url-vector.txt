@@ -1,0 +1,1 @@
+exp=1800000060&kid=k1&sid=s1&sub=user+42&sig=enqbh6w5MMI04WhUQ_vOFA

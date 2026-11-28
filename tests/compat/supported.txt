@@ -1355,6 +1355,8 @@ routes[].handler<media_tokens>.params.max_ttl
 routes[].handler<media_tokens>.params.max_tokens
 routes[].handler<media_tokens>.params.max_body_bytes
 routes[].handler<media_tokens>.params.revoke_timeout
+routes[].handler<media_tokens>.params.url_base
+routes[].handler<media_tokens>.params.url_prefixes
 routes[].handler<vod>
 routes[].handler<vod>.params
 routes[].handler<vod>.params.library
@@ -1367,8 +1369,8 @@ routes[].handler<vod>.params.max_segment_bytes
 routes[].handler<vod>.params.cache_control
 routes[].handler<vod>.params.cors
 routes[].handler<vod>.params.timeout
-# I120: fit's media auth policies and streaming role (akit-config's media module). A policy's keys
-# (fit's I119) and url_signing, and the role's channels and push (the media library's track), are
+# I120: fit's media auth policies and streaming role (akit-config's media module); a policy's keys
+# (I143) and url_signing (I144). The role's channels and push (the media library's track) are
 # refused as not supported yet, as are RTMP's and RTSP's mptcp, RTMP's max_message_bytes (akio A263)
 # and RTSP's auth_methods, realm and idle_timeout (Digest and Basic, a sessionless idle bound: akio A264). akit run runs the role from I122.
 media_auth
@@ -1393,6 +1395,18 @@ media_auth[].users[].password
 media_auth[].users[].password_hash
 media_auth[].users[].play
 media_auth[].users[].publish
+media_auth[].url_signing
+media_auth[].url_signing.bind_address
+media_auth[].url_signing.cookie
+media_auth[].url_signing.max_sessions
+media_auth[].url_signing.max_tracked_sessions
+media_auth[].url_signing.on_limit
+media_auth[].url_signing.origins
+media_auth[].url_signing.play_grace
+media_auth[].url_signing.referers
+media_auth[].url_signing.session_idle
+media_auth[].url_signing.trusted_proxies
+media_auth[].url_signing.ttl
 streaming
 streaming.access
 streaming.access.allow

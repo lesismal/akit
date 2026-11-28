@@ -83,6 +83,187 @@ pub struct MediaAuth {
     /// `keys` (I143): a keyring of signing keys in place of `secret` or `secret_file`; a token is
     /// signed with one and checked against all.
     pub keys: Vec<MediaKey>,
+    /// `url_signing` (I144): playback URLs that expire; off when `None`.
+    pub url_signing: Option<UrlSigning>,
+}
+
+/// fit's `url_signing` defaults and bounds.
+pub const DEFAULT_URL_TTL: Duration = Duration::from_secs(600);
+/// See [`DEFAULT_URL_TTL`].
+pub const DEFAULT_PLAY_GRACE: Duration = Duration::from_secs(1800);
+/// See [`DEFAULT_URL_TTL`].
+pub const DEFAULT_SESSION_IDLE: Duration = Duration::from_secs(120);
+/// See [`DEFAULT_URL_TTL`].
+pub const DEFAULT_TRACKED_SESSIONS: usize = 100_000;
+/// The most patterns `referers` and `origins` may list each.
+pub const MAX_URL_ORIGINS: usize = 256;
+
+/// A policy's `url_signing`, as fit's `config.URLSigning` (I144): playback URLs signed for one
+/// viewer and one resource, checked by `vod`, `hls` and `httpflv`.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct UrlSigning {
+    /// `ttl`: [`DEFAULT_URL_TTL`] when zero.
+    pub ttl: Duration,
+    /// `bind_address`: `subnet` binds a URL to the viewer's /24 or /64, else to its address.
+    pub subnet: bool,
+    /// `play_grace`: [`DEFAULT_PLAY_GRACE`] when zero.
+    pub play_grace: Duration,
+    /// `cookie`: hand the grant on as the cookie `akit_media_grant`.
+    pub cookie: bool,
+    /// `max_sessions`: no cap when 0.
+    pub max_sessions: usize,
+    /// `on_limit`: `end_oldest`, rather than `refuse`.
+    pub end_oldest: bool,
+    /// `session_idle`: [`DEFAULT_SESSION_IDLE`] when zero.
+    pub session_idle: Duration,
+    /// `max_tracked_sessions`: [`DEFAULT_TRACKED_SESSIONS`] when 0.
+    pub max_tracked_sessions: usize,
+    /// `referers`: origin patterns, lower case; any when empty.
+    pub referers: Vec<String>,
+    /// `origins`: origin patterns, lower case; any when empty.
+    pub origins: Vec<String>,
+    /// `trusted_proxies`: addresses and networks whose `X-Forwarded-For` is believed.
+    pub trusted_proxies: Vec<String>,
+}
+
+impl UrlSigning {
+    /// `ttl`, or its default.
+    #[must_use]
+    pub fn url_ttl(&self) -> Duration {
+        or(self.ttl, DEFAULT_URL_TTL)
+    }
+
+    /// `play_grace`, or its default.
+    #[must_use]
+    pub fn grace(&self) -> Duration {
+        or(self.play_grace, DEFAULT_PLAY_GRACE)
+    }
+
+    /// `session_idle`, or its default.
+    #[must_use]
+    pub fn idle(&self) -> Duration {
+        or(self.session_idle, DEFAULT_SESSION_IDLE)
+    }
+
+    /// `max_tracked_sessions`, or its default.
+    #[must_use]
+    pub fn tracked(&self) -> usize {
+        or_count(self.max_tracked_sessions, DEFAULT_TRACKED_SESSIONS)
+    }
+}
+
+/// Whether `s` is an origin pattern of `referers` and `origins` (fit's `ValidOriginPattern`):
+/// `http://` or `https://`, then 1 to 253 of letters, digits, '.', '*', '[', ']', ':' and '-'.
+#[must_use]
+pub fn valid_origin_pattern(s: &str) -> bool {
+    let rest = s
+        .strip_prefix("https://")
+        .or_else(|| s.strip_prefix("http://"));
+    rest.is_some_and(|r| {
+        (1..=253).contains(&r.len())
+            && r.bytes().all(|b| {
+                b.is_ascii_alphanumeric() || matches!(b, b'.' | b'*' | b'[' | b']' | b':' | b'-')
+            })
+    })
+}
+
+/// `s` as an address or a network (fit's `ParseAddrOrPrefix`): the address and its prefix length.
+#[must_use]
+pub fn addr_or_prefix(s: &str) -> Option<(std::net::IpAddr, u8)> {
+    let (a, bits) = match s.split_once('/') {
+        Some((a, b)) => (a, Some(b.parse::<u8>().ok()?)),
+        None => (s, None),
+    };
+    let ip: std::net::IpAddr = a.parse().ok()?;
+    let max = if ip.is_ipv4() { 32 } else { 128 };
+    let bits = bits.unwrap_or(max);
+    (bits <= max).then_some((ip, bits))
+}
+
+const URL_SIGNING_FIELDS: &[&str] = &[
+    "ttl",
+    "bind_address",
+    "play_grace",
+    "cookie",
+    "max_sessions",
+    "on_limit",
+    "session_idle",
+    "max_tracked_sessions",
+    "referers",
+    "origins",
+    "trusted_proxies",
+];
+
+fn url_signing(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<UrlSigning> {
+    let mut o = d.object(n, path)?;
+    let mut u = UrlSigning {
+        ttl: duration(d, &mut o, "ttl"),
+        ..UrlSigning::default()
+    };
+    if let Some((v, off)) = text_at(d, &mut o, "bind_address") {
+        match v.as_str() {
+            "" | "ip" => {}
+            "subnet" => u.subnet = true,
+            _ => d.error(
+                off,
+                &o.at("bind_address"),
+                format!("{v:?} is not one of \"ip\", \"subnet\""),
+            ),
+        }
+    }
+    u.play_grace = duration(d, &mut o, "play_grace");
+    u.cookie = boolean(d, &mut o, "cookie");
+    u.max_sessions = count(d, &mut o, "max_sessions", i64::MAX);
+    if let Some((v, off)) = text_at(d, &mut o, "on_limit") {
+        match v.as_str() {
+            "" | "refuse" => {}
+            "end_oldest" => u.end_oldest = true,
+            _ => d.error(
+                off,
+                &o.at("on_limit"),
+                format!("{v:?} is not one of \"refuse\", \"end_oldest\""),
+            ),
+        }
+    }
+    u.session_idle = duration(d, &mut o, "session_idle");
+    u.max_tracked_sessions = count(d, &mut o, "max_tracked_sessions", i64::MAX);
+    for (key, slot) in [("referers", &mut u.referers), ("origins", &mut u.origins)] {
+        let Some(v) = o.take(key) else { continue };
+        let p = o.at(key);
+        let list = d.strings(v, &p);
+        if list.len() > MAX_URL_ORIGINS {
+            d.error(v.off, &p, format!("at most {MAX_URL_ORIGINS} origins"));
+        }
+        for (i, (off, s)) in list.into_iter().enumerate() {
+            if !valid_origin_pattern(&s) {
+                d.error(
+                    off,
+                    &join_index(&p, i),
+                    format!(
+                        "{s:?} is not an origin: http:// or https:// and a host, * matching any run of characters, as https://*.example.com"
+                    ),
+                );
+            }
+            slot.push(s.to_ascii_lowercase());
+        }
+    }
+    if let Some(v) = o.take("trusted_proxies") {
+        let p = o.at("trusted_proxies");
+        for (i, (off, s)) in d.strings(v, &p).into_iter().enumerate() {
+            if addr_or_prefix(&s).is_none() {
+                d.error(
+                    off,
+                    &join_index(&p, i),
+                    format!(
+                        "{s:?} is not an IP address or a network, as in \"10.0.0.1\" or \"10.0.0.0/8\""
+                    ),
+                );
+            }
+            u.trusted_proxies.push(s);
+        }
+    }
+    o.finish(d, URL_SIGNING_FIELDS, &[]);
+    Some(u)
 }
 
 /// The most keys a policy's keyring may hold (fit's `MaxMediaKeys`).
@@ -471,8 +652,9 @@ fn or_count(n: usize, def: usize) -> usize {
 // What akit reads, and what fit reads that akit does not yet, object by object.
 
 const MEDIA_AUTH_FIELDS: &[&str] = &[
-    // I143: the keyring.
+    // I143: the keyring; I144: signed URLs.
     "keys",
+    "url_signing",
     "name",
     "tokens",
     "users",
@@ -481,8 +663,7 @@ const MEDIA_AUTH_FIELDS: &[&str] = &[
     "public",
     "token_ttl",
 ];
-// url_signing: the media library's track (I144).
-const MEDIA_AUTH_FIT_ONLY: &[&str] = &["url_signing"];
+const MEDIA_AUTH_FIT_ONLY: &[&str] = &[];
 const MEDIA_TOKEN_FIELDS: &[&str] = &["name", "token", "token_sha256", "publish", "play"];
 const MEDIA_USER_FIELDS: &[&str] = &["name", "password", "password_hash", "publish", "play"];
 const STREAMING_FIELDS: &[&str] = &[
@@ -630,6 +811,12 @@ fn policy(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<MediaAuth> {
         }
         m.keys = got.into_iter().map(|(k, _, _)| k).collect();
     }
+    let url_at = o
+        .take("url_signing")
+        .map(|v| (v.off, o.at("url_signing"), v));
+    if let Some((_, up, v)) = &url_at {
+        m.url_signing = url_signing(d, v, up);
+    }
     if let Some(v) = o.take("public") {
         let p = o.at("public");
         for (i, (off, s)) in d.strings(v, &p).into_iter().enumerate() {
@@ -659,6 +846,18 @@ fn policy(d: &mut Decoder<'_>, n: &Node, path: &str) -> Option<MediaAuth> {
             n.off,
             path,
             "the policy lets no one in: set tokens, users, secret, secret_file, keys or public",
+        );
+    }
+    if let (Some((uoff, up, _)), true) = (
+        &url_at,
+        m.keys.is_empty()
+            && secret.as_ref().is_none_or(|(s, _)| s.is_empty())
+            && secret_file.as_ref().is_none_or(|(s, _)| s.is_empty()),
+    ) {
+        d.error(
+            *uoff,
+            up,
+            "url_signing needs a key to sign with: set secret, secret_file or keys",
         );
     }
     let single = secret.as_ref().is_some_and(|(s, _)| !s.is_empty())
@@ -1256,6 +1455,10 @@ pub struct MediaTokens {
     pub max_body_bytes: usize,
     /// `revoke_timeout`: [`DEFAULT_TOKENS_REVOKE_TIMEOUT`] when zero.
     pub revoke_timeout: Duration,
+    /// `url_base` (I144): what `/urls` answers start with, `/` trimmed; empty for paths alone.
+    pub url_base: String,
+    /// `url_prefixes` (I144): the path prefixes `/urls` may sign; any when empty.
+    pub url_prefixes: Vec<String>,
     /// The policy `auth` names, from the config.
     pub policy: Option<MediaAuth>,
 }
@@ -1304,9 +1507,11 @@ const MEDIA_TOKENS_FIELDS: &[&str] = &[
     "max_tokens",
     "max_body_bytes",
     "revoke_timeout",
+    // I144.
+    "url_base",
+    "url_prefixes",
 ];
-// Signed playback URLs (I144).
-const MEDIA_TOKENS_FIT_ONLY: &[&str] = &["url_base", "url_prefixes"];
+const MEDIA_TOKENS_FIT_ONLY: &[&str] = &[];
 
 /// Decodes the `media_tokens` handler's params, with fit's checks (`Tokens.Provision`); its
 /// policy and its route's middleware are checked once every file is read.
@@ -1368,6 +1573,46 @@ pub(crate) fn media_tokens(
         }
     }
     t.revoke_timeout = duration(d, &mut o, "revoke_timeout");
+    if let Some((b, boff)) = text_at(d, &mut o, "url_base") {
+        if !b.is_empty() {
+            let ok = (|| {
+                let rest = b
+                    .strip_prefix("https://")
+                    .or_else(|| b.strip_prefix("http://"))?;
+                let host = rest.split('/').next()?;
+                (!host.is_empty() && !host.contains('@') && !b.contains(['?', '#', ' ']))
+                    .then_some(())
+            })()
+            .is_some();
+            if !ok {
+                d.error(
+                    boff,
+                    &o.at("url_base"),
+                    format!("{b:?} is not http:// or https://, a host and maybe a path, as https://media.example.com"),
+                );
+            }
+        }
+        t.url_base = b.trim_end_matches('/').to_owned();
+    }
+    if let Some(v) = o.take("url_prefixes") {
+        let p = o.at("url_prefixes");
+        for (i, (off, s)) in d.strings(v, &p).into_iter().enumerate() {
+            let ok = s.starts_with('/')
+                && s.len() <= 256
+                && !s.contains("..")
+                && s.bytes().all(|b| {
+                    b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'~' | b'/' | b'-')
+                });
+            if !ok {
+                d.error(
+                    off,
+                    &join_index(&p, i),
+                    format!("{s:?} is not a path prefix, as /vod/films/"),
+                );
+            }
+            t.url_prefixes.push(s);
+        }
+    }
     o.finish(d, MEDIA_TOKENS_FIELDS, MEDIA_TOKENS_FIT_ONLY);
     Some(t)
 }

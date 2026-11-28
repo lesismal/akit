@@ -18,7 +18,7 @@ done and where the work differs from the plan.
 | Next | the external security review ([scope](security/review-scope.md)), whose findings finish I80b; fit's answer to the fields decision 035 proposes (CRL files, a WASM digest); the tracks after 1.0 ([the plan](dev-plan.md#after-10)): Console and encrypted store done (I89–I94, I93b, I93c); fit's Admin API rules for connections without the token, on the console's slots (akio's A232) (Logging done: I81–I83; Access lists done: I85–I87); the Gateway API's conformance run (tests/conformance, the maintainer's) |
 | akio requests | A1–A24, A29, A30, A32, A33, A35–A38, A45, A48, A49, A51–A54, A57, A58, A63–A66, A75, A78, A79, A90–A94, A105, A108, A109, A111–A113, A117, A132–A135, A148, A165–A172, A180, A200, A214, A215, A220, A230–A238, A245 and A247–A249 on akio's main and pinned; A225 (an external review, L15) requested ([akio API requests](akio-api-requests.md)) |
 | Streaming and media auth | [I120–I126](dev-plan.md#streaming-and-media-auth), fit's I115–I117 (decision 040): I120 (`media_auth` and `streaming` in the config), I121 (the policies, the checks, `akit media-token`), I122 (the role's hub, RTMP, RTSP and SRT), I123 (`httpflv`, `hls`), I124 (the WebRTC port, `stream_whip`, `stream_whep`), I125 (`media_pages`) and I126 (`auth` on `whip`, `whep` and `webrtc_proxy`) done; the media library's `libraries`, `vod` and `channels` wait for its track; akio requests A263–A268 |
-| Media library and channels | [I140–I149](dev-plan.md#media-library-and-channels), fit's I131–I139 and I119 (decision 043): I140 (`media_library` in the config) I141 (the catalog, the role `media_library`, `/media/library`) I142 (`vod`) and I143 (`keys`, `media_tokens`) done; akio requests A295, A296 |
+| Media library and channels | [I140–I149](dev-plan.md#media-library-and-channels), fit's I131–I139 and I119 (decision 043): I140 (`media_library` in the config) I141 (the catalog, the role `media_library`, `/media/library`) I142 (`vod`), I143 (`keys`, `media_tokens`) and I144 (`url_signing`) done; akio requests A295, A296 |
 
 ## Log
 
@@ -73,6 +73,41 @@ done and where the work differs from the plan.
   - On io_uring, `Engine::remove_listener` returns once the listener's accepts are cancelled, so a
     listener a reload removes takes no connection after it; `H3Upload::finish` is no longer
     refused by its own response; the pool pressure watcher samples every 500 ms (was 100 ms).
+### 2026-11-28: I144, playback URLs that expire
+
+- **Built**: fit's I135. akit-config reads `media_auth`'s `url_signing` (`ttl`, `bind_address`,
+  `play_grace`, `cookie`, `max_sessions`, `on_limit`, `session_idle`, `max_tracked_sessions`,
+  `referers`, `origins`, `trusted_proxies`, with fit's checks; it needs a secret or keys) and
+  `media_tokens`' `url_base` and `url_prefixes`. `akit_media::urlsign`: the grant (fit's query,
+  key derivation and MAC byte for byte), `resource_of`, the checks (MAC, expiry, the address or
+  its /24 or /64 behind `trusted_proxies`, `Referer`, `Origin`) and the sessions, a table of the
+  policy's own in 64 shards kept across reloads, bounded by `max_tracked_sessions`, swept at most
+  once a second when full. `Policy::sign_url`, `url_signing`, `url_ttl`, `viewer_addr`,
+  `url_refusals`, `sessions`, `end_session`; the keyring's and the single secret's URL keys
+  rotated with them. `http::guard_resource` (fit's `GuardResource`): a signature in the query lets
+  a request in by it alone, or refuses it 403 with the reason (503 past the table's bound), the
+  cookie `akit_media_grant` too with `cookie`; `Access::pass_on` hands playlists a child grant, in
+  the query or as a cookie, or the query's token as before. `vod` (master, media and subtitle
+  playlists, the viewer's own: `private, no-store`, with the cookie even from the cache), `hls`
+  and `httpflv` check their resource; `media_tokens`' `POST <prefix>/urls`.
+- **Differs from fit**: the cookie is `akit_media_grant` (decision 037); the Admin API's sessions
+  and refusal counts wait for the console's pages (I149); a check allocates a little (the
+  query's copy, the grant's fields), where fit's allocates nothing.
+- **Checked**: fit's `urlsign_test.go` ported on the policy's state at named times
+  (`src/urlsign/tests.rs`, 15 cases, with fit's vector: the query fit's `SignURL` gives for the
+  same keys, `fit-url-vector.txt`); fit's `handler/vod/urls_test.go` through akit's listener
+  (`tests/vod.rs`: a URL's grants through every playlist, segment, subtitle and file, the URL
+  expired while its grant plays on, every byte of the path, the address, the sessions' limit and a
+  key rotated, the cookie); fit's `streaming/urls_test.go` on a stream pushed over RTMP
+  (`tests/handlers.rs`: HLS and HTTP-FLV, the cookie); fit's `urls_test.go` through
+  `media_tokens` (`tests/tokens.rs`: each URL the query the policy signs, and fit's 400s and
+  provision errors); fit's config tests. Interop: with the same keyring files, a URL fit's
+  `media_tokens` signs plays on akit's `vod`, and one akit's signs on fit's, for both keys, a
+  field changed refused 403 on both; ffmpeg decodes each from both, its segments fetched with the
+  grants the playlists hand on. The gate's report loses `video-site`'s `url_signing` and
+  `url_prefixes`.
+- **Next**: I145, channels.
+
 ### 2026-11-28: I143, `media_auth`'s `keys` and `media_tokens`
 
 - **Built**: fit's I119. akit-config reads a policy's `keys` (each `key`, `secret` or

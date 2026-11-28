@@ -17,7 +17,7 @@
 | 下一步 | 外部安全审查（[范围](security/review-scope.zh-CN.md)），其发现完成 I80b；fit 对决定 035 所提议字段（CRL 文件、WASM 摘要）的答复；1.0 之后的各条线（[开发计划](dev-plan.zh-CN.md#10-之后)）：控制台与加密的 store 已完成（I89–I94、I93b、I93c）；fit 的 Admin API 对没有令牌的连接的规则，基于控制台的 slots（akio 的 A232）（日志已完成：I81–I83；访问控制列表已完成：I85–I87）；Gateway API 一致性测试的运行（tests/conformance，由维护者运行） |
 | akio 需求 | A1–A24、A29、A30、A32、A33、A35–A38、A45、A48、A49、A51–A54、A57、A58、A63–A66、A75、A78、A79、A90–A94、A105、A108、A109、A111–A113、A117、A132–A135、A148、A165–A172、A180、A200、A214、A215、A220、A230–A238、A245 和 A247–A249 已进入 akio 的 main 并锁定；A225（外部审查，L15）已提出（[akio API 请求](akio-api-requests.zh-CN.md)） |
 | 流媒体与媒体认证 | [I120–I126](dev-plan.zh-CN.md#流媒体与媒体认证)，fit 的 I115–I117（决定 040）：I120（配置中的 `media_auth` 和 `streaming`）、I121（策略、检查、`akit media-token`）I122（角色的媒体中心、RTMP、RTSP 和 SRT）、I123（`httpflv`、`hls`）、I124（WebRTC 端口、`stream_whip`、`stream_whep`）、I125（`media_pages`）和 I126（`whip`、`whep` 和 `webrtc_proxy` 上的 `auth`）已完成；媒体库的 `libraries`、`vod` 和 `channels` 等待其那条线；akio 请求 A263–A268 |
-| 媒体库与频道 | [I140–I149](dev-plan.zh-CN.md#媒体库与频道)，fit 的 I131–I139 和 I119（决定 043）：I140（配置中的 `media_library`）、I141（目录、角色 `media_library`、`/media/library`）、I142（`vod`）和 I143（`keys`、`media_tokens`）已完成；akio 需求 A295、A296 |
+| 媒体库与频道 | [I140–I149](dev-plan.zh-CN.md#媒体库与频道)，fit 的 I131–I139 和 I119（决定 043）：I140（配置中的 `media_library`）、I141（目录、角色 `media_library`、`/media/library`）、I142（`vod`）、I143（`keys`、`media_tokens`）和 I144（`url_signing`）已完成；akio 需求 A295、A296 |
 
 ## 日志
 
@@ -56,6 +56,30 @@
     它对吞吐的影响留给基准任务测量（规则 30）。
   - 在 io_uring 上，`Engine::remove_listener` 在监听器的 accept 取消完成后才返回，重载移除的监听器此后不再接受连接；`H3Upload::finish`
     不再被其自身的响应拒绝；池压力监视器每 500 ms 采样一次（原为 100 ms）。
+### 2026-11-28：I144，会过期的播放 URL
+
+- **构建**：fit 的 I135。akit-config 读取 `media_auth` 的 `url_signing`（`ttl`、`bind_address`、`play_grace`、`cookie`、
+  `max_sessions`、`on_limit`、`session_idle`、`max_tracked_sessions`、`referers`、`origins`、`trusted_proxies`，带 fit 的检查；
+  它需要密钥或密钥环）以及 `media_tokens` 的 `url_base` 和 `url_prefixes`。`akit_media::urlsign`：授权（fit 的查询、密钥派生和
+  MAC，逐字节相同）、`resource_of`、检查（MAC、过期时间、地址或其 /24、/64（`trusted_proxies` 之后）、`Referer`、`Origin`）和
+  会话：策略自己的一张表，64 个分片，跨重载保留，受 `max_tracked_sessions` 约束，满时至多每秒清扫一次。`Policy::sign_url`、
+  `url_signing`、`url_ttl`、`viewer_addr`、`url_refusals`、`sessions`、`end_session`；密钥环和单一密钥的 URL 密钥随其轮换。
+  `http::guard_resource`（fit 的 `GuardResource`）：查询中有签名的请求只凭它放行，否则以原因拒绝为 403（表满时 503），开启
+  `cookie` 时 cookie `akit_media_grant` 也可放行；`Access::pass_on` 给播放列表一个子授权，放在查询或 cookie 里，或像以前一样
+  传递查询中的 token。`vod`（主播放列表、媒体和字幕播放列表，属于观看者自己：`private, no-store`，即使来自缓存也带 cookie）、
+  `hls` 和 `httpflv` 检查各自的资源；`media_tokens` 的 `POST <prefix>/urls`。
+- **与 fit 的不同**：cookie 为 `akit_media_grant`（决定 037）；Admin API 的会话和拒绝计数等控制台页面（I149）；一次检查会做少量
+  分配（查询的副本、授权的字段），而 fit 的不分配。
+- **验证**：移植 fit 的 `urlsign_test.go`，在指定时刻检查策略的状态（`src/urlsign/tests.rs`，15 个用例，含 fit 的向量：同样的
+  密钥下 fit 的 `SignURL` 给出的查询，`fit-url-vector.txt`）；通过 akit 的监听器移植 fit 的 `handler/vod/urls_test.go`
+  （`tests/vod.rs`：URL 的授权经过每个播放列表、分片、字幕和文件，URL 过期而其授权继续播放，路径的每个字节，地址，会话上限和
+  轮换的密钥，cookie）；在经 RTMP 推送的流上移植 fit 的 `streaming/urls_test.go`（`tests/handlers.rs`：HLS 和 HTTP-FLV，
+  cookie）；通过 `media_tokens` 移植 fit 的 `urls_test.go`（`tests/tokens.rs`：每个 URL 都是策略签发的查询，以及 fit 的 400 和
+  配置错误）；fit 的配置测试。互通：使用相同的密钥文件，fit 的 `media_tokens` 签发的 URL 能在 akit 的 `vod` 上播放，akit 签发的
+  能在 fit 上播放，两个密钥都是如此，改动一个字段在两边都被拒绝为 403；ffmpeg 从两边解码每个 URL，其分片用播放列表传下的授权
+  取得。gate 的报告不再有 `video-site` 的 `url_signing` 和 `url_prefixes`。
+- **下一步**：I145，频道。
+
 ### 2026-11-28：I143，`media_auth` 的 `keys` 和 `media_tokens`
 
 - **完成内容**：fit 的 I119。akit-config 读取策略的 `keys`（每个 `key`，`secret` 或 `secret_file`，检查与 fit 相同：名字、至多 256

@@ -14,7 +14,7 @@ akit 配置的每个字段：配置的每一部分是做什么的、一个示例
 akit 与 fit 不同之处，在表格中以 **akit：** 标出。
 
 <!-- BEGIN GENERATED: summary -->
-fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **1260** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 190 个对象，下文各有一张表。
+fit 的配置共有 3821 个字段（fit `7daee573`，按[兼容性页面](../compatibility.zh-CN.md)的方式计数），akit 读取其中 **1274** 个，其余按名称拒绝为“尚不支持”（not supported yet），另有 **1** 个 akit 自己的字段。akit 读取的 191 个对象，下文各有一张表。
 <!-- END GENERATED -->
 
 字段说明来自 fit 代码中的 `doc` 标签，是英文的，所以每个字段的完整说明在[英文版](config.md)的同一张表中；本页的表格给出每个字段的
@@ -2812,7 +2812,7 @@ webrtc {
 `media_auth` 列出 fit 的具名策略，规定谁可以推送和播放哪些流（[fit 的指南](https://github.com/lesismal/fit/blob/main/docs/streaming.zh-CN.md#auth)）：
 静态 token（或其 SHA-256）、带密码或 bcrypt 哈希的用户、为 `akit media-token` 签发的 token 签名的密钥，以及任何人都可执行
 的动作。流媒体角色的监听器和媒体处理器用 `auth` 指定一个策略，按流的路径检查。akit 像 fit 一样读取并检查这些策略（I120），
-`akit run` 应用它们（I121）。策略的 `keys` 自 I143 随 `media_tokens` 读取；`url_signing`（I144）尚不读取。
+`akit run` 应用它们（I121）。策略的 `keys` 自 I143 随 `media_tokens` 读取，其 `url_signing` 自 I144 读取。
 
 ```fit
 media_auth live {
@@ -2840,7 +2840,7 @@ media_auth live {
 | `secret_file` | 字符串 |  |  |
 | `token_ttl` | 时长 | `"12h"` |  |
 | `tokens` | [对象](#cfg-media-auth-tokens)的列表 |  |  |
-| `url_signing` | 对象 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `url_signing` | [对象](#cfg-media-auth-url-signing) |  | **akit：**在 I/O 线程上检查，没有回调（I144）：MAC、过期时间、地址、`Referer` 和 `Origin`，然后是会话在策略自己的表中的条目，跨重载保留。同一密钥、密钥环和策略名下，fit 签发的 URL 能在 akit 上播放，akit 签发的也能在 fit 上播放（决定 043）。拒绝为 403 `the playback URL is refused: <reason>`，超过 `max_tracked_sessions` 的新会话为 503。 |
 | `users` | [对象](#cfg-media-auth-users)的列表 |  |  |
 <!-- END GENERATED -->
 
@@ -2888,6 +2888,33 @@ media_auth live {
 | `key` | 字符串 | 必填 |  |
 | `secret` | 字符串 |  |  |
 | `secret_file` | 字符串 |  |  |
+<!-- END GENERATED -->
+
+### `media_auth[].url_signing`
+
+会过期的播放 URL（I144）：站点的后端，或 `media_tokens` 的 `POST <prefix>/urls`，为一位观众和一个资源签发
+URL，资源是 `vod` 某个条目或 `hls`、`httpflv` 某路流的路径前缀；用它取得的播放列表给其中列出的每个 URI 一个自己的授权，
+放在 URI 的查询里，或放在 cookie `akit_media_grant` 里。URL 与 fit 的逐字节相同（决定 043）：同一密钥、同一策略名下，
+fit 签发的 URL 能在 akit 上播放，反之亦然。
+
+<!-- BEGIN GENERATED: media_auth[].url_signing -->
+<a id="cfg-media-auth-url-signing"></a>
+
+各字段的说明见英文版的[同一张表](config.md#cfg-media-auth-url-signing)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `bind_address` | 字符串：`ip`、`subnet` | `"ip"` |  |
+| `cookie` | 布尔值 |  | **akit：**cookie 为 `akit_media_grant`（fit 的 `fit_media_grant`，决定 037）；URL 和授权本身与 fit 的逐字节相同（决定 043）。 |
+| `max_sessions` | 整数，≥ 0 |  |  |
+| `max_tracked_sessions` | 整数，≥ 0 | `100000` |  |
+| `on_limit` | 字符串：`refuse`、`end_oldest` | `"refuse"` |  |
+| `origins` | 字符串的列表 |  |  |
+| `play_grace` | 时长 | `"30m"` |  |
+| `referers` | 字符串的列表 |  |  |
+| `session_idle` | 时长 | `"2m"` |  |
+| `trusted_proxies` | 字符串的列表 |  |  |
+| `ttl` | 时长 | `"10m"` |  |
 <!-- END GENERATED -->
 
 ## 流媒体
@@ -3756,7 +3783,7 @@ route {
 网站后端调用的路由，位于对其进行认证的中间件（`jwt`、`basic_auth`、`forward_auth`，或不带 `optional` 的 `client_cert`）之后，
 用于批量签发 `media_auth` token（`POST <prefix>`，`key` 指定策略密钥环中的一个密钥），以及撤销策略的密钥、某一个密钥或全部
 密钥所签发的 token（`POST <prefix>/revoke`），撤销前先把新密钥写入其 `secret_file`（I143）。策略需要 `secret_file`，或每个密钥都
-有 `secret_file` 的密钥环。尚不读取 `url_base` 和 `url_prefixes`（签名 URL，I144）。
+有 `secret_file` 的密钥环。自 I144 起它也为有 `url_signing` 的策略签发播放 URL（`POST <prefix>/urls`，配合 `url_base` 和 `url_prefixes`）。
 
 ```fit
 listener web :8080
@@ -3783,8 +3810,8 @@ route tokens {
 | `prefix` | 字符串 | `"/media-tokens"` |  |
 | `prefixes` | 字符串的列表 |  |  |
 | `revoke_timeout` | 时长 | `"10s"` |  |
-| `url_base` | 字符串 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
-| `url_prefixes` | 字符串的列表 |  | **尚不支持**（not supported yet）：按名称拒绝。 |
+| `url_base` | 字符串 |  |  |
+| `url_prefixes` | 字符串的列表 |  |  |
 <!-- END GENERATED -->
 
 ### `vod`

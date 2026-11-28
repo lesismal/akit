@@ -363,3 +363,229 @@ fn not_loaded() {
     assert_eq!(r.status, 503);
     assert_eq!(r.header("retry-after"), Some("1"));
 }
+
+/// A policy `site` with a keyring, the viewer's token and `url_signing` as `signing` writes it.
+fn signed_config(root: &Path, signing: &str) -> String {
+    format!(
+        r#"{{"listeners": [{{"name": "web", "address": "127.0.0.1:0"}}],
+          "media_auth": [{{"name": "site", "keys": [{{"key": "k1", "secret": "the first key of the site"}}, {{"key": "k2", "secret": "the second key of the site"}}],
+            "tokens": [{{"token": "{TOKEN}", "play": ["vod/lib/films/*"]}}], "url_signing": {signing}}}],
+          "media_library": [{{"name": "lib", "roots": ["{}"]}}],
+          "routes": [{{"match": {{"path": ["/vod/*"]}}, "handler": {{"module": "vod", "params": {{"library": "lib", "auth": "site", "cache_control": "public, max-age=60"}}}}}}]}}"#,
+        root.display()
+    )
+}
+
+fn site(a: &Akit) -> Arc<akit_media::auth::Policy> {
+    let r = akit_media::auth::registry::key(&a.engine);
+    akit_media::auth::registry::lookup(r, "site").unwrap()
+}
+
+fn unix_now() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64
+}
+
+/// The URL of `name` of bbb's resource for `v`, good until `exp`.
+fn sign(a: &Akit, name: &str, v: &akit_media::auth::Viewer, exp: i64, key: &str) -> String {
+    format!("{B}{name}?{}", site(a).sign_url(B, v, exp, key).unwrap())
+}
+
+fn viewer(sub: &str, sid: &str) -> akit_media::auth::Viewer {
+    akit_media::auth::Viewer {
+        subject: sub.into(),
+        address: None,
+        session: sid.into(),
+    }
+}
+
+/// The URIs a playlist names: its lines that are not tags, and its tags' URI attributes.
+fn uris(playlist: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for line in playlist.lines() {
+        if line.is_empty() {
+            continue;
+        }
+        if line.starts_with('#') {
+            let mut rest = line;
+            while let Some(i) = rest.find("URI=\"") {
+                let tail = &rest[i + 5..];
+                let end = tail.find('"').unwrap();
+                out.push(tail[..end].to_owned());
+                rest = &tail[end..];
+            }
+        } else {
+            out.push(line.to_owned());
+        }
+    }
+    out
+}
+
+/// fit's `TestSignedURLs` (I144): an item played through a signed URL: its playlists hand every
+/// URI a grant, which plays on once the URL has expired; the URL opens no other item, nor its
+/// own path changed in any byte; its playlists are the viewer's own; its signature never
+/// reaches the access log's target.
+#[test]
+fn signed_urls() {
+    let lib = copy_lib();
+    let a = start(&signed_config(&lib.0, "{}"), true);
+    let h = a.http;
+    let v = viewer("viewer-1", "s1");
+    let u = sign(&a, "index.m3u8", &v, unix_now() + 3600, "");
+    let r = get(h, &u);
+    assert_eq!(r.status, 200, "{}", r.text());
+    assert_eq!(r.header("cache-control"), Some("private, no-store"));
+    let list = uris(&r.text());
+    assert!(list.len() >= 3, "{list:?}");
+    let mut grant = String::new();
+    for uri in &list {
+        let (name, q) = uri.split_once('?').unwrap();
+        assert!(
+            q.contains("&g=1&") && q.contains("sub=viewer-1") && !name.contains('/'),
+            "{uri}"
+        );
+        if grant.is_empty() {
+            grant = q.to_owned();
+        } else {
+            assert_eq!(q, grant);
+        }
+    }
+    // What the playlists name plays with the grant: a media playlist, its init section and
+    // segments, and subtitles.
+    let media = get(h, &format!("{B}v0.fmp4.m3u8?{grant}"));
+    assert_eq!(media.status, 200);
+    let named = uris(&media.text());
+    assert!(named.len() >= 2, "{named:?}");
+    for uri in &named {
+        assert!(uri.ends_with(&format!("?{grant}")), "{uri}");
+        assert_eq!(get(h, &format!("{B}{uri}")).status, 200, "{uri}");
+    }
+    let subs = get(h, &format!("{B}s0.m3u8?{grant}")).text();
+    assert_eq!(get(h, &format!("{B}{}", uris(&subs)[0])).status, 200);
+    assert_eq!(get(h, &format!("{B}v0.mp4?{grant}")).status, 200);
+    // A media playlist fetched without a query, by a token, is the one the cache keeps.
+    let r = request(
+        h,
+        "GET",
+        &format!("{B}v0.fmp4.m3u8"),
+        &[("Authorization", &format!("Bearer {TOKEN}"))],
+    );
+    assert_eq!(r.status, 200);
+    assert!(!r.text().contains("sig="));
+    assert_eq!(r.header("cache-control"), Some("public, max-age=60"));
+    // Expired, the URL is refused, while the grant its playlist handed on plays on.
+    let expired = sign(&a, "index.m3u8", &v, unix_now() - 1, "");
+    let r = get(h, &expired);
+    assert!(
+        r.status == 403 && r.text().contains("expired"),
+        "{}",
+        r.text()
+    );
+    assert_eq!(get(h, &format!("{B}v0.0.m4s?{grant}")).status, 200);
+    // Another item, and the path changed in any byte.
+    let q = u.split_once('?').unwrap().1;
+    assert_eq!(
+        get(h, &format!("/vod/lib/sintel/index.m3u8?{q}")).status,
+        403
+    );
+    for i in "/vod/lib/".len()..B.len() - 1 {
+        let mut b = format!("{B}index.m3u8").into_bytes();
+        b[i] ^= 0x01;
+        let p = String::from_utf8(b).unwrap();
+        assert_ne!(get(h, &format!("{p}?{q}")).status, 200, "{p}");
+    }
+    // Bound to an address: refused from another.
+    let mut other = viewer("v", "");
+    other.address = Some("192.0.2.1".parse().unwrap());
+    assert_eq!(
+        get(h, &sign(&a, "index.m3u8", &other, unix_now() + 3600, "")).status,
+        403
+    );
+    other.address = Some("127.0.0.1".parse().unwrap());
+    assert_eq!(
+        get(h, &sign(&a, "index.m3u8", &other, unix_now() + 3600, "")).status,
+        200
+    );
+    // A signature that does not parse is refused, and counted.
+    let r = get(h, &format!("{B}index.m3u8?sig=x"));
+    assert!(
+        r.status == 403 && r.text().contains("signature"),
+        "{}",
+        r.text()
+    );
+    let refused = site(&a).url_refusals();
+    assert!(
+        refused.iter().any(|(r, n)| *r == "signature" && *n >= 2),
+        "{refused:?}"
+    );
+}
+
+/// fit's `TestSignedURLSessions`: a third session past `max_sessions` 2 refused, and rotating
+/// a key refuses the URLs it signed and only those.
+#[test]
+fn signed_url_sessions() {
+    let lib = copy_lib();
+    let a = start(&signed_config(&lib.0, r#"{"max_sessions": 2}"#), true);
+    let h = a.http;
+    let exp = unix_now() + 3600;
+    let at = |sid: &str, key: &str| sign(&a, "v0.0.m4s", &viewer("u", sid), exp, key);
+    assert_eq!(get(h, &at("a", "k1")).status, 200);
+    assert_eq!(get(h, &at("b", "k2")).status, 200);
+    let r = get(h, &at("c", "k1"));
+    assert!(
+        r.status == 403 && r.text().contains("session_limit"),
+        "{}",
+        r.text()
+    );
+    let sessions = site(&a).sessions();
+    assert_eq!(sessions.len(), 2, "{sessions:?}");
+    assert_eq!(sessions[0].resource, B);
+    assert!(
+        sessions[0].address.starts_with("127.0.0.1:"),
+        "{sessions:?}"
+    );
+    let (ua, ub) = (at("a", "k1"), at("b", "k2"));
+    site(&a).rotate_key("k1", "the first key, rotated").unwrap();
+    assert_eq!(get(h, &ua).status, 403);
+    assert_eq!(get(h, &ub).status, 200);
+}
+
+/// fit's `TestSignedURLCookie`: the grant handed on as a cookie; the playlists name their URIs
+/// plainly, and a client that keeps the cookie plays.
+#[test]
+fn signed_url_cookie() {
+    let lib = copy_lib();
+    let a = start(&signed_config(&lib.0, r#"{"cookie": true}"#), true);
+    let h = a.http;
+    let u = sign(&a, "v0.fmp4.m3u8", &viewer("u", ""), unix_now() + 3600, "");
+    let r = get(h, &u);
+    assert_eq!(r.status, 200, "{}", r.text());
+    let set = r.header("set-cookie").unwrap().to_owned();
+    assert!(
+        set.starts_with("akit_media_grant=exp=")
+            && set.contains(&format!("; Path={B};"))
+            && set.contains("; HttpOnly"),
+        "{set}"
+    );
+    assert!(!r.text().contains('?'), "{}", r.text());
+    let cookie = set.split(';').next().unwrap().to_owned();
+    for uri in &uris(&r.text())[..2] {
+        let r = request(h, "GET", &format!("{B}{uri}"), &[("Cookie", &cookie)]);
+        assert_eq!(r.status, 200, "{uri}: {}", r.text());
+    }
+    // Kept by the cache, the playlist goes out again with a cookie of its own; the cookie is
+    // refused for another item.
+    let r = get(h, &u);
+    assert!(r.header("set-cookie").is_some());
+    assert_eq!(r.header("cache-control"), Some("private, no-store"));
+    let r = request(
+        h,
+        "GET",
+        "/vod/lib/sintel/index.m3u8",
+        &[("Cookie", &cookie)],
+    );
+    assert_ne!(r.status, 200);
+    assert_eq!(get(h, &format!("{B}v0.0.m4s")).status, 401);
+}

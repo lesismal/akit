@@ -11,7 +11,10 @@ use std::sync::Arc;
 use akio_http::{Context, Request, Response};
 use akit_config::media::MediaAction as Action;
 
+use std::time::Duration;
+
 use crate::auth::{Credentials, Policy, Refusal, unescape};
+use crate::urlsign::{Grant as UrlGrant, Seen, TouchError, UrlReason};
 
 /// The cookie a token may come in, as the media pages set it: fit's `fit_media_token`, renamed
 /// (decision 037).
@@ -161,21 +164,260 @@ pub fn refuse(ctx: &mut Context, r: Refusal, cors: &str) {
 }
 
 /// What let a request in: the subject it is authenticated as (empty for an action the policy
-/// makes public, or for no policy), and the token it carried in its query, which a playlist
-/// hands on to what it names.
-#[derive(Clone, Default, PartialEq, Eq)]
+/// makes public, or for no policy), the token it carried in its query, and the signed URL or
+/// grant it was let in by (I144), which a playlist hands on to what it names (fit's `Access`).
+#[derive(Clone, Default)]
 pub struct Access {
     /// Who it is.
     pub subject: String,
     /// The token of its query, or empty.
     pub query_token: String,
+    /// The signed URL or grant that let it in.
+    url: Option<Arc<ByUrl>>,
+}
+
+/// A request let in by a signed URL or a grant.
+struct ByUrl {
+    policy: Arc<Policy>,
+    resource: String,
+    grant: UrlGrant,
+    key: Vec<u8>,
+    tls: bool,
 }
 
 impl std::fmt::Debug for Access {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Access")
             .field("subject", &self.subject)
+            .field("url", &self.url.is_some())
             .finish_non_exhaustive()
+    }
+}
+
+impl Access {
+    /// Whether the request was let in by a signed URL or a grant.
+    #[must_use]
+    pub fn by_url(&self) -> bool {
+        self.url.is_some()
+    }
+
+    /// When the URL or grant the request was let in by expires, in seconds since 1970.
+    #[must_use]
+    pub fn expiry(&self) -> Option<i64> {
+        self.url.as_ref().map(|u| u.grant.exp)
+    }
+
+    /// What a playlist of the resource hands the URIs it names, for an item whose length is
+    /// `length` (zero for a live stream): the query each URI carries (empty for none) and the
+    /// value of a `Set-Cookie` field to send with the playlist (empty for none) (fit's `PassOn`).
+    /// Let in by a signed URL, that is a grant of its own, living `play_grace` past the later of
+    /// the URL's expiry and now and `length`, in the query, or with `url_signing`'s `cookie` in
+    /// the cookie; let in by a grant, the same grant; let in by a token in its query, that token.
+    #[must_use]
+    pub fn pass_on(&self, length: Duration) -> (String, String) {
+        self.pass_on_at(length, crate::urlsign::now_secs())
+    }
+
+    /// The access of a request let in by grant `g` for `resource`, signed with `key`.
+    pub(crate) fn of_url(
+        p: &Arc<Policy>,
+        resource: &str,
+        g: UrlGrant,
+        key: Vec<u8>,
+        tls: bool,
+    ) -> Access {
+        Access {
+            subject: g.sub.clone(),
+            query_token: String::new(),
+            url: Some(Arc::new(ByUrl {
+                policy: Arc::clone(p),
+                resource: resource.to_owned(),
+                grant: g,
+                key,
+                tls,
+            })),
+        }
+    }
+
+    pub(crate) fn pass_on_at(&self, length: Duration, now: i64) -> (String, String) {
+        let Some(u) = &self.url else {
+            if self.query_token.is_empty() {
+                return (String::new(), String::new());
+            }
+            return (
+                format!("token={}", crate::handlers::query_escape(&self.query_token)),
+                String::new(),
+            );
+        };
+        let Some(conf) = u.policy.url_config() else {
+            return (String::new(), String::new());
+        };
+        if u.grant.child {
+            if conf.cookie {
+                return (String::new(), String::new());
+            }
+            return (u.grant.query(), String::new());
+        }
+        let g = crate::urlsign::child(&conf, &u.key, &u.grant, &u.resource, length, now);
+        if !g.sid.is_empty() {
+            u.policy.extend_session(&g.sub, &g.sid, g.exp);
+        }
+        if conf.cookie {
+            return (
+                String::new(),
+                crate::urlsign::cookie(&g, &u.resource, u.tls, now),
+            );
+        }
+        (g.query(), String::new())
+    }
+}
+
+/// Whether the request came over TLS.
+fn over_tls(ctx: &Context) -> bool {
+    ctx.local(akit_runtime::TLS).is_some()
+}
+
+/// Answers a request whose signed URL or grant was refused: 403 with why, or 503 with
+/// `Retry-After: 1` past `max_tracked_sessions`; `cors` as [`refuse`]'s.
+pub(crate) fn refuse_url(ctx: &mut Context, e: TouchError, cors: &str) {
+    let (status, msg) = match e {
+        TouchError::Url(r) => (
+            403,
+            format!("the playback URL is refused: {}\n", r.as_str()),
+        ),
+        TouchError::Full => (503, "too many playback sessions are tracked\n".to_owned()),
+    };
+    let mut resp = Response::with_body(status, "text/plain; charset=utf-8", msg.into_bytes());
+    if e == TouchError::Full {
+        resp.headers.set("Retry-After", "1");
+    }
+    if !cors.is_empty() {
+        resp.headers.set("Access-Control-Allow-Origin", cors);
+    }
+    ctx.respond(resp);
+}
+
+/// Checks `g`, from the query of the request or a cookie, against `resource`, and lets the
+/// request in, or refuses it (fit's `letIn`).
+fn let_in(
+    p: &Arc<Policy>,
+    ctx: &mut Context,
+    resource: &str,
+    cors: &str,
+    g: UrlGrant,
+    next: impl FnOnce(&mut Context, Access) + Send + 'static,
+) {
+    let r = {
+        let req = ctx.req();
+        let seen = seen(req, ctx.peer());
+        p.let_in(
+            &seen,
+            resource,
+            &g,
+            &ctx.peer().to_string(),
+            crate::urlsign::now_nanos(),
+        )
+    };
+    match r {
+        Err(e) => refuse_url(ctx, e, cors),
+        Ok(key) => {
+            let tls = over_tls(ctx);
+            next(ctx, Access::of_url(p, resource, g, key, tls));
+        }
+    }
+}
+
+/// What of a request a URL's check reads.
+fn seen(req: &Request, peer: std::net::SocketAddr) -> Seen<'_> {
+    Seen {
+        peer: Some(peer.ip()),
+        xff: req.headers.get_all("x-forwarded-for").collect(),
+        referer: req.headers.get("referer"),
+        origin: req.headers.get("origin"),
+    }
+}
+
+/// [`guard`] for playing `resource`, the path prefix of an item or a stream as
+/// [`crate::urlsign::resource_of`] gives it, whose stream name is `stream` (fit's
+/// `GuardResource`). With the policy's `url_signing`, a request whose query has a signature is
+/// let in by that signed URL, or grant, alone, checked against `resource`, or refused 403 (503
+/// past `max_tracked_sessions`); and, with `url_signing`'s `cookie`, a request with the cookie
+/// `akit_media_grant` is let in by a grant of it that holds. Any other request is checked as
+/// [`guard`] checks it. The signature is written `REDACTED` as a token is.
+pub fn guard_resource(
+    policy: Option<&Arc<Policy>>,
+    ctx: &mut Context,
+    stream: &str,
+    resource: &str,
+    cors: &str,
+    next: impl FnOnce(&mut Context, Access) + Send + 'static,
+) {
+    let Some(p) = policy else {
+        return guard(None, ctx, Action::Play, stream, cors, next);
+    };
+    if let Some(conf) = p.url_config().filter(|_| !p.is_public(Action::Play)) {
+        let query = ctx.req().query().unwrap_or("").to_owned();
+        if query.contains("sig=") {
+            redact(ctx);
+            let Some(g) = UrlGrant::parse(&query) else {
+                p.count_url_refusal(UrlReason::Signature);
+                return refuse_url(ctx, TouchError::Url(UrlReason::Signature), cors);
+            };
+            return let_in(p, ctx, resource, cors, g, next);
+        }
+        if conf.cookie {
+            match cookie_grant(p, ctx, resource) {
+                CookieGrant::None => {}
+                CookieGrant::Good(g) => return let_in(p, ctx, resource, cors, g, next),
+                CookieGrant::Refused(r) => {
+                    p.count_url_refusal(r);
+                    redact(ctx);
+                    return refuse_url(ctx, TouchError::Url(r), cors);
+                }
+            }
+        }
+    }
+    guard(Some(p), ctx, Action::Play, stream, cors, next);
+}
+
+enum CookieGrant {
+    /// No grant cookie, or none that holds beside other credentials: on to [`guard`].
+    None,
+    Good(UrlGrant),
+    Refused(UrlReason),
+}
+
+/// The `akit_media_grant` cookie of the request that holds for `resource` (fit's `cookieGrant`):
+/// a request whose grant cookies all fail, with no other credentials, is refused for the last
+/// one's reason.
+fn cookie_grant(p: &Arc<Policy>, ctx: &Context, resource: &str) -> CookieGrant {
+    let req = ctx.req();
+    let seen = seen(req, ctx.peer());
+    let now = crate::urlsign::now_nanos();
+    let mut last = None;
+    for part in req.headers.get_all("cookie").flat_map(|l| l.split(';')) {
+        let (name, value) = part.trim().split_once('=').unwrap_or((part.trim(), ""));
+        if name != crate::urlsign::GRANT_COOKIE {
+            continue;
+        }
+        let Some(g) = UrlGrant::parse(value) else {
+            last = Some(UrlReason::Signature);
+            continue;
+        };
+        match p.verify_url(&seen, resource, &g, now) {
+            Ok(_) => return CookieGrant::Good(g),
+            Err(TouchError::Url(r)) => last = Some(r),
+            Err(TouchError::Full) => {}
+        }
+    }
+    let others = req
+        .headers
+        .get("authorization")
+        .is_some_and(|a| !a.is_empty())
+        || req.query().is_some_and(|q| q.contains("token="));
+    match last {
+        Some(r) if !others => CookieGrant::Refused(r),
+        _ => CookieGrant::None,
     }
 }
 
@@ -206,6 +448,7 @@ pub fn guard(
             Access {
                 subject: String::new(),
                 query_token,
+                url: None,
             },
         );
     };
@@ -217,6 +460,7 @@ pub fn guard(
                 Access {
                     subject,
                     query_token,
+                    url: None,
                 },
             );
         }
@@ -233,6 +477,7 @@ pub fn guard(
                 Access {
                     subject,
                     query_token,
+                    url: None,
                 },
             ),
             Err(r) => refuse(ctx, r, &cors),
@@ -301,6 +546,27 @@ impl HandlerAuth {
         }
         match self.found.get() {
             Some(Some(p)) => guard(Some(p), ctx, a, stream, cors, next),
+            _ => {
+                redact(ctx);
+                refuse(ctx, Refusal::Unavailable, cors);
+            }
+        }
+    }
+
+    /// [`guard_resource`] with the policy, as [`guard`](Self::guard) is [`guard`] with it.
+    pub fn guard_resource(
+        &self,
+        ctx: &mut Context,
+        stream: &str,
+        resource: &str,
+        cors: &str,
+        next: impl FnOnce(&mut Context, Access) + Send + 'static,
+    ) {
+        if !self.named {
+            return guard(None, ctx, Action::Play, stream, cors, next);
+        }
+        match self.found.get() {
+            Some(Some(p)) => guard_resource(Some(p), ctx, stream, resource, cors, next),
             _ => {
                 redact(ctx);
                 refuse(ctx, Refusal::Unavailable, cors);

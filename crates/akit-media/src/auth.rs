@@ -30,6 +30,10 @@ use akio_crypto::mac::Hmac;
 use akit_config::media::{MIN_MEDIA_SECRET, MediaAction as Action, MediaAuth, valid_media_pattern};
 
 use crate::swap::Swap;
+use crate::urlsign::{
+    Grant as UrlGrant, Seen, SessionView, Sessions, TouchError, URL_REASONS, UrlConfig, UrlReason,
+    url_key,
+};
 
 /// The prefix of every token akit signs, telling it from a static one: fit's.
 pub const TOKEN_PREFIX: &str = "fm1.";
@@ -282,6 +286,10 @@ struct State {
     ttl: Duration,
     /// The users' BitTorrent passkeys (I159), by their SHA-256: the user's name.
     passkeys: HashMap<[u8; 32], String>,
+    /// `url_signing` (I144), compiled; `None` without.
+    url: Option<Arc<UrlConfig>>,
+    /// The key URLs are signed with for a single secret, derived from `sign_key`.
+    url_key: Vec<u8>,
 }
 
 /// The secret files a policy read, with their SHA-256, and its single `secret_file`.
@@ -292,6 +300,8 @@ type ReadFiles = (Vec<(String, [u8; 32])>, String);
 struct RingKey {
     name: String,
     sign_key: Vec<u8>,
+    /// The key it signs URLs with, derived from `sign_key`.
+    url_key: Vec<u8>,
     /// The `secret_file` it comes from; empty for an inline secret.
     file: String,
 }
@@ -319,6 +329,8 @@ pub struct Policy {
     files: Mutex<ReadFiles>,
     /// Rotations are made one at a time.
     rotating: Mutex<()>,
+    /// The playback sessions of its signed URLs, kept across reloads.
+    sess: Sessions,
 }
 
 impl std::fmt::Debug for Policy {
@@ -420,6 +432,7 @@ impl Policy {
             applied: Mutex::new(false),
             files: Mutex::new((Vec::new(), String::new())),
             rotating: Mutex::new(()),
+            sess: Sessions::default(),
         }
     }
 
@@ -448,7 +461,17 @@ impl Policy {
             keys: Vec::new(),
             ttl: cfg.ttl(),
             passkeys: HashMap::new(),
+            url: None,
+            url_key: Vec::new(),
         };
+        if let Some(u) = &cfg.url_signing {
+            if cfg.keys.is_empty() && cfg.secret.is_empty() && cfg.secret_file.is_empty() {
+                return Err(
+                    "url_signing needs a key to sign with: set secret, secret_file or keys".into(),
+                );
+            }
+            st.url = Some(Arc::new(UrlConfig::compile(u)?));
+        }
         for a in &cfg.public {
             if let Some(p) = st.public.get_mut(action_index(*a)) {
                 *p = true;
@@ -565,6 +588,7 @@ impl Policy {
                 }
                 st.keys.push(RingKey {
                     name: k.key.clone(),
+                    url_key: url_key(&sign_key),
                     sign_key,
                     file: k.secret_file.clone(),
                 });
@@ -587,6 +611,7 @@ impl Policy {
             } else {
                 sign_key_for(&cfg.name, secret.as_bytes())
             };
+            st.url_key = url_key(&st.sign_key);
         }
         st.passkeys = passkeys_of(&st);
         *self.files.lock().unwrap_or_else(PoisonError::into_inner) = (files, single);
@@ -760,6 +785,7 @@ impl Policy {
                 if !st.keys.is_empty() {
                     return Err("the policy has a keyring: rotate one key".into());
                 }
+                next.url_key = url_key(&sign_key);
                 next.sign_key = sign_key;
             }
             Some(key) => {
@@ -779,6 +805,7 @@ impl Policy {
                 let Some(k) = next.keys.iter_mut().find(|k| k.name == key) else {
                     return Err(format!("no key named {key:?}"));
                 };
+                k.url_key = url_key(&sign_key);
                 k.sign_key = sign_key;
             }
         }
@@ -1077,6 +1104,229 @@ impl Policy {
             return Err(Refusal::Unavailable.to_string());
         };
         issue(&key, subject, g, ttl, now())
+    }
+}
+
+/// Who a playback URL is signed for (fit's `Viewer`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Viewer {
+    /// Who the viewer is to the site: 1 to 128 bytes with no control character. URLs carry it;
+    /// use an opaque ID rather than a name or an address.
+    pub subject: String,
+    /// The address the URL is bound to, or to its network as `bind_address` says; none when
+    /// `None`.
+    pub address: Option<std::net::IpAddr>,
+    /// The playback session `max_sessions` counts, as [`crate::urlsign::valid_session`] allows;
+    /// empty for none.
+    pub session: String,
+}
+
+impl Policy {
+    /// Whether the policy has `url_signing`.
+    #[must_use]
+    pub fn url_signing(&self) -> bool {
+        self.st.with(|st| st.is_some_and(|s| s.url.is_some()))
+    }
+
+    /// `url_signing`'s config, while the policy has it.
+    pub(crate) fn url_config(&self) -> Option<Arc<UrlConfig>> {
+        self.st.with(|st| st.and_then(|s| s.url.clone()))
+    }
+
+    /// How long a URL is good for when its issuer names no lifetime: `url_signing`'s `ttl`.
+    #[must_use]
+    pub fn url_ttl(&self) -> Duration {
+        self.st.with(|st| {
+            st.and_then(|s| s.url.as_ref().map(|u| u.ttl))
+                .unwrap_or(akit_config::media::DEFAULT_URL_TTL)
+        })
+    }
+
+    /// The query of a URL of `resource` for `v`, good until `expiry` in seconds since 1970 (fit's
+    /// `SignURL`): signed with the keyring's key `key`, its first when `key` is empty, or with
+    /// the policy's secret. `resource` is as [`crate::urlsign::resource_of`] gives it; the URL is
+    /// that resource, a name in it, '?' and the query.
+    ///
+    /// # Errors
+    ///
+    /// A policy not loaded or without `url_signing`, a bad resource, subject or session, an
+    /// expiry before 1970, no such key, a key named of a policy without a keyring.
+    pub fn sign_url(
+        &self,
+        resource: &str,
+        v: &Viewer,
+        expiry: i64,
+        key: &str,
+    ) -> Result<String, String> {
+        use crate::urlsign::{valid_resource, valid_session, valid_subject};
+        let r = self.st.with(|st| {
+            let st = st.ok_or_else(|| Refusal::Unavailable.to_string())?;
+            let conf = st
+                .url
+                .clone()
+                .ok_or_else(|| "the policy has no url_signing".to_owned())?;
+            if st.keys.is_empty() {
+                if !key.is_empty() {
+                    return Err("the policy has no keyring".to_owned());
+                }
+                return Ok((conf, st.url_key.clone(), String::new()));
+            }
+            let k = if key.is_empty() {
+                st.keys.first()
+            } else {
+                st.keys.iter().find(|k| k.name == key)
+            };
+            let k = k.ok_or_else(|| format!("no key named {key:?}"))?;
+            Ok((conf, k.url_key.clone(), k.name.clone()))
+        });
+        let (conf, k, kid) = r?;
+        if !valid_resource(resource) {
+            return Err(format!(
+                "{resource:?} is not a resource: a path of plain segments ending in /"
+            ));
+        }
+        if !valid_subject(&v.subject) {
+            return Err(format!(
+                "{:?} is not a subject: 1 to 128 bytes with no control characters",
+                v.subject
+            ));
+        }
+        if !v.session.is_empty() && !valid_session(&v.session) {
+            return Err(format!(
+                "{:?} is not a session: 1 to 64 letters, digits, '.', '_', '~' and '-'",
+                v.session
+            ));
+        }
+        if expiry <= 0 {
+            return Err("the expiry is before 1970".into());
+        }
+        let g = crate::urlsign::sign(
+            &conf, &k, &kid, resource, &v.subject, v.address, &v.session, expiry,
+        );
+        Ok(g.query())
+    }
+
+    /// Checks grant `g` of a request seen as `seen` for `resource` at `now` (nanoseconds since
+    /// 1970), and records its session, from `address` (fit's `letIn`): the key to sign the grant
+    /// it hands on with, or why not, counted.
+    pub(crate) fn let_in(
+        &self,
+        seen: &Seen<'_>,
+        resource: &str,
+        g: &UrlGrant,
+        address: &str,
+        now: i64,
+    ) -> Result<Vec<u8>, TouchError> {
+        let r = self.verify_url(seen, resource, g, now);
+        let r = r.and_then(|(conf, key)| {
+            if !g.sid.is_empty() {
+                self.sess
+                    .touch(&conf, &g.sub, &g.sid, resource, address, g.exp, now)?;
+            }
+            Ok(key)
+        });
+        if let Err(TouchError::Url(reason)) = &r {
+            self.sess.count(*reason);
+        }
+        r
+    }
+
+    /// [`let_in`](Self::let_in)'s checks of the grant alone, not its session's.
+    pub(crate) fn verify_url(
+        &self,
+        seen: &Seen<'_>,
+        resource: &str,
+        g: &UrlGrant,
+        now: i64,
+    ) -> Result<(Arc<UrlConfig>, Vec<u8>), TouchError> {
+        let sig = TouchError::Url(UrlReason::Signature);
+        let found = self.st.with(|st| {
+            let st = st?;
+            let conf = st.url.clone()?;
+            let key = if st.keys.is_empty() {
+                if !g.kid.is_empty() {
+                    return Some(Err(sig));
+                }
+                st.url_key.clone()
+            } else {
+                match st.keys.iter().find(|k| k.name == g.kid) {
+                    Some(k) => k.url_key.clone(),
+                    None => return Some(Err(sig)),
+                }
+            };
+            Some(Ok((conf, key)))
+        });
+        let (conf, key) = found.ok_or(sig)??;
+        crate::urlsign::verify(
+            &conf,
+            &key,
+            g,
+            resource,
+            seen,
+            now.div_euclid(1_000_000_000),
+        )
+        .map_err(TouchError::Url)?;
+        Ok((conf, key))
+    }
+
+    /// Counts a URL refused for `r` outside [`let_in`](Self::let_in): one that does not parse.
+    pub(crate) fn count_url_refusal(&self, r: UrlReason) {
+        self.sess.count(r);
+    }
+
+    /// Records that a session was handed a grant good until `exp`.
+    pub(crate) fn extend_session(&self, subject: &str, sid: &str, exp: i64) {
+        self.sess.extend(subject, sid, exp);
+    }
+
+    /// The address of the viewer a request comes from, as a URL bound to an address is checked
+    /// against it (fit's `ViewerAddr`): the connection's peer `peer`, or, behind `url_signing`'s
+    /// `trusted_proxies`, the last address of the request's `X-Forwarded-For` fields `xff` that is
+    /// not one of them.
+    #[must_use]
+    pub fn viewer_addr(&self, peer: std::net::IpAddr, xff: &[&str]) -> Option<std::net::IpAddr> {
+        let trusted = self
+            .url_config()
+            .map(|c| c.trusted.clone())
+            .unwrap_or_default();
+        crate::urlsign::client_ip(Some(peer), xff, &trusted)
+    }
+
+    /// How many signed URLs and grants the policy has refused, by reason (fit's `URLRefusals`).
+    #[must_use]
+    pub fn url_refusals(&self) -> Vec<(&'static str, u64)> {
+        URL_REASONS
+            .iter()
+            .zip(self.sess.refused.iter())
+            .map(|(r, n)| (r.as_str(), n.load(std::sync::atomic::Ordering::Relaxed)))
+            .collect()
+    }
+
+    /// The policy's playback sessions that are not over, by subject and start: those playing,
+    /// and those ended whose grants still live (fit's `Sessions`).
+    #[must_use]
+    pub fn sessions(&self) -> Vec<SessionView> {
+        self.sessions_at(crate::urlsign::now_nanos())
+    }
+
+    pub(crate) fn sessions_at(&self, now: i64) -> Vec<SessionView> {
+        // A policy whose url_signing is gone shows only ended sessions.
+        let idle = self.url_config().map_or(Duration::ZERO, |c| c.idle);
+        self.sess.list(idle, now)
+    }
+
+    /// Ends session `id` of `subject` (fit's `EndSession`): its requests are refused 403 from now
+    /// on, as are those of every grant it was handed, until they expire. Whether the policy had
+    /// the session playing.
+    #[must_use]
+    pub fn end_session(&self, subject: &str, id: &str) -> bool {
+        self.sess.end(subject, id)
+    }
+
+    /// The number of sessions the policy tracks.
+    #[cfg(test)]
+    pub(crate) fn tracked_sessions(&self) -> u64 {
+        self.sess.tracked()
     }
 }
 

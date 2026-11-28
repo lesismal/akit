@@ -246,7 +246,7 @@ I01 建立、后续迭代逐步填充的结构。名字可以调整，但每个�
 | I141 | 媒体库 II：目录：扫描、条目、基于 akio-media 的 `mp4` 的探测、文件池、保留的解析后影片；角色 `media_library`；Admin API 的 `/media/library` | I140, I100 | done |
 | I142 | 点播：`vod`，由样本表生成的 HLS，按范围提供的文件 | I141, I121 | done |
 | I143 | 媒体 token：`media_auth` 的 `keys` 和 `media_tokens`（fit 的 I119） | I121 | done |
-| I144 | 会过期的播放 URL：`url_signing`、会话、`media_tokens` 的 `/urls` | I142, I143 | todo |
+| I144 | 会过期的播放 URL：`url_signing`、会话、`media_tokens` 的 `/urls` | I142, I143 | done |
 | I145 | 频道：作为直播流播放的媒体库条目，`streaming.channels` | I141, I123 | todo |
 | I146 | 推送目标：`streaming.push` 和频道的 `push` | I145 | todo |
 | I147 | 加密分片：`vod` 和频道 HLS 上的 `encrypt` | I144, I145 | todo |
@@ -1865,7 +1865,7 @@ SAMPLE-AES（fib 的 A69）；它缺少的部分作为 akio A295–A300 请求�
   反之亦然。
 - **涉及**：`akit-config`（`media`）、`akit-media`（`auth`、`tokens`）。
 - **fit**：`handler/mediatokens`、`mediaauth/manage.go`；I119。
-- **状态**：已完成（2026-11-28）；`url_base` 和 `url_prefixes` 等待 I144。见进度日志。
+- **状态**：已完成（2026-11-28）；`url_base` 和 `url_prefixes` 随 I144 而来。见进度日志。
 
 ### I144 会过期的播放 URL：`url_signing`
 
@@ -1877,7 +1877,7 @@ SAMPLE-AES（fib 的 A69）；它缺少的部分作为 akio A295–A300 请求�
   签发的 URL 能在 akit 上播放，akit 签发的能在 fit 上播放。
 - **涉及**：`akit-config`、`akit-media`。
 - **fit**：`mediaauth/urlsign.go`、`sessions.go`、`viewer.go`、`handler/mediatokens/urls.go`；I135。
-- **状态**：todo。
+- **状态**：已完成（2026-11-28）；Admin API 的会话和拒绝计数随控制台页面而来（I149）。见进度日志。
 
 ### I145 频道：作为直播流播放的文件
 

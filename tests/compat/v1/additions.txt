@@ -918,3 +918,17 @@ config	added	supported	routes[].handler<media_tokens>.params.max_ttl
 config	added	supported	routes[].handler<media_tokens>.params.prefix
 config	added	supported	routes[].handler<media_tokens>.params.prefixes
 config	added	supported	routes[].handler<media_tokens>.params.revoke_timeout
+config	added	supported	media_auth[].url_signing
+config	added	supported	media_auth[].url_signing.bind_address
+config	added	supported	media_auth[].url_signing.cookie
+config	added	supported	media_auth[].url_signing.max_sessions
+config	added	supported	media_auth[].url_signing.max_tracked_sessions
+config	added	supported	media_auth[].url_signing.on_limit
+config	added	supported	media_auth[].url_signing.origins
+config	added	supported	media_auth[].url_signing.play_grace
+config	added	supported	media_auth[].url_signing.referers
+config	added	supported	media_auth[].url_signing.session_idle
+config	added	supported	media_auth[].url_signing.trusted_proxies
+config	added	supported	media_auth[].url_signing.ttl
+config	added	supported	routes[].handler<media_tokens>.params.url_base
+config	added	supported	routes[].handler<media_tokens>.params.url_prefixes

@@ -81,3 +81,18 @@ akio-crypto 有带 PKCS #7 填充的 AES-128-CBC。流媒体路线（决定 040�
 - **批次的请求体由 akio-http 在监听器的上限内整个读取**，再按 `max_body_bytes` 检查（413），而 fit 以流方式读取；它至多 1 MiB。
 - **撤销**把每个新密钥（32 个随机字节，base64url）写入密钥文件旁的临时文件，权限 0600，同步后重命名覆盖，在处理器自己的一个
   线程上进行，队列长度为一；请求被挂起并从那里回答，在 akio 的 A296 之前超过 `revoke_timeout` 时由 akit-media 的计时线程回答 504。
+
+## I144：会过期的播放 URL
+
+- **URL 和授权与 fit 逐字节相同**：密钥为 `HMAC-SHA256(签名密钥, "fit media url\0")`，MAC 覆盖 `fit-url-1`、资源和各字段，
+  取前 16 字节的 base64url，查询的顺序和转义也相同。同一密钥或密钥环、同一策略名下，fit 签发的 URL 能在 akit 上播放，akit 签发的
+  也能在 fit 上播放；一个单元测试固定了 fit 的 `SignURL` 给出的查询。授权所在的 cookie 为 `akit_media_grant`（决定 037），因此
+  保存 cookie 的播放器不会在同一主机上把一个网关的授权带到另一个网关。
+- **检查在 I/O 线程上进行，没有回调**，与 fit 相同：MAC、过期时间、地址、`Referer` 和 `Origin`，然后在分片锁下处理会话条目。
+  它会做少量分配（在目标被脱敏前复制的查询、授权的字段）；fit 的不分配。
+- **测试指定时间**而不是拨动时钟：策略的检查和会话把时间作为参数（`let_in`、`pass_on_at`、`sessions_at`），处理器从时钟给出；
+  处理器的测试签发已经过期或一小时内有效的 URL。
+- **传递授权或 token 的播放列表属于观看者自己**（`private, no-store`）；开启 `cookie` 时，缓存保存的媒体播放列表发送时带上授权的
+  cookie，与 fit 相同。
+- **Admin API 的会话和拒绝计数**（fit 的 `admin/media.go`）随控制台页面而来（I149）；策略现在已有它们（`sessions`、
+  `end_session`、`url_refusals`）。
