@@ -22,6 +22,16 @@ done and where the work differs from the plan.
 
 ## Log
 
+### 2026-11-28: test-timeout's watchdog sleep ends with its binary
+
+- `tools/test-timeout.sh` (rule 31) had the flaw akio's copy had (fixed in akio `2575a253`): a TERM
+  that came between the watchdog starting its `sleep` and the trap knowing its pid (a binary that
+  ends at once, as a doctest does) left the sleep orphaned, holding the binary's stdout and
+  stderr, so rustdoc waited on a doctest that had ended. The trap is now set first and ends every
+  job the watchdog started, and the sleep takes `/dev/null` for its descriptors. Checked on
+  macOS: 30 quick runs leave no sleep behind, a hang still reports and exits 124, exit codes pass
+  through; `make check` ran its doctests through it.
+
 ### 2026-11-28: the A303 stopgap removed: akit's listeners on akio's default scheduling
 
 - akio's A303 is fixed (pinned since `2575a253`), so `akit_runtime::scheduled` goes, with its

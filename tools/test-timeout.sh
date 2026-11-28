@@ -15,10 +15,12 @@ limit=${AKIT_TEST_BINARY_TIMEOUT:-900}
 "$@" &
 pid=$!
 (
-    sleep "$limit" &
-    s=$!
-    trap 'kill "$s" 2>/dev/null; exit 0' TERM
-    wait "$s"
+    # The trap is set before the sleep starts and ends whatever this subshell started, so a TERM
+    # that comes as soon as the binary ends still ends the sleep; and the sleep holds none of the
+    # binary's pipes, so it could never keep whoever reads them (rustdoc running a doctest) waiting.
+    trap 'kill $(jobs -p) 2>/dev/null; exit 0' TERM
+    sleep "$limit" </dev/null >/dev/null 2>&1 &
+    wait $!
     kill -0 "$pid" 2>/dev/null || exit 0
     {
         echo "HANG: $(basename "$1") still running after ${limit}s (AKIT_TEST_BINARY_TIMEOUT); threads:"

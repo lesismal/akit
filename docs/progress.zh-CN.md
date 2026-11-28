@@ -21,6 +21,13 @@
 
 ## 日志
 
+### 2026-11-28：test-timeout 的看门狗 sleep 随其测试二进制一同结束
+
+- `tools/test-timeout.sh`（规则 31）有 akio 副本同样的缺陷（已在 akio `2575a253` 修复）：看门狗启动 `sleep` 之后、trap 知道其 pid
+  之前到达的 TERM（立即结束的二进制，如文档测试）使 sleep 成为孤儿，继续持有该二进制的 stdout 和 stderr，rustdoc 于是等待一个已经
+  结束的文档测试。现在先设置 trap，它结束看门狗启动的所有作业，并且 sleep 的描述符都指向 `/dev/null`。在 macOS 上检查：快速运行
+  30 次不留下 sleep，挂起时仍会报告并以 124 退出，退出码照常传递；`make check` 的文档测试经由它运行。
+
 ### 2026-11-28：去掉 A303 的权宜做法：akit 的监听器回到 akio 的默认调度
 
 - akio 的 A303 已修复（自 `2575a253` 起锁定），因此 `akit_runtime::scheduled` 连同其测试（`akit-runtime/tests/scheduling.rs`）和
